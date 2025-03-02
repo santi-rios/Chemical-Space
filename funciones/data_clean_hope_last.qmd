@@ -1,0 +1,231 @@
+---
+title: data cleaning
+---
+
+```{r libraries}
+library(tidyverse)
+library(explore)
+```
+
+
+## Total Space
+
+```{r data}
+
+df1 <- read.csv("./data4/absolute_counting_colabs_organic.csv")
+df1 |> explore()
+```
+
+```{r explore}
+
+df1.2 <- df1 |> 
+    pivot_longer(
+        cols = starts_with("X"),
+        names_to = "year",
+        values_to = "value_raw",
+        values_drop_na = TRUE
+  )
+
+df1.2 |> explore()
+```
+
+```{r transform}
+
+df1.3 <- df1.2 %>%
+  group_by(year) %>%
+  mutate(percentage = (value_raw / value_raw[Country == "Total"]) * 100) %>%
+  ungroup()
+
+df1.3 |> explore()
+```
+
+::: {.callout-note}
+    group_by(year): Groups the data by the year column.
+
+    mutate(percentage = ...): Creates the new column percentage.
+
+    value_raw[Country == "Total"]: Retrieves the total value for the corresponding year.
+
+    Each country's value is divided by its year's total and multiplied by 100 to get the percentage.
+
+    The Total rows will naturally calculate to 100% since they're divided by themselves.
+:::
+
+```{r clean}
+
+library(dplyr)
+
+# Step 1: Remove rows with NA or null in the percentage column
+df1.4 <- df1.3 %>%
+  filter(!is.na(percentage))
+
+# Step 2: Clean the year column
+df1.5 <- df1.4 %>%
+  mutate(year = as.numeric(gsub("X", "", year))) |>
+  filter(!Country == "Total") |> 
+  filter(year >= 1996)
+# View the cleaned dataframe
+df1.5 |> explore()
+df1.5 |> glimpse()
+
+write.csv(df1.5, "./data5/Organometallic.csv")
+```
+
+
+```{r country_codes}
+country_codes <- read.csv("./data4/country_codes.csv")
+```
+
+
+```{r}
+tictoc::tic()
+library(readxl)
+library(writexl)
+library(dplyr)
+library(stringr)
+
+# Read the first file
+df_first <- read.csv("./data5/Rare-Earths.csv") # Rare-Earths
+
+
+# Read the lookup file
+df_lookup <- read_excel("./data4/lookup.xlsx")
+#   Country year  percentage
+# 1      AE 1996 0.002591378
+# 2      AE 1997 0.000633066
+# 3      AE 1999 0.000608049
+# 4      AE 2001 0.003855382
+# 5      AE 2002 0.000841470
+# 6      AE 2003 0.001065979
+
+
+# For convenience, rename columns to simpler names
+# Make sure these match the actual column names in your file
+df_lookup <- df_lookup %>%
+  rename(
+    alpha2 = `Alpha-2`,
+    alpha3 = `Alpha-3`,
+    country_name = `Country`
+  )
+
+# A helper function that splits a code string (e.g. "AE-AT-EG")
+# and looks up each Alpha-2 code in df_lookup
+### ATTENTION
+#### we need to add a column with "source = file_name"
+convert_codes <- function(code_str) {
+  codes <- str_split(code_str, "-", simplify = TRUE)
+  codes <- codes[codes != ""]  # remove any empty parts
+  
+  iso3_list <- c()
+  name_list <- c()
+  
+  for (c in codes) {
+    # Find the matching row
+    match_row <- df_lookup %>% filter(alpha2 == c)
+    if (nrow(match_row) == 1) {
+      iso3_list <- c(iso3_list, match_row$alpha3)
+      name_list <- c(name_list, match_row$country_name)
+    } else {
+      iso3_list <- c(iso3_list, "???")
+      name_list <- c(name_list, "Unknown")
+    }
+  }
+  
+  iso3_str <- paste(iso3_list, collapse = "-")
+  country_names_str <- paste(name_list, collapse = ", ")
+  
+  return(list(iso3c = iso3_str, country_name = country_names_str))
+}
+
+# Vectorize the function so we can apply it easily
+convert_codes_vec <- Vectorize(convert_codes, SIMPLIFY = FALSE)
+
+# Apply it to the "Country" column in df_first
+results <- convert_codes_vec(df_first$Country)
+
+# results is a list of lists; extract iso3c and country_name into separate vectors
+df_first$iso3c <- sapply(results, function(x) x$iso3c)
+df_first$country_name <- sapply(results, function(x) x$country_name)
+
+# Write out to Excel
+write_xlsx(df_first, "./data6/Rare-Earths.xlsx")
+tictoc::toc()
+```
+
+
+### Merge
+
+```{r}
+tictoc::tic()
+library(tidyverse)
+
+df.all <- read.csv("./data6/All.csv")
+df.organic <- read.csv("./data6/Organic.csv")
+df.organometallic <- read.csv("./data6/Organometallic.csv")
+df.rare.earths <- read.csv("./data6/Rare-Earths.csv")
+
+
+#put all data frames into list
+df_list <- list(df.all, df.organic, df.organometallic, df.rare.earths)      
+
+#merge all data frames together
+df_merged <- df_list %>% reduce(full_join, by = c("iso2c", "year", "percentage", "iso3c", "country", "chemical")) |> 
+  select(-X)
+
+glimpse(df_merged)
+
+write.csv(df_merged, "./data7/df_0.99.csv") 
+
+tictoc::toc()
+
+```
+
+
+
+## Add information
+
+
+
+
+```{r}
+
+df <- read.csv("./data7/df_0.99.csv") |> 
+  dplyr::select(
+    -country
+  )
+  # dplyr::mutate(
+  #   region = countrycode::countrycode(
+  #     "ìso3c", 
+  #     origin = "iso3c", 
+  #     destination = "continent"
+  #     )
+  #     )
+
+df.old <- read.csv("./data7/old.csv") 
+  # rename(
+  #   region = "region_23"
+  # )
+
+
+El.Df <- df.old |> 
+  dplyr::left_join(df, by = c("year", "iso3c", "chemical")) |> 
+  tidyr::drop_na(percentage)
+
+write.csv(El.Df, "./data7/df.csv")
+
+explore::explore(El.Df)
+
+```
+
+```{r}
+sort(unique(df$year))
+sort(unique(df.old$year))
+
+unique(df$iso3c)
+unique(df.old$iso3c)
+
+unique(df$chemical)
+unique(df.old$chemical)
+
+unique(El.Df$region)
+```

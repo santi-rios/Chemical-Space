@@ -1,0 +1,375 @@
+---
+author: "RStudio, Inc."
+title: "Data"
+---
+
+## Libraries
+
+```{r}
+library(arrow)
+library(dplyr)
+library(countrycode)
+library(leaflet)
+library(highcharter)
+library(viridisLite)
+library(glue)
+library(ggplot2)
+# interactive data exploration
+library(explore)
+```
+
+## Data
+
+```{r}
+# Load the data
+
+df <- read.csv("./data3/df.csv", stringsAsFactors = FALSE)
+
+str(df)
+```
+
+### explore
+
+```{r}
+df |> explore()
+```
+
+
+```{r}
+
+# Clean the data: create new columns
+df_clean <- df %>%
+  mutate(
+    # Determine if the row is a collaboration (contains a hyphen)
+    is_collab = grepl("-", country)
+    
+    # For solo countries, assign CollabGroup directly; else NA
+    # country_solo = ifelse(!is_collab, country, NA),
+    
+    # # For collaboration rows, split the string and remove the country already in the 'Country' column
+    # collaborations = ifelse(is_collab,
+    #   sapply(strsplit(country, "-"), function(x) {
+    #     # In case the current row's Country is one of the parts, remove it.
+    #     paste(setdiff(x, country), collapse = ", ")
+    #   }),
+    #   NA
+    # )
+  ) 
+#   %>%
+#   select(-is_collab)  # Remove the helper column if not needed
+
+# Optional: Write the cleaned data to a new CSV file
+# write.csv(df_clean, "cleaned_data.csv", row.names = FALSE)
+
+# View the cleaned data
+df_clean |> View()
+```
+
+```{r}
+
+df_clean <- df_clean %>%
+    dplyr::filter(year >= 1996)
+
+```
+
+
+::: {.callout-note}
+
+    separate(): The CollabGroup column is split on the hyphen.
+        For individual country rows (e.g. "United States"), the second part (col2) will be NA.
+    mutate():
+        country_solo is assigned the first part when there is no collaboration.
+        For rows with a dash (i.e. a collaboration), the script checks the Country column.
+            If Country equals the first part (col1), then the collaboration partner (col2) is saved in collaborations.
+            If Country equals the second part (col2), then col1 is saved as the collaboration partner.
+    select(): Temporary columns are dropped from the final data frame.
+
+This script will create two new columns as requested, leaving individual country rows with the country name in country_solo and collaboration rows with the partner country in collaborations.
+
+```r
+# # Load required libraries
+# library(dplyr)
+# library(tidyr)
+
+# # Read your dataset (adjust the file name/path as needed)
+# df <- read.csv("your_data.csv", stringsAsFactors = FALSE)
+
+# Process the data
+df_clean <- df %>%
+  # Split CollabGroup into two parts, using "-" as the delimiter.
+  # If there's no dash, col2 will be NA.
+  separate(country, into = c("col1", "col2"), sep = "-", fill = "right") %>%
+  mutate(
+    # When there is no dash, assign col1 to country_solo
+    country_solo = ifelse(is.na(col2), col1, NA_character_),
+    # When there is a collaboration, determine which part is NOT the current Country.
+    collaborations = ifelse(!is.na(col2),
+                            ifelse(Country == col1, col2,
+                                   ifelse(Country == col2, col1, NA_character_)),
+                            NA_character_)
+  ) %>%
+  # Remove the temporary columns
+  select(-col1, -col2)
+
+# Optional: write the cleaned data to a new CSV
+# write.csv(df_clean, "your_clean_data.csv", row.names = FALSE)
+
+# View the cleaned data
+df_clean |> explore()
+```
+
+Explanation
+
+    Loading Data:
+    The data is read from a CSV file into df.
+
+    Detecting Collaborations:
+    We use grepl("-", CollabGroup) to flag rows that include a hyphen (indicating a collaboration).
+
+    Creating New Columns:
+        For rows without a hyphen (solo countries), the country_solo column simply takes the value from CollabGroup.
+        For rows with a hyphen, the collaborations column is created by splitting CollabGroup on the hyphen and removing the value already present in the Country column. This way, if a row corresponds to a collaboration, the partner country (or countries) is stored in collaborations.
+
+    Output:
+    Finally, the script writes the cleaned data to a new CSV file and prints the data frame.
+
+This script should work with your sample dataset and can be adjusted as needed for your full dataset.
+
+```r
+# Load necessary libraries
+# library(dplyr)
+
+# Read in your data (adjust the file path as needed)
+# df <- read.csv("your_data.csv", stringsAsFactors = FALSE)
+
+# Clean the data: create new columns 'country_solo' and 'collaborations'
+df_clean <- df %>%
+  mutate(
+    # Determine if the row is a collaboration (contains a hyphen)
+    is_collab = grepl("-", country),
+    
+    # For solo countries, assign CollabGroup directly; else NA
+    country_solo = ifelse(!is_collab, country, NA),
+    
+    # For collaboration rows, split the string and remove the country already in the 'Country' column
+    collaborations = ifelse(is_collab,
+      sapply(strsplit(country, "-"), function(x) {
+        # In case the current row's Country is one of the parts, remove it.
+        paste(setdiff(x, country), collapse = ", ")
+      }),
+      NA
+    )
+  ) %>%
+  select(-is_collab)  # Remove the helper column if not needed
+
+# Optional: Write the cleaned data to a new CSV file
+# write.csv(df_clean, "cleaned_data.csv", row.names = FALSE)
+
+# View the cleaned data
+df_clean |> explore()
+```
+
+    Create country_solo containing individual country names (when there's no hyphen in CollabGroup)
+
+    Create collaborations containing partnership names (when there's a hyphen in CollabGroup)
+
+    Keep all other columns intact
+
+    Remove the original CollabGroup column
+
+    Place the new columns where CollabGroup was originally located
+
+For rows with collaborations:
+
+    country_solo will be NA
+
+    collaborations will contain the partnership name (e.g., "United States-Uruguay")
+
+For individual country rows:
+
+    country_solo will contain the country name
+
+    collaborations will be NA
+
+```r
+# library(dplyr)
+
+# # Read your data (replace with your actual data path)
+# df <- read.csv("your_data.csv", stringsAsFactors = FALSE)
+
+# Clean and split columns
+cleaned_df <- df_2 %>%
+  mutate(
+    country_solo = ifelse(grepl("-", collab_group), NA, collab_group),
+    collaborations = ifelse(grepl("-", collab_group), collab_group, NA)
+  ) %>%
+  select(-collab_group) 
+#   %>%  # Remove original CollabGroup column
+#   relocate(country_solo, collaborations, .after = "CollabGroup")
+
+# View the result
+head(cleaned_df)
+```
+
+
+:::
+
+### Plot
+
+```{r}
+# Plot the data
+df_clean %>%
+  dplyr::filter(is_collab == TRUE) %>%
+  ggplot(aes(x = year, y = percentage, colour = country)) +
+  geom_line() +
+  facet_wrap(~chemical, scales = "free_y") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+
+## Add more info
+
+```{r}
+library("gapminder")
+
+gap_with_colors <-
+  data.frame(gapminder,
+    cc = I(country_colors[match(
+      gapminder$country,
+      names(country_colors)
+    )]),
+    cont_cc = I(continent_colors[match(
+      gapminder$continent,
+      names(continent_colors)
+    )])
+    )
+
+glimpse(gap_with_colors)
+```
+
+***Add coordinates***
+
+```{r}
+
+coords <- read.csv("./data3/df_coordinates.csv")
+str(coords)
+
+coords_iso3 <- coords %>%
+  mutate(
+    iso3c = countrycode::countrycode(
+      iso2c,
+      origin = "iso2c",
+      destination = "iso3c"
+    )
+  )
+
+
+View(coords_iso3)
+``` 
+
+
+***Merge***
+
+```{r}
+
+gap_with_colors2 <- gap_with_colors %>% 
+    mutate(
+    iso3c = countrycode::countrycode(
+      country,
+      origin = "country.name",
+      destination = "iso3c"
+    )
+  )
+
+gap_with_colors_coords <- gap_with_colors2 %>%
+  left_join(coords_iso3, by = c("iso3c"))
+
+View(gap_with_colors_coords)
+
+write.csv(gap_with_colors_coords, "./data3/gapminder.csv")
+
+```
+
+```{r}
+
+gap_with_colors3 <- read.csv("./data3/gapminder.csv")
+
+gap_with_new_colors <-
+  gap_with_colors3 %>%
+  mutate(
+    cc = case_when(
+    country == "United States" ~ "#0a3161",
+    country == "China" ~ "#c5051b",
+    country == "India" ~ "#ff671f",
+    country == "Germany" ~ "#000000",
+    country == "Japan" ~ "#995162",
+    country == "France" ~ "#000091",
+    country == "Mexico" ~ "#006341",
+    country == "Russia" ~ "#d51e9b",
+    country == "United Kingdom" ~ "#3b5091",
+    country == "Colombia" ~ "#fcd116",
+    country == "Brazil" ~ "#009b3a",
+    country == "Ecuador" ~ "#ffdd00",
+    country == "Peru" ~ "#d52b1e",
+    country == "Chile" ~ "#0033a0",
+    country == "Argentina" ~ "#74acdf",
+    country == "Australia" ~ "#ffcc00",
+    TRUE ~ cc
+    )
+  ) %>%
+  select(-year, -pop, -gdpPercap, -lifeExp) %>%
+  distinct(country, .keep_all = TRUE) %>%
+  mutate(
+        flag = countrycode::countrycode(
+                country,
+                origin = "country.name",
+                destination = "unicode.symbol"
+        ),
+        currency = countrycode::countrycode(
+                country,
+                origin = "country.name",
+                destination = "currency"
+        ),
+        region = countrycode::countrycode(
+                country,
+                origin = "country.name",
+                destination = "region"
+        ),
+
+    )
+
+glimpse(gap_with_new_colors)
+View(gap_with_new_colors)
+```
+
+### merge
+
+```{r}
+
+df_merged <- df_clean %>%
+  left_join(gap_with_new_colors, by = 
+    c("country", "iso3c", "iso2c"))
+
+glimpse(df_merged)
+View(df_merged)
+str(df_merged)
+```
+
+```{r}
+write.csv(df_merged, "./data3/data2.csv", row.names = FALSE)
+
+arrow::write_parquet(df_merged, "./data3/data.parquet")
+
+```
+
+```{r}
+df_clean <- arrow::read_parquet("./data3/data.parquet")
+
+# View the cleaned data
+df_clean  %>%
+  dplyr::filter(is_collab == FALSE) |>
+  explore()
+
+```
