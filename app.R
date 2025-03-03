@@ -18,16 +18,6 @@ df_global <- read.csv("./data/df.csv")
 figure_article <- read.csv("./data/data_article.csv")
 
 ui <- tagList(
-  # Top info box
-  div(
-    style = "width: 100%; text-align: center; padding: 10px 0;",
-    value_box(
-      title = "Top Producers in Selection (Total Value)",
-      value = textOutput("top_producer"),
-      max_height = "80px",
-      fill = FALSE
-    )
-  ),
   page_navbar(
     title = a(
       "Country contribution to the expansion of the chemical space",
@@ -37,7 +27,17 @@ ui <- tagList(
     selected = "🗺️National Trends",
     theme = bs_theme(
       version = 5,
-      bootswatch = "flatly"
+      bootswatch = "cosmo"
+    ),
+    # Top info box
+    div(
+      style = "width: 100%; text-align: center; padding: 10px 0;",
+      value_box(
+        title = uiOutput("summaryText"),
+        value = uiOutput("flagButtons"),
+        max_height = "80px",
+        fill = TRUE
+      )
     ),
     navbar_options = navbar_options(
       collapsible = TRUE
@@ -100,8 +100,8 @@ ui <- tagList(
         ) # nolint: line_length_linter.
       ),
       hr(),
-      uiOutput("summaryText"),
-      uiOutput("flagButtons")
+      # uiOutput("summaryText"),
+      # uiOutput("flagButtons")
     ),
     # Main navigation panels
     nav_panel(
@@ -607,47 +607,13 @@ server <- function(input, output, session) {
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Value boxes
-  output$top_producer <- renderText({
-    req(filtered_data())
-    top_countries <- filtered_data() %>%
-      group_by(iso3c) %>%
-      summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-      slice_max(total, n = 5) %>%
-      pull(iso3c)
-    paste(top_countries, collapse = ", ")
-  })
-
   output$summaryText <- renderUI({
     data_subset <- filtered_data()
     if (nrow(data_subset) == 0) {
       return("No data for this selection.")
     }
-
-    # Example logic for a top country and its top collaborator:
-    top_country <- data_subset %>%
-      group_by(iso3c) %>%
-      summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-      slice_max(total, n = 1) %>%
-      pull(iso3c)
-
-    # If collaboration entries are present, find principal collaborator:
-    top_collab <- "None"
-    if (any(grepl("-", data_subset$iso3c))) {
-      library(tidyr) # needed for separate_rows
-      top_collab <- data_subset %>%
-        separate_rows(iso3c, sep = "-") %>%
-        group_by(iso3c) %>%
-        summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-        slice_max(total, n = 1) %>%
-        pull(iso3c)
-    }
-
     HTML(glue(
-      "Current data includes {nrow(data_subset)} observations.<br>",
-      "Selected Range Years: {input$years[1]} - {input$years[2]}.<br>",
-      "Top country is {top_country} and collaborates principally with {top_collab}; ",
-      "see collaboration data for more information.<br>",
-      "For more information, click on the flags below."
+      "Click on flag to see collaboration details for a specific country."
     ))
   })
 
@@ -656,7 +622,7 @@ server <- function(input, output, session) {
   output$flagButtons <- renderUI({
     req(filtered_data())
     if (input$data_mode == "Collaborations") {
-      all_iso <- unique(unlist(lapply(filtered_data()$iso3c, function(x) strsplit(x, "-")[[1]])))
+      all_iso <- unique(unlist(lapply(filtered_data()$iso2c, function(x) strsplit(x, "-")[[1]])))
     } else {
       all_iso <- filtered_data() %>%
         pull(iso2c) %>%
