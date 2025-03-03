@@ -84,7 +84,7 @@ ui <- tagList(
       ),
       conditionalPanel(
         condition = "input.data_mode == 'Individual Countries'",
-        selectizeInput("region", "Region Filter 🗾", choices = "All", width = "100%") # nolint: line_length_linter.
+        selectizeInput("region", "Region Filter 🗾", choices = "All",  multiple = TRUE, width = "100%") # nolint: line_length_linter.
       ),
       hr(),
       uiOutput("summaryText"),
@@ -187,27 +187,32 @@ server <- function(input, output, session) {
       df_global %>% filter(is_collab == TRUE) # nolint
     }
     if (input$data_mode == "Individual Countries" &&
-      !is.null(input$region) &&
-      input$region != "All") {
-      d <- d %>% filter(region == input$region) # nolint: object_usage_linter.
+          !is.null(input$region) &&
+          !("All" %in% input$region)) {
+      d <- d %>% filter(region %in% input$region) # nolint: object_usage_linter.
     }
     d
   })
 
-  # -- 2) region choices
-  observe({
-    req(input$data_mode == "Individual Countries")
-    # Get non-collab data to determine available regions
-    non_collab_data <- df_global %>% filter(is_collab == FALSE) # nolint
-    regions <- sort(unique(non_collab_data$region))
-    # Preserve existing selection if valid; otherwise default to "All"
-    current <- isolate(input$region)
-    if (!current %in% c("All", regions)) current <- "All"
-    updateSelectizeInput(session, "region",
-      choices = c("All", regions),
-      selected = current
-    )
-  })
+# -- 2) region choices
+observe({
+  req(input$data_mode == "Individual Countries")
+  # Get non-collab data to determine available regions
+  non_collab_data <- df_global %>% filter(is_collab == FALSE) # nolint
+  regions <- sort(unique(non_collab_data$region))
+
+  # Preserve existing selection if valid; otherwise default to "All"
+  current <- isolate(input$region)
+  # Updated condition to handle vectors properly
+  if (is.null(current) || all(!current %in% c("All", regions))) {
+    current <- "All"
+  }
+
+  updateSelectizeInput(session, "region",
+    choices = c("All", regions),
+    selected = current
+  )
+})
 
   # -- 3) Dynamic update of countries
   observe({
