@@ -57,11 +57,17 @@ ui <- tagList(
       fluidRow(
         column(
           width = 6,
-          actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;") # nolint: line_length_linter.
+          actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;")
         ),
         column(
           width = 6,
-          actionButton("plotTopCountries", "Plot Top Countries", class = "btn-danger", style = "width: 100%;") # nolint: line_length_linter.
+          actionButton("selectAll", "Select All", class = "btn-success", style = "width: 100%;")
+        )
+      ),
+      fluidRow(
+        column(
+          width = 12,
+          actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
         )
       ),
       selectizeInput(
@@ -84,7 +90,7 @@ ui <- tagList(
       ),
       conditionalPanel(
         condition = "input.data_mode == 'Individual Countries'",
-        selectizeInput("region", "Region Filter 🗾", choices = "All",  multiple = TRUE, width = "100%") # nolint: line_length_linter.
+        selectizeInput("region", "Region Filter 🗾", choices = "All", multiple = TRUE, width = "100%") # nolint: line_length_linter.
       ),
       hr(),
       uiOutput("summaryText"),
@@ -187,32 +193,32 @@ server <- function(input, output, session) {
       df_global %>% filter(is_collab == TRUE) # nolint
     }
     if (input$data_mode == "Individual Countries" &&
-          !is.null(input$region) &&
-          !("All" %in% input$region)) {
+      !is.null(input$region) &&
+      !("All" %in% input$region)) {
       d <- d %>% filter(region %in% input$region) # nolint: object_usage_linter.
     }
     d
   })
 
-# -- 2) region choices
-observe({
-  req(input$data_mode == "Individual Countries")
-  # Get non-collab data to determine available regions
-  non_collab_data <- df_global %>% filter(is_collab == FALSE) # nolint
-  regions <- sort(unique(non_collab_data$region))
+  # -- 2) region choices
+  observe({
+    req(input$data_mode == "Individual Countries")
+    # Get non-collab data to determine available regions
+    non_collab_data <- df_global %>% filter(is_collab == FALSE) # nolint
+    regions <- sort(unique(non_collab_data$region))
 
-  # Preserve existing selection if valid; otherwise default to "All"
-  current <- isolate(input$region)
-  # Updated condition to handle vectors properly
-  if (is.null(current) || all(!current %in% c("All", regions))) {
-    current <- "All"
-  }
+    # Preserve existing selection if valid; otherwise default to "All"
+    current <- isolate(input$region)
+    # Updated condition to handle vectors properly
+    if (is.null(current) || all(!current %in% c("All", regions))) {
+      current <- "All"
+    }
 
-  updateSelectizeInput(session, "region",
-    choices = c("All", regions),
-    selected = current
-  )
-})
+    updateSelectizeInput(session, "region",
+      choices = c("All", regions),
+      selected = current
+    )
+  })
 
   # -- 3) Dynamic update of countries
   observe({
@@ -256,7 +262,7 @@ observe({
     top_countries <- df() %>%
       group_by(country) %>%
       summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-      slice_max(total, n = 8) %>%
+      slice_max(total, n = 20) %>%
       pull(country)
 
     new_selection <- intersect(top_countries, valid_countries)
@@ -284,6 +290,15 @@ observe({
   # "Deselect All" button
   observeEvent(input$deselectAll, {
     updateSelectizeInput(session, "countries", selected = character(0))
+  })
+
+  # "Select All" button
+  observeEvent(input$selectAll, {
+    req(df())
+    valid_countries <- df() %>%
+      pull(country) %>%
+      unique()
+    updateSelectizeInput(session, "countries", selected = valid_countries)
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -610,11 +625,11 @@ observe({
       summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
       slice_max(total, n = 1) %>%
       pull(iso3c)
-    
+
     # If collaboration entries are present, find principal collaborator:
     top_collab <- "None"
     if (any(grepl("-", data_subset$iso3c))) {
-      library(tidyr)  # needed for separate_rows
+      library(tidyr) # needed for separate_rows
       top_collab <- data_subset %>%
         separate_rows(iso3c, sep = "-") %>%
         group_by(iso3c) %>%
@@ -666,18 +681,18 @@ observe({
   observeEvent(input$selectedCountry, {
     req(filtered_data())
     sel_iso <- input$selectedCountry
-    
+
     if (input$data_mode == "Individual Countries") {
       # Switch to 'Collaborations' automatically
       updateRadioButtons(session, "data_mode", selected = "Collaborations")
-      
+
       # Optionally set 'countries' to show collaborations for the clicked country:
       # (Assuming df_global contains is_collab=TRUE for pairs; adjust as needed)
       collab_rows <- df_global %>%
         filter(is_collab == TRUE, grepl(sel_iso, iso3c))
       updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
     }
-    
+
     if (input$data_mode == "Collaborations") {
       flag_data <- filtered_data() %>% filter(grepl(sel_iso, iso3c))
     } else {
