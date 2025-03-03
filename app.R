@@ -45,7 +45,7 @@ ui <- tagList(
     # Sidebar with responsive layout; the width will adjust on smaller screens
     sidebar = sidebar(
       title = "Country and Region Filters 🌍",
-      width = "14rem",  # good on desktop; it collapses on mobile
+      width = "14rem", # good on desktop; it collapses on mobile
       sliderInput(
         "years", "📅 Year Range",
         min = 1996, max = 2022,
@@ -71,6 +71,7 @@ ui <- tagList(
         options = list(plugins = "remove_button", maxItems = 25),
         width = "100%"
       ),
+      hr(),
       tooltip(
         fontawesome::fa("info-circle", a11y = "sem", title = "About tooltips"),
         "Explore Individual Countries or Collaborations in the Chemical Space."
@@ -83,8 +84,9 @@ ui <- tagList(
       ),
       conditionalPanel(
         condition = "input.data_mode == 'Individual Countries'",
-        selectizeInput("region", "Region Filter 🗾", choices = "All", width = "100%")
+        selectizeInput("region", "Region Filter 🗾", choices = "All", width = "100%") # nolint: line_length_linter.
       ),
+      hr(),
       uiOutput("summaryText"),
       uiOutput("flagButtons")
     ),
@@ -93,8 +95,9 @@ ui <- tagList(
       "🗺️National Trends",
       card(
         navset_card_tab(
-          nav_panel("Trends📈",
-            withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
+          nav_panel(
+            "Trends📈",
+            withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173") # nolint: line_length_linter.
           ),
           nav_panel("Map📌", uiOutput("mapPlot")),
           nav_panel(
@@ -111,7 +114,7 @@ ui <- tagList(
                 )
               )
             ),
-            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
+            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173") # nolint: line_length_linter.
           )
         )
       )
@@ -122,9 +125,9 @@ ui <- tagList(
         condition = "input.data_mode == 'Individual Countries'",
         tooltip(
           fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-          "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
+          "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected." # nolint: line_length_linter.
         ),
-        actionButton("map2_reload", "Reload Map", class = "btn-danger", style="width: 100%;"),
+        actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"), # nolint: line_length_linter.
         leafletOutput("geoPlot2", height = 600)
       )
     ),
@@ -141,24 +144,19 @@ ui <- tagList(
           )
         )
       ),
-      withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
+      withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173") # nolint: line_length_linter.
     )
   ),
   # Footer images arranged responsively
   div(
     class = "container-fluid",
-    fluidRow(
-      column(4, tags$img(src = "tec.png", style = "max-width: 50px; width: 100%; height: auto;")),
-      column(4, tags$img(src = "logo.png", style = "max-width: 200px; width: 100%; height: auto;")),
-      column(4, tags$img(src = "uam.png", style = "max-width: 70px; width: 100%; height: auto;"))
-    ),
-    fluidRow(
-      column(6, tags$img(src = "leipzig.png", style = "max-width: 100px; width: 100%; height: auto;")),
-      column(6, tags$img(src = "santafe.png", style = "max-width: 40px; width: 100%; height: auto;"))
-    ),
-    fluidRow(
-      column(12, tags$img(src = "vienna.png", style = "max-width: 40px; width: 100%; height: auto; text-align: center;"))
-    )
+    style = "display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 0;", # nolint: line_length_linter.
+    tags$img(src = "tec.png", style = "max-width: 40px; height: auto;"),
+    tags$img(src = "logo.png", style = "max-width: 150px; height: auto;"),
+    tags$img(src = "uam.png", style = "max-width: 50px; height: auto;"),
+    tags$img(src = "leipzig.png", style = "max-width: 100px; height: auto;"),
+    tags$img(src = "santafe.png", style = "max-width: 60px; height: auto;"),
+    tags$img(src = "vienna.png", style = "max-width: 60px; height: auto;")
   )
 )
 
@@ -166,36 +164,39 @@ server <- function(input, output, session) {
   # -- 1) Base data reactive
   df <- reactive({
     d <- if (input$data_mode == "Individual Countries") {
-      df_global %>% filter(is_collab == FALSE)
+      df_global %>% filter(is_collab == FALSE) # nolint
     } else {
-      df_global %>% filter(is_collab == TRUE)
+      df_global %>% filter(is_collab == TRUE) # nolint
     }
     if (input$data_mode == "Individual Countries" &&
-        !is.null(input$region) &&
-        input$region != "All") {
-      d <- d %>% filter(region == input$region)
+      !is.null(input$region) &&
+      input$region != "All") {
+      d <- d %>% filter(region == input$region) # nolint: object_usage_linter.
     }
     d
-  }) 
+  })
 
   # -- 2) region choices
   observe({
     req(input$data_mode == "Individual Countries")
     # Get non-collab data to determine available regions
-    non_collab_data <- df_global %>% filter(is_collab == FALSE)
+    non_collab_data <- df_global %>% filter(is_collab == FALSE) # nolint
     regions <- sort(unique(non_collab_data$region))
     # Preserve existing selection if valid; otherwise default to "All"
     current <- isolate(input$region)
     if (!current %in% c("All", regions)) current <- "All"
     updateSelectizeInput(session, "region",
-                        choices = c("All", regions),
-                        selected = current)
+      choices = c("All", regions),
+      selected = current
+    )
   })
 
   # -- 3) Dynamic update of countries
   observe({
     req(df())
-    valid_countries <- df() %>% pull(country) %>% unique()
+    valid_countries <- df() %>%
+      pull(country) %>%
+      unique()
 
     # Keep intersection with previously selected (if any)
     current_selections <- isolate(input$countries)
@@ -224,7 +225,9 @@ server <- function(input, output, session) {
   # -- 3b) "Plot Top Countries" button
   observeEvent(input$plotTopCountries, {
     req(df())
-    valid_countries <- df() %>% pull(country) %>% unique()
+    valid_countries <- df() %>%
+      pull(country) %>%
+      unique()
 
     # Compute top from the currently filtered data (i.e. matching region/data_mode)
     top_countries <- df() %>%
@@ -287,12 +290,16 @@ server <- function(input, output, session) {
     if (input$data_mode == "Individual Countries") {
       all_ctry <- unique(data$country)
       color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
-      color_map[c("China", "United States", "India", "Germany", "Japan",
-                  "United Kingdom", "France", "Russia", "Mexico", "Colombia",
-                  "Brazil", "Ecuador", "Argentina")] <-
-        c("#c5051b", "#0a3161", "#ff671f", "#000000",
+      color_map[c(
+        "China", "United States", "India", "Germany", "Japan",
+        "United Kingdom", "France", "Russia", "Mexico", "Colombia",
+        "Brazil", "Ecuador", "Argentina"
+      )] <-
+        c(
+          "#c5051b", "#0a3161", "#ff671f", "#000000",
           "#995162", "#3b5091", "#000091", "#d51e9b",
-          "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf")
+          "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
+        )
       p <- p +
         scale_color_manual(values = color_map) +
         labs(
@@ -317,11 +324,13 @@ server <- function(input, output, session) {
     }
 
     ggplotly(p, tooltip = "text") %>%
-      layout(legend = list(x = 0, 
-                           y = -0.2,
-                           xanchor = "left",
-                           yanchor = "bottom",
-                           orientation = "h"))
+      layout(legend = list(
+        x = 0,
+        y = -0.2,
+        xanchor = "left",
+        yanchor = "bottom",
+        orientation = "h"
+      ))
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -350,10 +359,11 @@ server <- function(input, output, session) {
       )
 
     hcmap("custom/world-robinson-lowres",
-          data   = map_data,
-          joinBy = c("iso-a3", "iso3c"),
-          value  = "value",
-          name   = "Average Contribution") %>%
+      data   = map_data,
+      joinBy = c("iso-a3", "iso3c"),
+      value  = "value",
+      name   = "Average Contribution"
+    ) %>%
       hc_colorAxis(
         minColor = "#0c2a42",
         maxColor = "#c5051b",
@@ -382,7 +392,7 @@ server <- function(input, output, session) {
     req(filtered_data(), input$data_mode == "Collaborations")
     dt <- as.data.table(filtered_data())
     dt[, Value := percentage]
-    dt[, Year  := year]
+    dt[, Year := year]
     dt
   })
 
@@ -402,15 +412,15 @@ server <- function(input, output, session) {
     # Expand each iso3c_combo into individual iso codes
     map_expanded <- map_data_by_pair[, .(
       splitted_iso     = unlist(strsplit(iso3c_combo, "-")),
-      combo            = rep(iso3c_combo,  sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_value      = rep(value,        sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_best_year  = rep(best_year,    sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_worst_year = rep(worst_year,   sapply(strsplit(iso3c_combo, "-"), length))
+      combo            = rep(iso3c_combo, sapply(strsplit(iso3c_combo, "-"), length)),
+      combo_value      = rep(value, sapply(strsplit(iso3c_combo, "-"), length)),
+      combo_best_year  = rep(best_year, sapply(strsplit(iso3c_combo, "-"), length)),
+      combo_worst_year = rep(worst_year, sapply(strsplit(iso3c_combo, "-"), length))
     )]
 
     map_data <- map_expanded[, .(
-      value      = mean(combo_value, na.rm = TRUE),
-      best_year  = combo_best_year[which.max(combo_value)],
+      value = mean(combo_value, na.rm = TRUE),
+      best_year = combo_best_year[which.max(combo_value)],
       worst_year = combo_worst_year[which.min(combo_value)],
       collab_list = paste0(
         unique(paste0(combo, " (best year: ", combo_best_year, ")")),
@@ -422,10 +432,11 @@ server <- function(input, output, session) {
     max_val <- max(map_data$value, na.rm = TRUE)
 
     hcmap("custom/world-robinson-lowres",
-          data   = map_data,
-          joinBy = c("iso-a3", "iso3c"),
-          value  = "value",
-          name   = "Collaboration") %>%
+      data   = map_data,
+      joinBy = c("iso-a3", "iso3c"),
+      value  = "value",
+      name   = "Collaboration"
+    ) %>%
       hc_colorAxis(
         minColor = "#0c2a42",
         maxColor = "#c5051b",
@@ -469,11 +480,11 @@ server <- function(input, output, session) {
       clearMarkers() %>%
       addCircleMarkers(
         lng = ~lng, lat = ~lat,
-        radius = ~scales::rescale(value, c(5, 30)),
-        color = ~pal(value),
+        radius = ~ scales::rescale(value, c(5, 30)),
+        color = ~ pal(value),
         fillOpacity = 0.7,
         group = "Markers",
-        popup = ~glue("<b>{country}</b><br>Average: {round(value, 2)}%")
+        popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
       ) %>%
       addLayersControl(
         baseGroups = c("NASA", "Continents"),
@@ -490,7 +501,7 @@ server <- function(input, output, session) {
 
   observe({
     if (input$data_mode == "Collaborations") {
-      showNotification("Cartogram is only available for Individual Countries data", type = "warning") 
+      showNotification("Cartogram is only available for Individual Countries data", type = "warning")
     }
   })
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -511,7 +522,8 @@ server <- function(input, output, session) {
     )) +
       geom_line(aes(color = country), show.legend = TRUE) +
       geom_point(aes(size = percentage / 100, color = country),
-                 alpha = 0.4, show.legend = FALSE) +
+        alpha = 0.4, show.legend = FALSE
+      ) +
       labs(
         title = "Percentage of new compounds reported by each country in journals",
         x = "Year",
@@ -529,20 +541,26 @@ server <- function(input, output, session) {
 
     all_ctry <- unique(data$country)
     color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
-    color_map[c("China", "United States", "India", "Germany", "Japan",
-                "United Kingdom", "France", "Russia", "Mexico", "Colombia",
-                "Brazil", "Ecuador", "Argentina")] <-
-      c("#c5051b", "#0a3161", "#ff671f", "#000000",
+    color_map[c(
+      "China", "United States", "India", "Germany", "Japan",
+      "United Kingdom", "France", "Russia", "Mexico", "Colombia",
+      "Brazil", "Ecuador", "Argentina"
+    )] <-
+      c(
+        "#c5051b", "#0a3161", "#ff671f", "#000000",
         "#995162", "#3b5091", "#000091", "#d51e9b",
-        "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf")
+        "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
+      )
     p <- p + scale_color_manual(values = color_map)
 
     ggplotly(p, tooltip = "text") %>%
-      layout(legend = list(x = 0, 
-                           y = -0.2,
-                           xanchor = "left",
-                           yanchor = "bottom",
-                           orientation = "h"))
+      layout(legend = list(
+        x = 0,
+        y = -0.2,
+        xanchor = "left",
+        yanchor = "bottom",
+        orientation = "h"
+      ))
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -576,9 +594,13 @@ server <- function(input, output, session) {
     if (input$data_mode == "Collaborations") {
       all_iso <- unique(unlist(lapply(filtered_data()$iso3c, function(x) strsplit(x, "-")[[1]])))
     } else {
-      all_iso <- filtered_data() %>% pull(iso2c) %>% unique()
+      all_iso <- filtered_data() %>%
+        pull(iso2c) %>%
+        unique()
     }
-    if (length(all_iso) == 0) return(NULL)
+    if (length(all_iso) == 0) {
+      return(NULL)
+    }
 
     btns <- lapply(all_iso, function(iso) {
       tags$button(
@@ -605,7 +627,9 @@ server <- function(input, output, session) {
     } else {
       flag_data <- filtered_data() %>% filter(iso2c == sel_iso)
     }
-    if (nrow(flag_data) == 0) return()
+    if (nrow(flag_data) == 0) {
+      return()
+    }
 
     max_value <- max(flag_data$percentage, na.rm = TRUE)
     min_value <- min(flag_data$percentage, na.rm = TRUE)
@@ -616,10 +640,11 @@ server <- function(input, output, session) {
       h4(paste("Information for", sel_iso)),
       p(paste("Max Percentage:", scales::percent(max_value, accuracy = 0.001, scale = 1))),
       p(paste("Min Percentage:", scales::percent(min_value, accuracy = 0.001, scale = 1))),
-      if (length(collab_countries) > 0)
+      if (length(collab_countries) > 0) {
         p(paste("Other Collaborations from current selection include:", paste(collab_countries, collapse = ", ")))
-      else
+      } else {
         p("No other collaborations found.")
+      }
     )
 
     showModal(modalDialog(
@@ -640,25 +665,25 @@ server <- function(input, output, session) {
       article_data,
       x = ~year,
       y = ~percentage,
-      type = 'scatter',
-      mode = 'markers',
+      type = "scatter",
+      mode = "markers",
       color = ~country,
       colors = "Dark2",
       alpha = 0.6,
       size = ~percentage,
-      marker = list(sizemode="diameter"),
-      text = ~paste("Country: ", country, "<br>Year: ", year, "<br>Percentage: ", percentage),
+      marker = list(sizemode = "diameter"),
+      text = ~ paste("Country: ", country, "<br>Year: ", year, "<br>Percentage: ", percentage),
       frame = ~year
     ) %>%
-    layout(
+      layout(
         title = paste("Article Figures - Source:", input$article_source),
         xaxis = list(title = "Year"),
         yaxis = list(title = "Value")
       ) %>%
-    animation_opts(
-      frame = 300,
-      transition = 0,
-      redraw = FALSE
+      animation_opts(
+        frame = 300,
+        transition = 0,
+        redraw = FALSE
       )
 
     p
@@ -669,7 +694,6 @@ server <- function(input, output, session) {
       showNotification("Explore the Original Paper Figures. More information in this link: https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6", type = "warning")
     }
   })
-
 }
 
 shinyApp(ui, server)
