@@ -13,23 +13,19 @@ library(ggplot2)
 library(data.table)
 library(shinycssloaders)
 
-# Load data once at startup ----------------------------------
 df_global <- read.csv("./data/df.csv")
 figure_article <- read.csv("./data/data_article.csv")
 
-ui <- tagList(
-  page_navbar(
-    title = a(
-      "Country contribution to the expansion of the chemical space",
-      href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6", # nolint: line_length_linter.
-      target = "_blank"
-    ),
-    selected = "🗺️National Trends",
-    theme = bs_theme(
-      version = 5,
-      bootswatch = "cosmo"
-    ),
-    # Top info box
+ui <- page_navbar(
+  title = a(
+    "Country contribution to the expansion of the chemical space",
+    href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+    target = "_blank"
+  ),
+  selected = "🗺️National Trends",
+  theme = bs_theme(version = 5, bootswatch = "cosmo"),
+  header = tagList(
+    # Top info box moved to header
     div(
       style = "width: 100%; text-align: center; padding: 10px 0;",
       value_box(
@@ -39,55 +35,19 @@ ui <- tagList(
         fill = TRUE
       )
     ),
-    navbar_options = navbar_options(
-      collapsible = TRUE
-    ),
-    # Sidebar with responsive layout; the width will adjust on smaller screens
-    sidebar = sidebar(
-      title = "Country and Region Filters 🌍",
-      width = "14rem", # good on desktop; it collapses on mobile
-      sliderInput(
-        "years", "📅 Year Range",
-        min = 1996, max = 2022,
-        value = c(1996, 2022),
-        step = 1, sep = "", animate = FALSE,
-        width = "100%"
-      ),
-      hr(),
-      fluidRow(
-        column(
-          width = 6,
-          actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;")
-        ),
-        column(
-          width = 6,
-          actionButton("selectAll", "Select All", class = "btn-success", style = "width: 100%;")
-        )
-      ),
-      fluidRow(
-        column(
-          width = 12,
-          actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
-        )
-      ),
-      selectizeInput(
-        "countries", "Select Countries 🎌",
-        choices = NULL,
-        multiple = TRUE,
-        options = list(plugins = "remove_button"),
-        width = "100%"
-      ),
-      hr(),
-      tooltip(
-        fontawesome::fa("info-circle", a11y = "sem", title = "About tooltips"),
-        "Explore Individual Countries or Collaborations in the Chemical Space."
-      ),
+    # Data Mode relocated to header
+    div(
+      style = "display:inline-block;margin-right:20px;",
       radioButtons(
         "data_mode", "Data Mode",
         choices = c("Individual Countries", "Collaborations"),
         selected = "Individual Countries",
         inline = TRUE
-      ),
+      )
+    ),
+    # Region Filter relocated (shown conditionally)
+    div(
+      style = "display:inline-block;",
       conditionalPanel(
         condition = "input.data_mode == 'Individual Countries'",
         selectizeInput(
@@ -95,73 +55,104 @@ ui <- tagList(
           "Region Filter 🗾",
           choices = "All",
           multiple = FALSE,
-          options = list(plugins = "remove_button"),
-          width = "100%"
-        ) # nolint: line_length_linter.
-      ),
-      hr(),
-      # uiOutput("summaryText"),
-      # uiOutput("flagButtons")
-    ),
-    # Main navigation panels
-    nav_panel(
-      "🗺️National Trends",
-      card(
-        navset_card_tab(
-          nav_panel(
-            "Trends📈",
-            withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173") # nolint: line_length_linter.
-          ),
-          nav_panel("Map📌", uiOutput("mapPlot")),
-          nav_panel(
-            "Substance Types🧪",
-            fluidRow(
-              column(
-                width = 12,
-                selectInput(
-                  "chemicalSelector",
-                  "Select Chemical Type",
-                  choices = c("Organic", "Organometallic", "Rare-Earths"),
-                  selected = "Organic",
-                  width = "100%"
-                )
-              )
-            ),
-            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173") # nolint: line_length_linter.
-          )
+          options = list(plugins = "remove_button")
         )
       )
-    ),
-    nav_panel(
-      "Cartogram🗺️",
-      conditionalPanel(
-        condition = "input.data_mode == 'Individual Countries'",
-        tooltip(
-          fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-          "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected." # nolint: line_length_linter.
-        ),
-        actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"), # nolint: line_length_linter.
-        leafletOutput("geoPlot2", height = 600)
-      )
-    ),
-    nav_panel(
-      "Article Figures",
-      fluidRow(
-        column(
-          width = 12,
-          selectInput(
-            "article_source", "Select Article Source",
-            choices = unique(figure_article$source),
-            selected = unique(figure_article$source)[1],
-            width = "100%"
-          )
-        )
-      ),
-      withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173") # nolint: line_length_linter.
     )
   ),
-  # Footer images arranged responsively
-  div(
+  navbar_options = navbar_options(collapsible = TRUE),
+  sidebar = sidebar(
+    title = "Country and Region Filters 🌍",
+    width = "14rem", 
+    sliderInput(
+      "years", "📅 Year Range",
+      min = 1996, max = 2022,
+      value = c(1996, 2022),
+      step = 1, sep = "", animate = FALSE,
+      width = "100%"
+    ),
+    hr(),
+    fluidRow(
+      column(
+        width = 6,
+        actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;")
+      ),
+      column(
+        width = 6,
+        actionButton("selectAll", "Select All", class = "btn-success", style = "width: 100%;")
+      )
+    ),
+    fluidRow(
+      column(
+        width = 12,
+        actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
+      )
+    ),
+    selectizeInput(
+      "countries", "Select Countries 🎌",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(plugins = "remove_button"),
+      width = "100%"
+    ),
+    hr()
+  ),
+  nav_panel(
+    "🗺️National Trends",
+    card(
+      navset_card_tab(
+        nav_panel(
+          "Trends📈",
+          withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
+        ),
+        nav_panel("Map📌", uiOutput("mapPlot")),
+        nav_panel(
+          "Substance Types🧪",
+          fluidRow(
+            column(
+              width = 12,
+              selectInput(
+                "chemicalSelector",
+                "Select Chemical Type",
+                choices = c("Organic", "Organometallic", "Rare-Earths"),
+                selected = "Organic",
+                width = "100%"
+              )
+            )
+          ),
+          withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
+        )
+      )
+    )
+  ),
+  nav_panel(
+    "Cartogram🗺️",
+    conditionalPanel(
+      condition = "input.data_mode == 'Individual Countries'",
+      tooltip(
+        fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
+        "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
+      ),
+      actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"),
+      leafletOutput("geoPlot2", height = 600)
+    )
+  ),
+  nav_panel(
+    "Article Figures",
+    fluidRow(
+      column(
+        width = 12,
+        selectInput(
+          "article_source", "Select Article Source",
+          choices = unique(figure_article$source),
+          selected = unique(figure_article$source)[1],
+          width = "100%"
+        )
+      )
+    ),
+    withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
+  ),
+    div(
     class = "container-fluid",
     style = "display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 0;", # nolint: line_length_linter.
     tags$a(
@@ -190,6 +181,7 @@ ui <- tagList(
     )
   )
 )
+
 
 server <- function(input, output, session) {
   # -- 1) Base data reactive
