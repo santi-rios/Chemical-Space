@@ -74,7 +74,7 @@ ui <- tagList(
         "countries", "Select Countries 🎌",
         choices = NULL,
         multiple = TRUE,
-        options = list(plugins = "remove_button", maxItems = 25),
+        options = list(plugins = "remove_button"),
         width = "100%"
       ),
       hr(),
@@ -90,7 +90,14 @@ ui <- tagList(
       ),
       conditionalPanel(
         condition = "input.data_mode == 'Individual Countries'",
-        selectizeInput("region", "Region Filter 🗾", choices = "All", multiple = TRUE, width = "100%") # nolint: line_length_linter.
+        selectizeInput(
+          "region", 
+          "Region Filter 🗾", 
+          choices = "All",
+          multiple = TRUE,
+          options = list(plugins = "remove_button"),
+          width = "100%"
+          ) # nolint: line_length_linter.
       ),
       hr(),
       uiOutput("summaryText"),
