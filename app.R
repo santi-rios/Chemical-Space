@@ -603,10 +603,32 @@ observe({
     if (nrow(data_subset) == 0) {
       return("No data for this selection.")
     }
+
+    # Example logic for a top country and its top collaborator:
+    top_country <- data_subset %>%
+      group_by(iso3c) %>%
+      summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+      slice_max(total, n = 1) %>%
+      pull(iso3c)
+    
+    # If collaboration entries are present, find principal collaborator:
+    top_collab <- "None"
+    if (any(grepl("-", data_subset$iso3c))) {
+      library(tidyr)  # needed for separate_rows
+      top_collab <- data_subset %>%
+        separate_rows(iso3c, sep = "-") %>%
+        group_by(iso3c) %>%
+        summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+        slice_max(total, n = 1) %>%
+        pull(iso3c)
+    }
+
     HTML(glue(
       "Current data includes {nrow(data_subset)} observations.<br>",
-      "Selected Range Years: {input$years[1]} - {input$years[2]}.",
-      " For more information, click on the flags below."
+      "Selected Range Years: {input$years[1]} - {input$years[2]}.<br>",
+      "Top country is {top_country} and collaborates principally with {top_collab}; ",
+      "see collaboration data for more information.<br>",
+      "For more information, click on the flags below."
     ))
   })
 
@@ -644,7 +666,18 @@ observe({
   observeEvent(input$selectedCountry, {
     req(filtered_data())
     sel_iso <- input$selectedCountry
-
+    
+    if (input$data_mode == "Individual Countries") {
+      # Switch to 'Collaborations' automatically
+      updateRadioButtons(session, "data_mode", selected = "Collaborations")
+      
+      # Optionally set 'countries' to show collaborations for the clicked country:
+      # (Assuming df_global contains is_collab=TRUE for pairs; adjust as needed)
+      collab_rows <- df_global %>%
+        filter(is_collab == TRUE, grepl(sel_iso, iso3c))
+      updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
+    }
+    
     if (input$data_mode == "Collaborations") {
       flag_data <- filtered_data() %>% filter(grepl(sel_iso, iso3c))
     } else {
