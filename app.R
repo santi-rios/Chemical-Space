@@ -151,12 +151,30 @@ ui <- tagList(
   div(
     class = "container-fluid",
     style = "display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 0;", # nolint: line_length_linter.
-    tags$img(src = "tec.png", style = "max-width: 40px; height: auto;"),
-    tags$img(src = "logo.png", style = "max-width: 150px; height: auto;"),
-    tags$img(src = "uam.png", style = "max-width: 50px; height: auto;"),
-    tags$img(src = "leipzig.png", style = "max-width: 100px; height: auto;"),
-    tags$img(src = "santafe.png", style = "max-width: 60px; height: auto;"),
-    tags$img(src = "vienna.png", style = "max-width: 60px; height: auto;")
+    tags$a(
+      href = "https://tec.mx/es", target = "_blank",
+      tags$img(src = "tec.png", style = "max-width: 40px; height: auto;")
+    ),
+    tags$a(
+      href = "https://www.mpg.de/institutes", target = "_blank",
+      tags$img(src = "logo.png", style = "max-width: 150px; height: auto;")
+    ),
+    tags$a(
+      href = "https://www.uam.mx/", target = "_blank",
+      tags$img(src = "uam.png", style = "max-width: 50px; height: auto;")
+    ),
+    tags$a(
+      href = "https://www.uni-leipzig.de/en", target = "_blank",
+      tags$img(src = "leipzig.png", style = "max-width: 100px; height: auto;")
+    ),
+    tags$a(
+      href = "https://www.santafe.edu/", target = "_blank",
+      tags$img(src = "santafe.png", style = "max-width: 60px; height: auto;")
+    ),
+    tags$a(
+      href = "https://www.jvi.org/home.html", target = "_blank",
+      tags$img(src = "vienna.png", style = "max-width: 60px; height: auto;")
+    )
   )
 )
 
