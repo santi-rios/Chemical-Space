@@ -91,13 +91,13 @@ ui <- tagList(
       conditionalPanel(
         condition = "input.data_mode == 'Individual Countries'",
         selectizeInput(
-          "region", 
-          "Region Filter 🗾", 
+          "region",
+          "Region Filter 🗾",
           choices = "All",
           multiple = TRUE,
           options = list(plugins = "remove_button"),
           width = "100%"
-          ) # nolint: line_length_linter.
+        ) # nolint: line_length_linter.
       ),
       hr(),
       uiOutput("summaryText"),
@@ -210,20 +210,31 @@ server <- function(input, output, session) {
   # -- 2) region choices
   observe({
     req(input$data_mode == "Individual Countries")
+
     # Get non-collab data to determine available regions
-    non_collab_data <- df_global %>% filter(is_collab == FALSE) # nolint
+    non_collab_data <- df_global %>% filter(is_collab == FALSE)
     regions <- sort(unique(non_collab_data$region))
 
-    # Preserve existing selection if valid; otherwise default to "All"
-    current <- isolate(input$region)
-    # Updated condition to handle vectors properly
-    if (is.null(current) || all(!current %in% c("All", regions))) {
-      current <- "All"
+    # Start with the user’s current selection
+    new_selection <- input$region
+
+    # If nothing is selected, default to "All"
+    if (is.null(new_selection) || length(new_selection) == 0) {
+      new_selection <- "All"
     }
 
-    updateSelectizeInput(session, "region",
+    # Retain only valid regions and "All"
+    new_selection <- intersect(new_selection, c("All", regions))
+
+    # If the intersection is empty, revert to "All"
+    if (length(new_selection) == 0) {
+      new_selection <- "All"
+    }
+
+    updateSelectizeInput(
+      session, "region",
       choices = c("All", regions),
-      selected = current
+      selected = new_selection
     )
   })
 
@@ -330,7 +341,7 @@ server <- function(input, output, session) {
         size = 4, check_overlap = TRUE, show.legend = FALSE
       ) +
       theme_minimal() +
-      theme(legend.position = "bottom")
+      theme(legend.position = "none")
 
     if (input$data_mode == "Individual Countries") {
       all_ctry <- unique(data$country)
@@ -368,14 +379,7 @@ server <- function(input, output, session) {
         scale_y_continuous(labels = scales::percent_format(accuracy = 0.1, scale = 1, trim = TRUE))
     }
 
-    ggplotly(p, tooltip = "text") %>%
-      layout(legend = list(
-        x = 0,
-        y = -0.2,
-        xanchor = "left",
-        yanchor = "bottom",
-        orientation = "h"
-      ))
+    ggplotly(p, tooltip = "text")
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -581,7 +585,7 @@ server <- function(input, output, session) {
         size = 4, check_overlap = TRUE, show.legend = FALSE
       ) +
       theme_minimal() +
-      theme(legend.position = "bottom") +
+      theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
     all_ctry <- unique(data$country)
@@ -598,14 +602,7 @@ server <- function(input, output, session) {
       )
     p <- p + scale_color_manual(values = color_map)
 
-    ggplotly(p, tooltip = "text") %>%
-      layout(legend = list(
-        x = 0,
-        y = -0.2,
-        xanchor = "left",
-        yanchor = "bottom",
-        orientation = "h"
-      ))
+    ggplotly(p, tooltip = "text")
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
