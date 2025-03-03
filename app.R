@@ -89,15 +89,14 @@ ui <- tagList(
         inline = TRUE
       ),
       conditionalPanel(
-  condition = "input.data_mode == 'Individual Countries'",
-  selectizeInput(
-    "region",
-    "Region Filter 🗾",
-    choices = NULL,      # choices will be updated in the server
-    selected = NULL,     # default is empty (i.e. no selection → show all data)
-    multiple = TRUE,
-    options = list(plugins = "remove_button"),
-    width = "100%"
+        condition = "input.data_mode == 'Individual Countries'",
+        selectizeInput(
+          "region",
+          "Region Filter 🗾",
+          choices = "All",
+          multiple = FALSE,
+          options = list(plugins = "remove_button"),
+          width = "100%"
         ) # nolint: line_length_linter.
       ),
       hr(),
@@ -141,7 +140,7 @@ ui <- tagList(
           fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
           "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected." # nolint: line_length_linter.
         ),
-        # Remove the "map2_reload" button entirely:
+        actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"), # nolint: line_length_linter.
         leafletOutput("geoPlot2", height = 600)
       )
     ),
@@ -193,73 +192,51 @@ ui <- tagList(
 )
 
 server <- function(input, output, session) {
-  # -- 1) Base data reactive (remove region filter)
-df <- reactive({
-  d <- if (input$data_mode == "Individual Countries") {
-    df_global %>% filter(is_collab == FALSE)
-  } else {
-    df_global %>% filter(is_collab == TRUE)
-  }
-  # Remove region filter here: we will use region only to update the countries list
-  d
-})
+  # -- 1) Base data reactive
+  df <- reactive({
+    d <- if (input$data_mode == "Individual Countries") {
+      df_global %>% filter(is_collab == FALSE) # nolint
+    } else {
+      df_global %>% filter(is_collab == TRUE) # nolint
+    }
+    if (input$data_mode == "Individual Countries" &&
+      !is.null(input$region) &&
+      !("All" %in% input$region)) {
+      d <- d %>% filter(region %in% input$region) # nolint: object_usage_linter.
+    }
+    d
+  })
 
   # -- 2) region choices
-observe({
-  req(input$data_mode == "Individual Countries")
-  
-  # Get non-collab data to determine available regions
-  non_collab_data <- df_global %>% filter(is_collab == FALSE)
-  regions <- sort(unique(non_collab_data$region))
-  
-  # If no selection, keep it empty (NULL)
-  current_selection <- input$region
-  if (is.null(current_selection) || length(current_selection) == 0) {
-    current_selection <- character(0)
-  } else if ("All" %in% current_selection) {
-    # If "All" is in selection along with others, remove it.
-    current_selection <- setdiff(current_selection, "All")
-  }
-  
-  updateSelectizeInput(
-    session, "region",
-    choices = regions,
-    selected = current_selection
-  )
-})
+  observe({
+    req(input$data_mode == "Individual Countries")
 
-  # -- 2) Dynamic update of countries using Region filter
-observe({
-  req(df())
-  
-  # If the user has selected one or more Regions, limit countries to those whose region is in input$region.
-  valid_countries <- df() %>%
-    { 
-      if (input$data_mode == "Individual Countries" &&
-          !is.null(input$region) && length(input$region) > 0) {
-        filter(., region %in% input$region)
-      } else {
-        .
-      }
-    } %>%
-    pull(country) %>%
-    unique()
-    
-  # If no countries have yet been chosen, default to all valid countries from the region.
-  current_selections <- isolate(input$countries)
-  new_selection <- if(length(current_selections) == 0) {
-    valid_countries
-  } else {
-    intersect(current_selections, valid_countries)
-  }
-  
-  updateSelectizeInput(
-    session, "countries",
-    choices = valid_countries,
-    selected = new_selection,
-    server = TRUE
-  )
-})
+    # Get non-collab data to determine available regions
+    non_collab_data <- df_global %>% filter(is_collab == FALSE)
+    regions <- sort(unique(non_collab_data$region))
+
+    # Start with the user’s current selection
+    new_selection <- input$region
+
+    # If nothing is selected, default to "All"
+    if (is.null(new_selection) || length(new_selection) == 0) {
+      new_selection <- "All"
+    }
+
+    # Retain only valid regions and "All"
+    new_selection <- intersect(new_selection, c("All", regions))
+
+    # If the intersection is empty, revert to "All"
+    if (length(new_selection) == 0) {
+      new_selection <- "All"
+    }
+
+    updateSelectizeInput(
+      session, "region",
+      choices = c("All", regions),
+      selected = new_selection
+    )
+  })
 
   # -- 3) Dynamic update of countries
   observe({
@@ -312,22 +289,21 @@ observe({
   })
 
   # -- Filtering
-filtered_data_raw <- reactive({
-  req(df())
-  df() %>%
-    filter(
-      year >= input$years[1],
-      year <= input$years[2],
-      country %in% input$countries
-    )
-})
+  filtered_data_raw <- reactive({
+    req(df())
+    df() %>%
+      filter(
+        year >= input$years[1],
+        year <= input$years[2],
+        country %in% input$countries
+      )
+  })
 
-# Debounce the filtered data to delay updates for 500ms
-filtered_data_debounced <- filtered_data_raw %>% debounce(500)
+  filtered_data_debounced <- filtered_data_raw %>% debounce(300)
 
-filtered_data <- reactive({
-  filtered_data_debounced()
-}) %>% bindCache(input$years, input$countries, input$data_mode, input$region)
+  filtered_data <- reactive({
+    filtered_data_raw()
+  }) %>% bindCache(input$years, input$countries, input$data_mode, input$region)
 
   # "Deselect All" button
   observeEvent(input$deselectAll, {
@@ -438,7 +414,8 @@ filtered_data <- reactive({
       name   = "Average Contribution"
     ) %>%
       hc_colorAxis(
-        stops = color_stops(n = 2),
+        minColor = "#0c2a42",
+        maxColor = "#c5051b",
         labels   = list(format = "{value}%"),
         title    = list(text = "Contribution (%)", style = list(color = "white"))
       ) %>%
@@ -541,14 +518,13 @@ filtered_data <- reactive({
       setView(lng = 0, lat = 30, zoom = 2)
   })
 
-  observe({
+  observeEvent(input$map2_reload, {
     req(nrow(filtered_data()) > 0, input$data_mode == "Individual Countries")
     data <- filtered_data() %>%
       group_by(country, lat, lng) %>%
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
 
     pal <- colorNumeric("Reds", domain = data$value)
-
     leafletProxy("geoPlot2", data = data) %>%
       clearMarkers() %>%
       addCircleMarkers(
