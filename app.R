@@ -140,7 +140,7 @@ ui <- tagList(
           fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
           "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected." # nolint: line_length_linter.
         ),
-        actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"), # nolint: line_length_linter.
+        # Remove the "map2_reload" button entirely:
         leafletOutput("geoPlot2", height = 600)
       )
     ),
@@ -518,13 +518,14 @@ server <- function(input, output, session) {
       setView(lng = 0, lat = 30, zoom = 2)
   })
 
-  observeEvent(input$map2_reload, {
+  observe({
     req(nrow(filtered_data()) > 0, input$data_mode == "Individual Countries")
     data <- filtered_data() %>%
       group_by(country, lat, lng) %>%
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
 
     pal <- colorNumeric("Reds", domain = data$value)
+
     leafletProxy("geoPlot2", data = data) %>%
       clearMarkers() %>%
       addCircleMarkers(
@@ -535,10 +536,17 @@ server <- function(input, output, session) {
         group = "Markers",
         popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
       ) %>%
+      clearControls() %>% # Clear existing controls
       addLayersControl(
         baseGroups = c("NASA", "Continents"),
         overlayGroups = c("Markers"),
         position = "topright"
+      ) %>%
+      addLegend(
+        "bottomright", pal = pal,
+        values = ~value,
+        title = "Avg %",
+        opacity = 0.5
       )
   })
 
@@ -621,13 +629,24 @@ server <- function(input, output, session) {
   # Flag buttons
   output$flagButtons <- renderUI({
     req(filtered_data())
+    # Summarize total by iso2c
     if (input$data_mode == "Collaborations") {
-      all_iso <- unique(unlist(lapply(filtered_data()$iso2c, function(x) strsplit(x, "-")[[1]])))
+      # expand combos
+      iso_values <- filtered_data() %>%
+        mutate(isoSplit = strsplit(iso2c, "-")) %>%
+        tidyr::unnest(cols = "isoSplit") %>%
+        group_by(isoSplit) %>%
+        summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop")
+      iso_values <- iso_values %>% arrange(desc(totVal))
+      all_iso <- iso_values$isoSplit
     } else {
-      all_iso <- filtered_data() %>%
-        pull(iso2c) %>%
-        unique()
+      iso_values <- filtered_data() %>%
+        group_by(iso2c) %>%
+        summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+        arrange(desc(totVal))
+      all_iso <- iso_values$iso2c
     }
+
     if (length(all_iso) == 0) {
       return(NULL)
     }
