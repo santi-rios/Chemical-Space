@@ -21,10 +21,8 @@ df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet"
 
 
 ui <- page_navbar(
-  selected = "🗺️National Trends",
+  selected = "National Trends",
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
-  # Remove the old header with the radio buttons and flags
-  # and leave it empty or omit the header parameter.
   header = NULL,
   navbar_options = navbar_options(collapsible = TRUE),
   sidebar = sidebar(
@@ -68,7 +66,7 @@ ui <- page_navbar(
   # 1) NATIONAL TRENDS NAV PANEL
   # ------------------------------
   nav_panel(
-    "🗺️National Trends",
+    "National Trends",
 
     # Wrap everything in a fluidPage so you can arrange the new controls at the top:
     fluidPage(
@@ -80,10 +78,10 @@ ui <- page_navbar(
           div(
             style = "display:inline-block; margin-right:20px;",
             radioButtons(
-              "data_mode", "Data Mode",
+              "data_mode", "Data Mode 📊",
               choices = c("Individual Countries", "Collaborations"),
               selected = "Individual Countries",
-              inline = TRUE
+              inline = FALSE
             )
           ),
 
@@ -94,7 +92,7 @@ ui <- page_navbar(
               condition = "input.data_mode == 'Individual Countries'",
               selectizeInput(
                 "region",
-                "Region Filter 🗾",
+                "🗾Region Filter🍁",
                 choices = "All",
                 multiple = FALSE,
                 options = list(plugins = "remove_button")
@@ -110,7 +108,7 @@ ui <- page_navbar(
           value_box(
             title = uiOutput("summaryText"),
             value = uiOutput("flagButtons"),
-            max_height = "80px",
+            max_height = "100px",
             fill = TRUE
           )
         )
@@ -134,7 +132,7 @@ ui <- page_navbar(
                   "Select Chemical Type",
                   choices = c("Organic", "Organometallic", "Rare-Earths"),
                   selected = "Organic",
-                  width = "100%"
+                  width = "30%"
                 )
               )
             ),
@@ -152,11 +150,11 @@ ui <- page_navbar(
     "Cartogram🗺️",
     tooltip(
       fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-      "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
+      "Cartogram only available for Individual Countries (Select in Main panel). \nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
     ),
     conditionalPanel(
       condition = "input.data_mode == 'Individual Countries'",
-      actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"),
+      actionButton("map2_reload", "Reload Map. Must be clicked every time you reload data or filters.", class = "btn-danger", style = "width: 100%;"),
       leafletOutput("geoPlot2", height = 600)
     )
   ),
@@ -165,7 +163,7 @@ ui <- page_navbar(
   # 3) ARTICLE FIGURES
   # ------------------------------
   nav_panel(
-    "Article Figures",
+    "Article Figures 📰",
     fluidRow(
       column(
         width = 12,
@@ -173,7 +171,7 @@ ui <- page_navbar(
           "article_source", "Select Article Source",
           choices = unique(figure_article$source),
           selected = unique(figure_article$source)[1],
-          width = "100%"
+          width = "40%"
         )
       )
     ),
@@ -184,7 +182,7 @@ ui <- page_navbar(
   # 4) ELEMENT FIGURES
   # ------------------------------
   nav_panel(
-    "Element Figures",
+    "Element Figures 🧪",
     fluidPage(
       fluidRow(
         column(
@@ -209,56 +207,54 @@ ui <- page_navbar(
   # 5) KNOW MORE
   # ------------------------------
   nav_panel(
-    "Know more",
+    "Know more about the research 🥼",
     fluidPage(
       fluidRow(
         column(
           width = 12,
-          h3("Know more"),
-          p("More information about the researchers and institutes will be available soon. This is a placeholder for additional information.")
+          h3("China's rise in the chemical space and the decline of US influence"),
+          p("This dashboard is based on the study ‘China's rise in the chemical space and the decline of US influence’. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
+          p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
+          p("Useful links for more information:"),
+          tags$ul(
+            tags$li(
+              tags$a(
+                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+                target = "_blank",
+                "Access the full preprint"
+              )
+            ),
+            tags$li(
+              tags$a(
+                href = "https://www.maxplanck.de/en",
+                target = "_blank",
+                "Max Planck Institute for Mathematics in the Sciences"
+              )
+            ),
+            tags$li(
+              tags$a(
+                href = "https://tec.mx/en",
+                target = "_blank",
+                "Tecnológico de Monterrey"
+              )
+            )
+          )
         )
       ),
+      br(),
+      br(),
+      hr(),
       fluidRow(
         column(
-          width = 2,
+          width = 12,
           tags$a(
-            href = "https://tec.mx/es", target = "_blank",
-            tags$img(src = "tec.png", class = "img-fluid", style = "max-width: 40px;")
-          )
-        ),
-        column(
-          width = 2,
-          tags$a(
-            href = "https://www.mpg.de/institutes", target = "_blank",
-            tags$img(src = "logo.png", class = "img-fluid", style = "max-width: 150px;")
-          )
-        ),
-        column(
-          width = 2,
-          tags$a(
-            href = "https://www.uam.mx/", target = "_blank",
-            tags$img(src = "uam.png", class = "img-fluid", style = "max-width: 50px;")
-          )
-        ),
-        column(
-          width = 2,
-          tags$a(
-            href = "https://www.uni-leipzig.de/en", target = "_blank",
-            tags$img(src = "leipzig.png", class = "img-fluid", style = "max-width: 100px;")
-          )
-        ),
-        column(
-          width = 2,
-          tags$a(
-            href = "https://www.santafe.edu/", target = "_blank",
-            tags$img(src = "santafe.png", class = "img-fluid", style = "max-width: 60px;")
-          )
-        ),
-        column(
-          width = 2,
-          tags$a(
-            href = "https://www.jvi.org/home.html", target = "_blank",
-            tags$img(src = "vienna.png", class = "img-fluid", style = "max-width: 60px;")
+            href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+            target = "_blank",
+            tags$img(
+              src = "logos_footer.png",
+              class = "img-fluid",
+              style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
+            )
           )
         )
       )
