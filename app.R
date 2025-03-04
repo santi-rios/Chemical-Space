@@ -16,7 +16,10 @@ library(shinycssloaders)
 # Convert Parquet to data.table-backed objects on the fly.
 df_global <- as_tidytable(arrow::read_parquet("./data/df.parquet"))
 figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet"))
-df_figures <- as_tidytable(arrow::read_parquet("./data/supplementsv2.parquet"))
+df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet")) |>
+  na.omit()
+
+
 
 ui <- page_navbar(
   title = a(
@@ -156,18 +159,16 @@ ui <- page_navbar(
   ),
   nav_panel(
     "Element Figures",
-    fluidRow(
-      column(
-        width = 8,
-        # Faceted plot: x=Year, y=Value; facet by source
-        withSpinner(plotlyOutput("elementPlot", height = 600, width = "100%"), color = "#024173")
-      ),
-      column(
-        width = 4,
-        # Dynamic periodic guide
-        withSpinner(uiOutput("periodicGuide"), color = "#024173")
+      tabsetPanel(
+        tabPanel("elementInfo",
+                 uiOutput("elementInfo")),
+        tabPanel("Composition Timeline",
+                 plotOutput("compositionPlot", height = "600px")),
+        tabPanel("Periodic Table",
+                 plotOutput("periodicTablePlot", 
+                           click = "plot_click",
+                           height = "600px"))
       )
-    )
   ),
     div(
     class = "container-fluid",
@@ -767,54 +768,149 @@ all_iso <- iso_values$isoSplit
     }
   })
 
-  # Reactive dataset for the new figures:
-  fig_data <- reactive({
-    # Filter rows lazily on the Arrow dataset then collect
-    df_figures %>% filter(grepl("FigureS", source)) 
-    # %>% collect()
-  })
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Element Figures
+ selected_element <- reactiveVal(NULL)
   
-  # Create the faceted plot for Element Figures:
-  output$elementPlot <- renderPlotly({
-    req(nrow(fig_data()) > 0)
-    p <- ggplot(fig_data(), aes(x = Year, y = Value)) +
-      geom_line(color = "#0a3161") +
-      geom_point(color = "#c5051b", size = 2) +
-      facet_wrap(~ source, scales = "free_y") +
-      labs(
-        x = "Year",
-        y = "Value",
-        title = "Element Figures by Source"
-      ) +
-      theme_minimal()
-    
-    ggplotly(p)
-  })
-  
-  # Create the dynamic periodic table guide.
-  output$periodicGuide <- renderUI({
-    req(nrow(fig_data()) > 0)
-    # Extract element symbols from the "Country" column using regex.
-    # This extracts one or two-letter patterns starting with an uppercase letter.
-    all_elements <- unique(unlist(regmatches(fig_data()$Country, gregexpr("[A-Z][a-z]?", fig_data()$Country))))
-    # sort alphabetically
-    all_elements <- sort(all_elements)
-    
-    # Create buttons for each element.
-    element_buttons <- lapply(all_elements, function(el) {
-      tags$button(
-        class = "btn btn-outline-secondary btn-sm",
-        style = "margin: 2px;",
-        el
+  # Create periodic table data
+  periodic_data <- reactive({
+    df_figures %>%
+      group_by(symbol) %>%
+      summarise(
+        display_row = first(display_row),
+        display_column = first(display_column),
+        atomic_number = first(atomic_number),
+        element = first(element),
+        group = first(group),
+        period = first(period),
+        .groups = 'drop'
+      ) %>%
+      mutate(
+        present = symbol %in% unique(df_figures$symbol)
       )
-    })
-    
-    # Wrap buttons in a div with a header.
-    tagList(
-      h4("Elements in Plot"),
-      div(style = "display: flex; flex-wrap: wrap;", element_buttons)
-    )
   })
+  
+  # Handle periodic table clicks
+  observeEvent(input$plot_click, {
+    click <- input$plot_click
+    if (!is.null(click)) {
+      clicked_element <- periodic_data() %>%
+        filter(display_column == round(click$x),
+               display_row == round(click$y)) %>%
+        slice(1)
+      
+      if (nrow(clicked_element) > 0) {
+        selected_element(clicked_element$symbol)
+      }
+    }
+  })
+  
+  # Element information display
+  output$elementInfo <- renderUI({
+    if (!is.null(selected_element())) {
+      element_data <- df_figures %>%
+        filter(symbol == selected_element()) %>%
+        slice(1)  # Get first occurrence for static properties
+      
+      tagList(
+        h3(class = "bold-text", element_data$element),
+        span(class = "chem-badge", 
+             style = paste0("background:", 
+                           ifelse(element_data$chemical == "Organometallic", 
+                                 "#4d908e", "#f94144"), 
+                           "; color: white;"),
+             element_data$chemical),
+        hr(),
+        h4("Basic Properties"),
+        p(span(class = "bold-text", "Symbol: "), element_data$symbol),
+        p(span(class = "bold-text", "Atomic Number: "), element_data$atomic_number),
+        p(span(class = "bold-text", "Weight: "), round(element_data$atomic_weight, 4)),
+        
+        h4("Physical Properties"),
+        p(span(class = "bold-text", "Density: "), 
+          ifelse(is.na(element_data$density), "N/A", 
+                 format(element_data$density, scientific = FALSE))),
+        p(span(class = "bold-text", "Melting Point: "), 
+          paste(round(element_data$melting_point_k, 1), "K")),
+        
+        h4("Chemical Properties"),
+        p(span(class = "bold-text", "Electronegativity: "), 
+          round(element_data$electronegativity, 2)),
+        p(span(class = "bold-text", "Ionization Potential: "), 
+          round(element_data$first_ionization_potential, 2))
+      )
+    } else {
+      h4("Click an element in the periodic table to view details")
+    }
+  })
+  
+  # Composition timeline plot
+  output$compositionPlot <- renderPlot({
+    # Prepare data for plotting
+    plot_data <- df_figures %>%
+      group_by(year, chemical) %>%
+      summarise(total_percentage = mean(percentage, na.rm = TRUE),
+    symbol = first(symbol),
+                .groups = 'drop')
+    
+    # Base plot with lines
+    base_plot <- ggplot(plot_data, aes(x = year, y = total_percentage)) +
+      geom_line(aes(color = chemical), linewidth = 1.2) +
+      geom_point(aes(color = symbol), size = 3) +
+      scale_color_manual(values = c("Organometallic" = "#4d908e", 
+                                  "Rare-Earths" = "#f94144")) +
+      labs(title = "Elemental Composition Over Time",
+           x = "Year", y = "Percentage Composition") +
+      theme_minimal() +
+      theme(legend.position = "bottom",
+            panel.grid.minor = element_blank(),
+            axis.text = element_text(size = 12),
+            axis.title = element_text(size = 14))
+    
+    # Add element-specific points if an element is selected
+    if (!is.null(selected_element())) {
+      element_data <- df_figures %>%
+        filter(symbol == selected_element())
+      
+      base_plot <- base_plot +
+        facet_wrap(~ chemical) +
+        geom_point(data = element_data,
+                   aes(y = percentage),
+                   color = "#f8961e", size = 4, shape = 18) +
+        geom_text(data = element_data,
+                  aes(y = percentage, 
+                      label = paste0(symbol, ": ", round(percentage, 1)),
+                  vjust = -1, hjust = 0.5, color = "#f8961e", size = 4)
+        )
+    }
+    
+    base_plot
+  })
+  
+  # Periodic table plot
+  output$periodicTablePlot <- renderPlot({
+    plot_data <- periodic_data()
+    highlight_element <- selected_element()
+    
+    ggplot(plot_data, aes(x = display_column, y = display_row)) +
+      geom_tile(aes(fill = present), 
+                color = "white", 
+                width = 0.95, height = 0.95) +
+      {
+        if (!is.null(highlight_element))
+          geom_tile(data = filter(plot_data, symbol == highlight_element),
+                    fill = "#f8961e", color = "white", 
+                    width = 0.95, height = 0.95)
+      } +
+      geom_text(aes(label = symbol), size = 6, fontface = "bold") +
+      scale_fill_manual(values = c("TRUE" = "#43aa8b", "FALSE" = "#f8f9fa")) +
+      scale_y_reverse() +  # For proper periodic table orientation
+      theme_void() +
+      theme(plot.background = element_rect(fill = "white", color = NA),
+            legend.position = "none") +
+      labs(title = "Click elements to explore composition trends")
+  })
+
 }
 
 shinyApp(ui, server)
