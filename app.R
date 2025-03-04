@@ -3,7 +3,7 @@ library(shiny)
 library(bslib)
 library(plotly)
 library(arrow)
-library(dplyr)
+library(tidytable)
 library(countrycode)
 library(leaflet)
 library(highcharter)
@@ -13,17 +13,10 @@ library(ggplot2)
 library(data.table)
 library(shinycssloaders)
 
-# Open the converted Parquet files lazily.
-df_global <- open_dataset("./data/df.parquet")
-figure_article <- open_dataset("./data/data_article.parquet")
-df_figures <- open_dataset("./data/supplementsv2.parquet")
-
-# read.csv("./data/df.csv") %>%
-#   write_parquet("./data/df.parquet")
-# read.csv("./data/data_article.csv") %>%
-#   write_parquet("./data/data_article.parquet")
-# read.csv("./data/supplementsv2.csv") %>%
-#   write_parquet("./data/supplementsv2.parquet") 
+# Convert Parquet to data.table-backed objects on the fly.
+df_global <- as_tidytable(arrow::read_parquet("./data/df.parquet"))
+figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet"))
+df_figures <- as_tidytable(arrow::read_parquet("./data/supplementsv2.parquet"))
 
 ui <- page_navbar(
   title = a(
@@ -223,7 +216,8 @@ server <- function(input, output, session) {
       d <- d %>% filter(region %in% input$region)
     }
     
-    d %>% collect()  # Executes the query and brings the data into memory.
+    d 
+    # %>% collect()  # Executes the query and brings the data into memory.
   })
 
   # -- 2) region choices
@@ -776,7 +770,8 @@ server <- function(input, output, session) {
   # Reactive dataset for the new figures:
   fig_data <- reactive({
     # Filter rows lazily on the Arrow dataset then collect
-    df_figures %>% filter(grepl("FigureS", source)) %>% collect()
+    df_figures %>% filter(grepl("FigureS", source)) 
+    # %>% collect()
   })
   
   # Create the faceted plot for Element Figures:
