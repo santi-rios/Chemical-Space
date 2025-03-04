@@ -15,6 +15,7 @@ library(shinycssloaders)
 
 df_global <- read.csv("./data/df.csv")
 figure_article <- read.csv("./data/data_article.csv")
+df_figures <- read.csv("./data/supplementsv2.csv", stringsAsFactors = FALSE)
 
 ui <- page_navbar(
   title = a(
@@ -151,6 +152,21 @@ ui <- page_navbar(
       )
     ),
     withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
+  ),
+  nav_panel(
+    "Element Figures",
+    fluidRow(
+      column(
+        width = 8,
+        # Faceted plot: x=Year, y=Value; facet by source
+        withSpinner(plotlyOutput("elementPlot", height = 600, width = "100%"), color = "#024173")
+      ),
+      column(
+        width = 4,
+        # Dynamic periodic guide
+        withSpinner(uiOutput("periodicGuide"), color = "#024173")
+      )
+    )
   ),
     div(
     class = "container-fluid",
@@ -744,6 +760,54 @@ server <- function(input, output, session) {
     if (input$article_source %in% c("China-US collaboration")) {
       showNotification("Explore the Original Paper Figures. More information in this link: https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6", type = "warning")
     }
+  })
+
+  # Reactive dataset for the new figures:
+  fig_data <- reactive({
+    # filter rows where source contains "FigureS"
+    df_figures[grepl("FigureS", df_figures$source), ]
+  })
+  
+  # Create the faceted plot for Element Figures:
+  output$elementPlot <- renderPlotly({
+    req(nrow(fig_data()) > 0)
+    p <- ggplot(fig_data(), aes(x = Year, y = Value)) +
+      geom_line(color = "#0a3161") +
+      geom_point(color = "#c5051b", size = 2) +
+      facet_wrap(~ source, scales = "free_y") +
+      labs(
+        x = "Year",
+        y = "Value",
+        title = "Element Figures by Source"
+      ) +
+      theme_minimal()
+    
+    ggplotly(p)
+  })
+  
+  # Create the dynamic periodic table guide.
+  output$periodicGuide <- renderUI({
+    req(nrow(fig_data()) > 0)
+    # Extract element symbols from the "Country" column using regex.
+    # This extracts one or two-letter patterns starting with an uppercase letter.
+    all_elements <- unique(unlist(regmatches(fig_data()$Country, gregexpr("[A-Z][a-z]?", fig_data()$Country))))
+    # sort alphabetically
+    all_elements <- sort(all_elements)
+    
+    # Create buttons for each element.
+    element_buttons <- lapply(all_elements, function(el) {
+      tags$button(
+        class = "btn btn-outline-secondary btn-sm",
+        style = "margin: 2px;",
+        el
+      )
+    })
+    
+    # Wrap buttons in a div with a header.
+    tagList(
+      h4("Elements in Plot"),
+      div(style = "display: flex; flex-wrap: wrap;", element_buttons)
+    )
   })
 }
 
