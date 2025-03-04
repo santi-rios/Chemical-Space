@@ -202,23 +202,21 @@ ui <- page_navbar(
 
 server <- function(input, output, session) {
   # -- 1) Base data reactive using Arrow dataset --
-  df <- reactive({
-    # Perform filtering on the Arrow dataset and then collect the result as an R data.frame.
-    d <- if (input$data_mode == "Individual Countries") {
-      df_global %>% filter(is_collab == FALSE)
-    } else {
-      df_global %>% filter(is_collab == TRUE)
-    }
-    
-    if (input$data_mode == "Individual Countries" &&
-        !is.null(input$region) &&
-        !("All" %in% input$region)) {
-      d <- d %>% filter(region %in% input$region)
-    }
-    
-    d 
-    # %>% collect()  # Executes the query and brings the data into memory.
-  })
+df <- reactive({
+  d <- if (input$data_mode == "Individual Countries") {
+    df_global %>% filter(is_collab == FALSE)
+  } else {
+    df_global %>% filter(is_collab == TRUE)
+  }
+  
+  if (input$data_mode == "Individual Countries" &&
+      !is.null(input$region) &&
+      !("All" %in% input$region)) {
+    d <- d %>% filter(region %in% input$region)
+  }
+  
+  d # Ensure data is in R data frame
+})
 
   # -- 2) region choices
   observe({
@@ -465,30 +463,32 @@ server <- function(input, output, session) {
       Value, Year
     )]
 
-    map_data_by_pair <- map_data_by_pair[, .(
-      value      = mean(Value, na.rm = TRUE),
-      best_year  = Year[which.max(Value)],
-      worst_year = Year[which.min(Value)]
-    ), by = iso3c_combo]
+# Process data
+  map_data_by_pair <- collab_data()[, .(
+    value      = mean(Value, na.rm = TRUE),
+    best_year  = fcoalesce(na.omit(Year[which.max(Value)]), as.numeric(NA)),
+    worst_year = fcoalesce(na.omit(Year[which.min(Value)]), as.numeric(NA))
+  ), by = iso3c_combo]
 
     # Expand each iso3c_combo into individual iso codes
-    map_expanded <- map_data_by_pair[, .(
-      splitted_iso     = unlist(strsplit(iso3c_combo, "-")),
-      combo            = rep(iso3c_combo, sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_value      = rep(value, sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_best_year  = rep(best_year, sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_worst_year = rep(worst_year, sapply(strsplit(iso3c_combo, "-"), length))
-    )]
+# Split into individual ISO codes
+  map_expanded <- map_data_by_pair %>%
+    separate_rows(iso3c_combo, sep = "-", convert = TRUE) %>%
+    rename(splitted_iso = iso3c_combo)
 
-    map_data <- map_expanded[, .(
-      value = mean(combo_value, na.rm = TRUE),
-      best_year = combo_best_year[which.max(combo_value)],
-      worst_year = combo_worst_year[which.min(combo_value)],
-      collab_list = paste0(
-        unique(paste0(combo, " (best year: ", combo_best_year, ")")),
-        collapse = "; "
-      )
-    ), by = splitted_iso]
+# Early return if no expanded data
+  if (nrow(map_expanded) == 0) {
+    return(highchart() %>% hc_title(text = "No collaborations to display"))
+  }
+
+# Summarize by splitted_iso
+  map_data <- map_expanded[, .(
+    value       = mean(value, na.rm = TRUE),
+    best_year   = fcoalesce(na.omit(best_year[which.max(value)]), as.numeric(NA)),
+    worst_year  = fcoalesce(na.omit(worst_year[which.min(value)]), as.numeric(NA)),
+    collab_list = paste(unique(iso3c_combo), collapse = "; ")
+  ), by = splitted_iso] %>%
+    rename(iso3c = splitted_iso)
 
     setnames(map_data, "splitted_iso", "iso3c")
     max_val <- max(map_data$value, na.rm = TRUE)
@@ -644,13 +644,13 @@ server <- function(input, output, session) {
     # Summarize total by iso2c
     if (input$data_mode == "Collaborations") {
       # expand combos
-      iso_values <- filtered_data() %>%
-        mutate(isoSplit = strsplit(iso2c, "-")) %>%
-        tidyr::unnest(cols = "isoSplit") %>%
-        group_by(isoSplit) %>%
-        summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop")
-      iso_values <- iso_values %>% arrange(desc(totVal))
-      all_iso <- iso_values$isoSplit
+iso_values <- filtered_data() %>%
+  mutate(isoSplit = strsplit(iso2c, "-")) %>%
+  unnest(isoSplit) %>%  # Use tidytable's unnest syntax
+  group_by(isoSplit) %>%
+  summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(totVal))
+all_iso <- iso_values$isoSplit
     } else {
       iso_values <- filtered_data() %>%
         group_by(iso2c) %>%
