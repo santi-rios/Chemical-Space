@@ -159,16 +159,24 @@ ui <- page_navbar(
   ),
   nav_panel(
     "Element Figures",
-      tabsetPanel(
-        tabPanel("elementInfo",
-                 uiOutput("elementInfo")),
-        tabPanel("Composition Timeline",
-                 plotOutput("compositionPlot", height = "600px")),
-        tabPanel("Periodic Table",
-                 plotOutput("periodicTablePlot", 
-                           click = "plot_click",
-                           height = "600px"))
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+          plotOutput("compositionPlot", height = "600px")
+        )
+      ),
+      fluidRow(
+        column(
+          width = 8,
+          plotOutput("periodicTablePlot", click = "plot_click", height = "600px")
+        ),
+        column(
+          width = 4,
+          uiOutput("elementInfo")
+        )
       )
+    )
   ),
     div(
     class = "container-fluid",
