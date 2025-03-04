@@ -20,55 +20,16 @@ df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet"
   na.omit()
 
 
-
 ui <- page_navbar(
-  title = a(
-    "Country contribution to the expansion of the chemical space",
-    href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-    target = "_blank"
-  ),
   selected = "🗺️National Trends",
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
-  header = tagList(
-    # Top info box moved to header
-    div(
-      style = "width: 100%; text-align: center; padding: 10px 0;",
-      value_box(
-        title = uiOutput("summaryText"),
-        value = uiOutput("flagButtons"),
-        max_height = "80px",
-        fill = TRUE
-      )
-    ),
-    # Data Mode relocated to header
-    div(
-      style = "display:inline-block;margin-right:20px;",
-      radioButtons(
-        "data_mode", "Data Mode",
-        choices = c("Individual Countries", "Collaborations"),
-        selected = "Individual Countries",
-        inline = TRUE
-      )
-    ),
-    # Region Filter relocated (shown conditionally)
-    div(
-      style = "display:inline-block;",
-      conditionalPanel(
-        condition = "input.data_mode == 'Individual Countries'",
-        selectizeInput(
-          "region",
-          "Region Filter 🗾",
-          choices = "All",
-          multiple = FALSE,
-          options = list(plugins = "remove_button")
-        )
-      )
-    )
-  ),
+  # Remove the old header with the radio buttons and flags
+  # and leave it empty or omit the header parameter.
+  header = NULL,
   navbar_options = navbar_options(collapsible = TRUE),
   sidebar = sidebar(
     title = "Country and Region Filters 🌍",
-    width = "14rem", 
+    width = "14rem",
     sliderInput(
       "years", "📅 Year Range",
       min = 1996, max = 2022,
@@ -102,46 +63,107 @@ ui <- page_navbar(
     ),
     hr()
   ),
+
+  # ------------------------------
+  # 1) NATIONAL TRENDS NAV PANEL
+  # ------------------------------
   nav_panel(
     "🗺️National Trends",
-    card(
-      navset_card_tab(
-        nav_panel(
-          "Trends📈",
-          withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
-        ),
-        nav_panel("Map📌", uiOutput("mapPlot")),
-        nav_panel(
-          "Substance Types🧪",
-          fluidRow(
-            column(
-              width = 12,
-              selectInput(
-                "chemicalSelector",
-                "Select Chemical Type",
-                choices = c("Organic", "Organometallic", "Rare-Earths"),
-                selected = "Organic",
-                width = "100%"
-              )
+
+    # Wrap everything in a fluidPage so you can arrange the new controls at the top:
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+
+          # Data Mode
+          div(
+            style = "display:inline-block; margin-right:20px;",
+            radioButtons(
+              "data_mode", "Data Mode",
+              choices = c("Individual Countries", "Collaborations"),
+              selected = "Individual Countries",
+              inline = TRUE
             )
           ),
-          withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
+
+          # Region Filter
+          div(
+            style = "display:inline-block;",
+            conditionalPanel(
+              condition = "input.data_mode == 'Individual Countries'",
+              selectizeInput(
+                "region",
+                "Region Filter 🗾",
+                choices = "All",
+                multiple = FALSE,
+                options = list(plugins = "remove_button")
+              )
+            )
+          )
+        )
+      ),
+      fluidRow(
+        column(
+          width = 12,
+          # Summary box with the flags
+          value_box(
+            title = uiOutput("summaryText"),
+            value = uiOutput("flagButtons"),
+            max_height = "80px",
+            fill = TRUE
+          )
+        )
+      ),
+
+      # Existing card with sub-tabs
+      card(
+        navset_card_tab(
+          nav_panel(
+            "Trends📈",
+            withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
+          ),
+          nav_panel("Map📌", uiOutput("mapPlot")),
+          nav_panel(
+            "Substance Types🧪",
+            fluidRow(
+              column(
+                width = 12,
+                selectInput(
+                  "chemicalSelector",
+                  "Select Chemical Type",
+                  choices = c("Organic", "Organometallic", "Rare-Earths"),
+                  selected = "Organic",
+                  width = "100%"
+                )
+              )
+            ),
+            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
+          )
         )
       )
     )
   ),
+
+  # ------------------------------
+  # 2) CARTOGRAM NAV PANEL
+  # ------------------------------
   nav_panel(
     "Cartogram🗺️",
+    tooltip(
+      fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
+      "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
+    ),
     conditionalPanel(
       condition = "input.data_mode == 'Individual Countries'",
-      tooltip(
-        fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-        "Cartogram only available for Individual Countries.\nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
-      ),
       actionButton("map2_reload", "Reload Map", class = "btn-danger", style = "width: 100%;"),
       leafletOutput("geoPlot2", height = 600)
     )
   ),
+
+  # ------------------------------
+  # 3) ARTICLE FIGURES
+  # ------------------------------
   nav_panel(
     "Article Figures",
     fluidRow(
@@ -157,6 +179,10 @@ ui <- page_navbar(
     ),
     withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
   ),
+
+  # ------------------------------
+  # 4) ELEMENT FIGURES
+  # ------------------------------
   nav_panel(
     "Element Figures",
     fluidPage(
@@ -178,54 +204,85 @@ ui <- page_navbar(
       )
     )
   ),
-    div(
-    class = "container-fluid",
-    style = "display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 0;", # nolint: line_length_linter.
-    tags$a(
-      href = "https://tec.mx/es", target = "_blank",
-      tags$img(src = "tec.png", style = "max-width: 40px; height: auto;")
-    ),
-    tags$a(
-      href = "https://www.mpg.de/institutes", target = "_blank",
-      tags$img(src = "logo.png", style = "max-width: 150px; height: auto;")
-    ),
-    tags$a(
-      href = "https://www.uam.mx/", target = "_blank",
-      tags$img(src = "uam.png", style = "max-width: 50px; height: auto;")
-    ),
-    tags$a(
-      href = "https://www.uni-leipzig.de/en", target = "_blank",
-      tags$img(src = "leipzig.png", style = "max-width: 100px; height: auto;")
-    ),
-    tags$a(
-      href = "https://www.santafe.edu/", target = "_blank",
-      tags$img(src = "santafe.png", style = "max-width: 60px; height: auto;")
-    ),
-    tags$a(
-      href = "https://www.jvi.org/home.html", target = "_blank",
-      tags$img(src = "vienna.png", style = "max-width: 60px; height: auto;")
+
+  # ------------------------------
+  # 5) KNOW MORE
+  # ------------------------------
+  nav_panel(
+    "Know more",
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+          h3("Know more"),
+          p("More information about the researchers and institutes will be available soon. This is a placeholder for additional information.")
+        )
+      ),
+      fluidRow(
+        column(
+          width = 2,
+          tags$a(
+            href = "https://tec.mx/es", target = "_blank",
+            tags$img(src = "tec.png", class = "img-fluid", style = "max-width: 40px;")
+          )
+        ),
+        column(
+          width = 2,
+          tags$a(
+            href = "https://www.mpg.de/institutes", target = "_blank",
+            tags$img(src = "logo.png", class = "img-fluid", style = "max-width: 150px;")
+          )
+        ),
+        column(
+          width = 2,
+          tags$a(
+            href = "https://www.uam.mx/", target = "_blank",
+            tags$img(src = "uam.png", class = "img-fluid", style = "max-width: 50px;")
+          )
+        ),
+        column(
+          width = 2,
+          tags$a(
+            href = "https://www.uni-leipzig.de/en", target = "_blank",
+            tags$img(src = "leipzig.png", class = "img-fluid", style = "max-width: 100px;")
+          )
+        ),
+        column(
+          width = 2,
+          tags$a(
+            href = "https://www.santafe.edu/", target = "_blank",
+            tags$img(src = "santafe.png", class = "img-fluid", style = "max-width: 60px;")
+          )
+        ),
+        column(
+          width = 2,
+          tags$a(
+            href = "https://www.jvi.org/home.html", target = "_blank",
+            tags$img(src = "vienna.png", class = "img-fluid", style = "max-width: 60px;")
+          )
+        )
+      )
     )
   )
 )
 
-
 server <- function(input, output, session) {
   # -- 1) Base data reactive using Arrow dataset --
-df <- reactive({
-  d <- if (input$data_mode == "Individual Countries") {
-    df_global %>% filter(is_collab == FALSE)
-  } else {
-    df_global %>% filter(is_collab == TRUE)
-  }
-  
-  if (input$data_mode == "Individual Countries" &&
+  df <- reactive({
+    d <- if (input$data_mode == "Individual Countries") {
+      df_global %>% filter(is_collab == FALSE)
+    } else {
+      df_global %>% filter(is_collab == TRUE)
+    }
+
+    if (input$data_mode == "Individual Countries" &&
       !is.null(input$region) &&
       !("All" %in% input$region)) {
-    d <- d %>% filter(region %in% input$region)
-  }
-  
-  d # Ensure data is in R data frame
-})
+      d <- d %>% filter(region %in% input$region)
+    }
+
+    d # Ensure data is in R data frame
+  })
 
   # -- 2) region choices
   observe({
@@ -455,7 +512,6 @@ df <- reactive({
         style = list(color = "black")
       )
   })
-
   # Highchart map - Collaborations
   collab_data <- reactive({
     req(filtered_data(), input$data_mode == "Collaborations")
@@ -472,32 +528,30 @@ df <- reactive({
       Value, Year
     )]
 
-# Process data
-  map_data_by_pair <- collab_data()[, .(
-    value      = mean(Value, na.rm = TRUE),
-    best_year  = fcoalesce(na.omit(Year[which.max(Value)]), as.numeric(NA)),
-    worst_year = fcoalesce(na.omit(Year[which.min(Value)]), as.numeric(NA))
-  ), by = iso3c_combo]
+    map_data_by_pair <- map_data_by_pair[, .(
+      value      = mean(Value, na.rm = TRUE),
+      best_year  = Year[which.max(Value)],
+      worst_year = Year[which.min(Value)]
+    ), by = iso3c_combo]
 
     # Expand each iso3c_combo into individual iso codes
-# Split into individual ISO codes
-  map_expanded <- map_data_by_pair %>%
-    separate_rows(iso3c_combo, sep = "-", convert = TRUE) %>%
-    rename(splitted_iso = iso3c_combo)
+    map_expanded <- map_data_by_pair[, .(
+      splitted_iso     = unlist(strsplit(iso3c_combo, "-")),
+      combo            = rep(iso3c_combo, sapply(strsplit(iso3c_combo, "-"), length)),
+      combo_value      = rep(value, sapply(strsplit(iso3c_combo, "-"), length)),
+      combo_best_year  = rep(best_year, sapply(strsplit(iso3c_combo, "-"), length)),
+      combo_worst_year = rep(worst_year, sapply(strsplit(iso3c_combo, "-"), length))
+    )]
 
-# Early return if no expanded data
-  if (nrow(map_expanded) == 0) {
-    return(highchart() %>% hc_title(text = "No collaborations to display"))
-  }
-
-# Summarize by splitted_iso
-  map_data <- map_expanded[, .(
-    value       = mean(value, na.rm = TRUE),
-    best_year   = fcoalesce(na.omit(best_year[which.max(value)]), as.numeric(NA)),
-    worst_year  = fcoalesce(na.omit(worst_year[which.min(value)]), as.numeric(NA)),
-    collab_list = paste(unique(iso3c_combo), collapse = "; ")
-  ), by = splitted_iso] %>%
-    rename(iso3c = splitted_iso)
+    map_data <- map_expanded[, .(
+      value = mean(combo_value, na.rm = TRUE),
+      best_year = combo_best_year[which.max(combo_value)],
+      worst_year = combo_worst_year[which.min(combo_value)],
+      collab_list = paste0(
+        unique(paste0(combo, " (best year: ", combo_best_year, ")")),
+        collapse = "; "
+      )
+    ), by = splitted_iso]
 
     setnames(map_data, "splitted_iso", "iso3c")
     max_val <- max(map_data$value, na.rm = TRUE)
@@ -564,7 +618,8 @@ df <- reactive({
         position = "topright"
       ) %>%
       addLegend(
-        "bottomright", pal = pal,
+        "bottomright",
+        pal = pal,
         values = ~value,
         title = "Avg %",
         opacity = 0.5
@@ -653,13 +708,13 @@ df <- reactive({
     # Summarize total by iso2c
     if (input$data_mode == "Collaborations") {
       # expand combos
-iso_values <- filtered_data() %>%
-  mutate(isoSplit = strsplit(iso2c, "-")) %>%
-  unnest(isoSplit) %>%  # Use tidytable's unnest syntax
-  group_by(isoSplit) %>%
-  summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-  arrange(desc(totVal))
-all_iso <- iso_values$isoSplit
+      iso_values <- filtered_data() %>%
+        mutate(isoSplit = strsplit(iso2c, "-")) %>%
+        unnest(isoSplit) %>% # Use tidytable's unnest syntax
+        group_by(isoSplit) %>%
+        summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+        arrange(desc(totVal))
+      all_iso <- iso_values$isoSplit
     } else {
       iso_values <- filtered_data() %>%
         group_by(iso2c) %>%
@@ -778,8 +833,8 @@ all_iso <- iso_values$isoSplit
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Element Figures
- selected_element <- reactiveVal(NULL)
-  
+  selected_element <- reactiveVal(NULL)
+
   # Create periodic table data
   periodic_data <- reactive({
     df_figures %>%
@@ -791,134 +846,166 @@ all_iso <- iso_values$isoSplit
         element = first(element),
         group = first(group),
         period = first(period),
-        .groups = 'drop'
+        .groups = "drop"
       ) %>%
       mutate(
         present = symbol %in% unique(df_figures$symbol)
       )
   })
-  
+
   # Handle periodic table clicks
   observeEvent(input$plot_click, {
     click <- input$plot_click
     if (!is.null(click)) {
       clicked_element <- periodic_data() %>%
-        filter(display_column == round(click$x),
-               display_row == round(click$y)) %>%
+        filter(
+          display_column == round(click$x),
+          display_row == round(click$y)
+        ) %>%
         slice(1)
-      
+
       if (nrow(clicked_element) > 0) {
         selected_element(clicked_element$symbol)
       }
     }
   })
-  
+
   # Element information display
   output$elementInfo <- renderUI({
     if (!is.null(selected_element())) {
       element_data <- df_figures %>%
         filter(symbol == selected_element()) %>%
-        slice(1)  # Get first occurrence for static properties
-      
+        slice(1) # Get first occurrence for static properties
+
       tagList(
         h3(class = "bold-text", element_data$element),
-        span(class = "chem-badge", 
-             style = paste0("background:", 
-                           ifelse(element_data$chemical == "Organometallic", 
-                                 "#4d908e", "#f94144"), 
-                           "; color: white;"),
-             element_data$chemical),
+        span(
+          class = "chem-badge",
+          style = paste0(
+            "background:",
+            ifelse(element_data$chemical == "Organometallic",
+              "#4d908e", "#f94144"
+            ),
+            "; color: white;"
+          ),
+          element_data$chemical
+        ),
         hr(),
         h4("Basic Properties"),
         p(span(class = "bold-text", "Symbol: "), element_data$symbol),
         p(span(class = "bold-text", "Atomic Number: "), element_data$atomic_number),
         p(span(class = "bold-text", "Weight: "), round(element_data$atomic_weight, 4)),
-        
         h4("Physical Properties"),
-        p(span(class = "bold-text", "Density: "), 
-          ifelse(is.na(element_data$density), "N/A", 
-                 format(element_data$density, scientific = FALSE))),
-        p(span(class = "bold-text", "Melting Point: "), 
-          paste(round(element_data$melting_point_k, 1), "K")),
-        
+        p(
+          span(class = "bold-text", "Density: "),
+          ifelse(is.na(element_data$density), "N/A",
+            format(element_data$density, scientific = FALSE)
+          )
+        ),
+        p(
+          span(class = "bold-text", "Melting Point: "),
+          paste(round(element_data$melting_point_k, 1), "K")
+        ),
         h4("Chemical Properties"),
-        p(span(class = "bold-text", "Electronegativity: "), 
-          round(element_data$electronegativity, 2)),
-        p(span(class = "bold-text", "Ionization Potential: "), 
-          round(element_data$first_ionization_potential, 2))
+        p(
+          span(class = "bold-text", "Electronegativity: "),
+          round(element_data$electronegativity, 2)
+        ),
+        p(
+          span(class = "bold-text", "Ionization Potential: "),
+          round(element_data$first_ionization_potential, 2)
+        )
       )
     } else {
       h4("Click an element in the periodic table to view details")
     }
   })
-  
+
   # Composition timeline plot
   output$compositionPlot <- renderPlot({
     # Prepare data for plotting
     plot_data <- df_figures %>%
       group_by(year, chemical) %>%
-      summarise(total_percentage = mean(percentage, na.rm = TRUE),
-    symbol = first(symbol),
-                .groups = 'drop')
-    
+      summarise(
+        total_percentage = mean(percentage, na.rm = TRUE),
+        symbol = first(symbol),
+        .groups = "drop"
+      )
+
     # Base plot with lines
     base_plot <- ggplot(plot_data, aes(x = year, y = total_percentage)) +
       geom_line(aes(color = chemical), linewidth = 1.2) +
       geom_point(aes(color = symbol), size = 3) +
-      scale_color_manual(values = c("Organometallic" = "#4d908e", 
-                                  "Rare-Earths" = "#f94144")) +
-      labs(title = "Elemental Composition Over Time",
-           x = "Year", y = "Percentage Composition") +
+      scale_color_manual(values = c(
+        "Organometallic" = "#4d908e",
+        "Rare-Earths" = "#f94144"
+      )) +
+      labs(
+        title = "Elemental Composition Over Time",
+        x = "Year", y = "Percentage Composition"
+      ) +
       theme_minimal() +
-      theme(legend.position = "bottom",
-            panel.grid.minor = element_blank(),
-            axis.text = element_text(size = 12),
-            axis.title = element_text(size = 14))
-    
+      theme(
+        legend.position = "bottom",
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14)
+      )
+
     # Add element-specific points if an element is selected
     if (!is.null(selected_element())) {
       element_data <- df_figures %>%
         filter(symbol == selected_element())
-      
+
       base_plot <- base_plot +
-        facet_wrap(~ chemical) +
-        geom_point(data = element_data,
-                   aes(y = percentage),
-                   color = "#f8961e", size = 4, shape = 18) +
-        geom_text(data = element_data,
-                  aes(y = percentage, 
-                      label = paste0(symbol, ": ", round(percentage, 1)),
-                  vjust = -1, hjust = 0.5, color = "#f8961e", size = 4)
+        facet_wrap(~chemical) +
+        geom_point(
+          data = element_data,
+          aes(y = percentage),
+          color = "#f8961e", size = 4, shape = 18
+        ) +
+        geom_text(
+          data = element_data,
+          aes(
+            y = percentage,
+            label = paste0(symbol, ": ", round(percentage, 1)),
+            vjust = -1, hjust = 0.5, color = "#f8961e", size = 4
+          )
         )
     }
-    
+
     base_plot
   })
-  
+
   # Periodic table plot
   output$periodicTablePlot <- renderPlot({
     plot_data <- periodic_data()
     highlight_element <- selected_element()
-    
+
     ggplot(plot_data, aes(x = display_column, y = display_row)) +
-      geom_tile(aes(fill = present), 
-                color = "white", 
-                width = 0.95, height = 0.95) +
+      geom_tile(aes(fill = present),
+        color = "white",
+        width = 0.95, height = 0.95
+      ) +
       {
-        if (!is.null(highlight_element))
-          geom_tile(data = filter(plot_data, symbol == highlight_element),
-                    fill = "#f8961e", color = "white", 
-                    width = 0.95, height = 0.95)
+        if (!is.null(highlight_element)) {
+          geom_tile(
+            data = filter(plot_data, symbol == highlight_element),
+            fill = "#f8961e", color = "white",
+            width = 0.95, height = 0.95
+          )
+        }
       } +
       geom_text(aes(label = symbol), size = 6, fontface = "bold") +
       scale_fill_manual(values = c("TRUE" = "#43aa8b", "FALSE" = "#f8f9fa")) +
-      scale_y_reverse() +  # For proper periodic table orientation
+      scale_y_reverse() + # For proper periodic table orientation
       theme_void() +
-      theme(plot.background = element_rect(fill = "white", color = NA),
-            legend.position = "none") +
+      theme(
+        plot.background = element_rect(fill = "white", color = NA),
+        legend.position = "none"
+      ) +
       labs(title = "Click elements to explore composition trends")
   })
-
 }
 
 shinyApp(ui, server)
