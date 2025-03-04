@@ -13,9 +13,17 @@ library(ggplot2)
 library(data.table)
 library(shinycssloaders)
 
-df_global <- read.csv("./data/df.csv")
-figure_article <- read.csv("./data/data_article.csv")
-df_figures <- read.csv("./data/supplementsv2.csv", stringsAsFactors = FALSE)
+# Open the converted Parquet files lazily.
+df_global <- open_dataset("./data/df.parquet")
+figure_article <- open_dataset("./data/data_article.parquet")
+df_figures <- open_dataset("./data/supplementsv2.parquet")
+
+# read.csv("./data/df.csv") %>%
+#   write_parquet("./data/df.parquet")
+# read.csv("./data/data_article.csv") %>%
+#   write_parquet("./data/data_article.parquet")
+# read.csv("./data/supplementsv2.csv") %>%
+#   write_parquet("./data/supplementsv2.parquet") 
 
 ui <- page_navbar(
   title = a(
@@ -200,19 +208,22 @@ ui <- page_navbar(
 
 
 server <- function(input, output, session) {
-  # -- 1) Base data reactive
+  # -- 1) Base data reactive using Arrow dataset --
   df <- reactive({
+    # Perform filtering on the Arrow dataset and then collect the result as an R data.frame.
     d <- if (input$data_mode == "Individual Countries") {
-      df_global %>% filter(is_collab == FALSE) # nolint
+      df_global %>% filter(is_collab == FALSE)
     } else {
-      df_global %>% filter(is_collab == TRUE) # nolint
+      df_global %>% filter(is_collab == TRUE)
     }
+    
     if (input$data_mode == "Individual Countries" &&
-      !is.null(input$region) &&
-      !("All" %in% input$region)) {
-      d <- d %>% filter(region %in% input$region) # nolint: object_usage_linter.
+        !is.null(input$region) &&
+        !("All" %in% input$region)) {
+      d <- d %>% filter(region %in% input$region)
     }
-    d
+    
+    d %>% collect()  # Executes the query and brings the data into memory.
   })
 
   # -- 2) region choices
@@ -764,8 +775,8 @@ server <- function(input, output, session) {
 
   # Reactive dataset for the new figures:
   fig_data <- reactive({
-    # filter rows where source contains "FigureS"
-    df_figures[grepl("FigureS", df_figures$source), ]
+    # Filter rows lazily on the Arrow dataset then collect
+    df_figures %>% filter(grepl("FigureS", source)) %>% collect()
   })
   
   # Create the faceted plot for Element Figures:
