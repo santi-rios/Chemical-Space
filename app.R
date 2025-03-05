@@ -15,7 +15,10 @@ library(shinycssloaders)
 
 # Convert Parquet to data.table-backed objects on the fly.
 df_global <- as_tidytable(arrow::read_parquet("./data/df.parquet"))
-figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet"))
+figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet")) |>
+  # na.omit()
+  filter(!country %in% c("CN-US collab/CN", "CN-US collab/US"))
+
 df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet")) |>
   na.omit()
 
@@ -487,8 +490,8 @@ server <- function(input, output, session) {
       name   = "Average Contribution"
     ) %>%
       hc_colorAxis(
-        minColor = "#0c2a42",
-        maxColor = "#c5051b",
+        minColor = "#071f33",
+        maxColor = "#e8041e",
         labels   = list(format = "{value}%"),
         title    = list(text = "Contribution (%)", style = list(color = "white"))
       ) %>%
@@ -502,9 +505,18 @@ server <- function(input, output, session) {
         enableMouseWheelZoom = TRUE,
         enableDoubleClickZoom = TRUE
       ) %>%
-      hc_title(text = "World Map", style = list(color = "Black")) %>%
       hc_subtitle(
-        text  = "Values represent the average contribution of the years selected",
+        text  = paste0(
+          "Mean value of Top Country in current selection = ",
+          scales::percent(max(map_data$value, na.rm = TRUE), 
+          accuracy = 0.01, 
+          scale = 1
+          )
+          ),
+        style = list(color = "black")
+      ) %>%
+      hc_title(
+        text  = paste0("Top Country (Total Value) = ", map_data$iso3c[which.max(map_data$value)]),
         style = list(color = "black")
       )
   })
@@ -559,7 +571,7 @@ server <- function(input, output, session) {
       name   = "Collaboration"
     ) %>%
       hc_colorAxis(
-        minColor = "#0c2a42",
+        minColor = "#04131f",
         maxColor = "#c5051b",
         labels   = list(format = "{value:.2f}%"),
         title    = list(text = "Collaboration (%)", style = list(color = "black"))
@@ -572,11 +584,15 @@ server <- function(input, output, session) {
       )) %>%
       hc_mapNavigation(enabled = TRUE) %>%
       hc_subtitle(
-        text  = paste0("Top collaboration = ", scales::percent(max_val, accuracy = 0.01, scale = 1)),
+        text  = paste0(
+          "Top collaborator (mean) = ",
+          map_data$iso3c[which.max(map_data$value)],
+          " (", scales::percent(max_val, accuracy = 0.01, scale = 1), ")"
+        ),
         style = list(color = "black")
       ) %>%
       hc_title(
-        text  = "Percentage of new substances with participation of country pairs",
+        text  = "Percentage of new substances by Collaborations",
         style = list(color = "black")
       )
   })
@@ -641,7 +657,7 @@ server <- function(input, output, session) {
       filter(chemical == input$chemicalSelector)
 
     p <- ggplot(data, aes(
-      x = year, y = percentage, group = country, fill = region,
+      x = year, y = percentage, group = country, fill = country, color = country,
       text = paste0(
         "<b>Country:</b> ", country,
         "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
@@ -770,10 +786,11 @@ server <- function(input, output, session) {
 
     content <- tagList(
       h4(paste("Information for", sel_iso)),
+      p(paste("Data Mode:", input$data_mode)),
       p(paste("Max Percentage:", scales::percent(max_value, accuracy = 0.001, scale = 1))),
       p(paste("Min Percentage:", scales::percent(min_value, accuracy = 0.001, scale = 1))),
       if (length(collab_countries) > 0) {
-        p(paste("Other Collaborations from current selection include:", paste(collab_countries, collapse = ", ")))
+        p(paste("Collaborations from current selection include:", paste(collab_countries, collapse = ", ")))
       } else {
         p("No other collaborations found.")
       }
@@ -791,6 +808,17 @@ server <- function(input, output, session) {
   # Article Figures
   output$articlePlot <- renderPlotly({
     req(input$article_source)
+    
+    # Set y-axis title based on article_source
+    y_title <- switch(input$article_source,
+      "CS Growth" = "Percentage of new substances",
+      "China-US collaboration" = "Percentage of national contribution",
+      "Growth rate of GDP" = "GDP per capira growth (annual %)",
+      "Number of Researchers" = "Researchs",
+      "Expansion of the CS" = "Number of Researchers",
+      "Value"  # default title if none match
+    )
+    
     article_data <- subset(figure_article, source == input$article_source)
 
     p <- plot_ly(
@@ -800,8 +828,8 @@ server <- function(input, output, session) {
       type = "scatter",
       mode = "markers",
       color = ~country,
-      colors = "Dark2",
-      alpha = 0.6,
+      colors = "RdYlBu",
+      alpha = 0.9,
       size = ~percentage,
       marker = list(sizemode = "diameter"),
       text = ~ paste("Country: ", country, "<br>Year: ", year, "<br>Percentage: ", percentage),
@@ -810,7 +838,8 @@ server <- function(input, output, session) {
       layout(
         title = paste("Article Figures - Source:", input$article_source),
         xaxis = list(title = "Year"),
-        yaxis = list(title = "Value")
+        yaxis = list(title = y_title),
+        plot_bgcolor = 'rgb(199, 204, 204)'
       ) %>%
       animation_opts(
         frame = 300,
@@ -842,6 +871,9 @@ server <- function(input, output, session) {
         element = first(element),
         group = first(group),
         period = first(period),
+        discoverer = first(discoverer),
+        year_of_discovery = first(year_of_discovery),
+        type = first(type),
         .groups = "drop"
       ) %>%
       mutate(
@@ -873,18 +905,12 @@ server <- function(input, output, session) {
         filter(symbol == selected_element()) %>%
         slice(1) # Get first occurrence for static properties
 
-      tagList(
+      tagList( # nolint
         h3(class = "bold-text", element_data$element),
         span(
           class = "chem-badge",
-          style = paste0(
-            "background:",
-            ifelse(element_data$chemical == "Organometallic",
-              "#4d908e", "#f94144"
-            ),
-            "; color: white;"
-          ),
-          element_data$chemical
+          style = "background:#4d908e; color: white;",
+          paste0(element_data$type)
         ),
         hr(),
         h4("Basic Properties"),
@@ -910,7 +936,12 @@ server <- function(input, output, session) {
         p(
           span(class = "bold-text", "Ionization Potential: "),
           round(element_data$first_ionization_potential, 2)
-        )
+        ),
+        hr(),
+      h3("Discovered by:"),
+      p(element_data$discoverer),
+      h3("Year of Discovery:"),
+      p(element_data$year_of_discovery)
       )
     } else {
       h4("Click an element in the periodic table to view details")
@@ -938,15 +969,16 @@ server <- function(input, output, session) {
       )) +
       labs(
         title = "Elemental Composition Over Time",
-        x = "Year", y = "Percentage Composition"
+        x = "Year", y = "Percentage of Chemical Space"
       ) +
-      theme_minimal() +
+      theme_classic() +
       theme(
         legend.position = "bottom",
         panel.grid.minor = element_blank(),
         axis.text = element_text(size = 12),
         axis.title = element_text(size = 14)
-      )
+      ) +
+      scale_y_continuous(labels = scales::percent_format(accuracy = 0.1, scale = 1))
 
     # Add element-specific points if an element is selected
     if (!is.null(selected_element())) {
@@ -964,8 +996,8 @@ server <- function(input, output, session) {
           data = element_data,
           aes(
             y = percentage,
-            label = paste0(symbol, ": ", round(percentage, 1)),
-            vjust = -1, hjust = 0.5, color = "#f8961e", size = 4
+            label = paste0(symbol),
+            vjust = -1, hjust = 0.5, color = "#f8961e", size = 2
           )
         )
     }
@@ -977,24 +1009,30 @@ server <- function(input, output, session) {
   output$periodicTablePlot <- renderPlot({
     plot_data <- periodic_data()
     highlight_element <- selected_element()
-
-    ggplot(plot_data, aes(x = display_column, y = display_row)) +
-      geom_tile(aes(fill = present),
-        color = "white",
+    
+    p <- ggplot(plot_data, aes(x = display_column, y = display_row)) +
+      # Tiles with no data (blank spaces)
+      geom_tile(data = subset(plot_data, !present),
+                fill = "#f8f9fa", color = "white",
+                width = 0.95, height = 0.95) +
+      # Tiles coloured by "type" for cells with data
+      geom_tile(data = subset(plot_data, present),
+                aes(fill = type),
+                color = "white", width = 0.95, height = 0.95)
+    
+    # Highlight the clicked element with orange color
+    if (!is.null(highlight_element)) {
+      p <- p + geom_tile(
+        data = subset(plot_data, symbol == highlight_element),
+        fill = "#f8961e", color = "white",
         width = 0.95, height = 0.95
-      ) +
-      {
-        if (!is.null(highlight_element)) {
-          geom_tile(
-            data = filter(plot_data, symbol == highlight_element),
-            fill = "#f8961e", color = "white",
-            width = 0.95, height = 0.95
-          )
-        }
-      } +
-      geom_text(aes(label = symbol), size = 6, fontface = "bold") +
-      scale_fill_manual(values = c("TRUE" = "#43aa8b", "FALSE" = "#f8f9fa")) +
-      scale_y_reverse() + # For proper periodic table orientation
+      )
+    }
+    
+    p + 
+      geom_text(aes(label = symbol), size = 5, fontface = "bold") +
+      scale_fill_brewer(palette = "Set2", na.value = "#f8f9fa") +
+      scale_y_reverse() +  # For proper periodic table orientation
       theme_void() +
       theme(
         plot.background = element_rect(fill = "white", color = NA),
