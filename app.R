@@ -37,6 +37,18 @@ df_figures <- df |>
     chemical = chemical_y
   )
 
+  # Define a reactive color map once:
+color_map_all <- {
+  all_ctry <- sort(unique(df_global$country))
+  cmap <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
+  # Override key countries just once here
+  cmap[c("China", "United States of America", "India", "Germany", "Japan",
+          "United Kingdom", "France", "Russia", "Mexico", "Colombia",
+          "Brazil", "Ecuador", "Argentina")] <- c("#c5051b", "#0a3161", "#ff671f", "#000000",
+                                                  "#995162", "#3b5091", "#000091", "#d51e9b",
+                                                  "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf")
+  cmap
+  }
 
 ui <- page_navbar(
   selected = "National Trends",
@@ -439,20 +451,8 @@ server <- function(input, output, session) {
       theme(legend.position = "none")
 
     if (input$data_mode == "Individual Countries") {
-      all_ctry <- unique(data$country)
-      color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
-      color_map[c(
-        "China", "United States of America", "India", "Germany", "Japan",
-        "United Kingdom", "France", "Russia", "Mexico", "Colombia",
-        "Brazil", "Ecuador", "Argentina"
-      )] <-
-        c(
-          "#c5051b", "#0a3161", "#ff671f", "#000000",
-          "#995162", "#3b5091", "#000091", "#d51e9b",
-          "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
-        )
       p <- p +
-        scale_color_manual(values = color_map) +
+        scale_color_manual(values = color_map_all) +
         labs(
           title = "Country participation in the growth of the Chemical Space",
           x = "Year",
@@ -461,10 +461,8 @@ server <- function(input, output, session) {
         ) +
         scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
     } else {
-      all_ctry <- unique(data$country)
-      color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
       p <- p +
-        scale_color_manual(values = color_map) +
+        scale_color_manual(values = color_map_all) +
         labs(
           title = "International collaborations in the Chemical Space",
           x = "Year",
@@ -703,19 +701,7 @@ server <- function(input, output, session) {
       theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
-    all_ctry <- unique(data$country)
-    color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
-    color_map[c(
-      "China", "United States of America", "India", "Germany", "Japan",
-      "United Kingdom", "France", "Russia", "Mexico", "Colombia",
-      "Brazil", "Ecuador", "Argentina"
-    )] <-
-      c(
-        "#c5051b", "#0a3161", "#ff671f", "#000000",
-        "#995162", "#3b5091", "#000091", "#d51e9b",
-        "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
-      )
-    p <- p + scale_color_manual(values = color_map)
+    p <- p + scale_color_manual(values = color_map_all)
 
     ggplotly(p, tooltip = "text")
   })
