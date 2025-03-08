@@ -14,13 +14,34 @@ library(data.table)
 library(shinycssloaders)
 
 # Convert Parquet to data.table-backed objects on the fly.
-df_global <- as_tidytable(arrow::read_parquet("./data/df.parquet"))
-figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet")) |>
-  # na.omit()
-  filter(!country %in% c("CN-US collab/CN", "CN-US collab/US"))
+df <- as_tidytable(arrow::read_parquet("./data6/df.parquet"))
 
-df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet")) |>
-  na.omit()
+df_global <- df |>
+  filter(!is.na(percentage))
+
+figure_article <- df |>
+  filter(!is.na(percentage_x)) |>
+  select(-percentage, -country, -year) |>
+  rename(
+    percentage = percentage_x,
+    country = country_x,
+    year = year_x
+    )
+
+df_figures <- df |>
+  filter(!is.na(percentage_y)) |>
+  select(-percentage, -year, -chemical) |>
+  rename(
+    percentage = percentage_y,
+    year = year_y,
+    chemical = chemical_y
+    )
+# figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet")) |>
+#   # na.omit()
+#   filter(!country %in% c("CN-US collab/CN", "CN-US collab/US"))
+
+# df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet")) |>
+#   na.omit()
 
 
 ui <- page_navbar(
@@ -224,21 +245,21 @@ ui <- page_navbar(
               tags$a(
                 href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
                 target = "_blank",
-                "Access the full preprint"
+                "Access the full preprint 📄"
               )
             ),
             tags$li(
               tags$a(
-                href = "https://www.maxplanck.de/en",
+                href = "https://github.com/santi-rios/Chemical-Space/wiki",
                 target = "_blank",
-                "Max Planck Institute for Mathematics in the Sciences"
+                "App wiki and documentation 📖"
               )
             ),
             tags$li(
               tags$a(
-                href = "https://tec.mx/en",
+                href = "https://github.com/santi-rios/Chemical-Space",
                 target = "_blank",
-                "Tecnológico de Monterrey"
+                "Code Repository 📦"
               )
             )
           )
@@ -423,7 +444,7 @@ server <- function(input, output, session) {
       all_ctry <- unique(data$country)
       color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
       color_map[c(
-        "China", "United States", "India", "Germany", "Japan",
+        "China", "United States of America", "India", "Germany", "Japan",
         "United Kingdom", "France", "Russia", "Mexico", "Colombia",
         "Brazil", "Ecuador", "Argentina"
       )] <-
@@ -687,7 +708,7 @@ server <- function(input, output, session) {
     all_ctry <- unique(data$country)
     color_map <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
     color_map[c(
-      "China", "United States", "India", "Germany", "Japan",
+      "China", "United States of America", "India", "Germany", "Japan",
       "United Kingdom", "France", "Russia", "Mexico", "Colombia",
       "Brazil", "Ecuador", "Argentina"
     )] <-
@@ -815,7 +836,7 @@ server <- function(input, output, session) {
       "China-US collaboration" = "Percentage of national contribution",
       "Growth rate of GDP" = "GDP per capira growth (annual %)",
       "Number of Researchers" = "Researchs",
-      "Expansion of the CS" = "Number of Researchers",
+      "Expansion of the CS" = "Number of new substances",
       "Value"  # default title if none match
     )
     
@@ -828,7 +849,7 @@ server <- function(input, output, session) {
       type = "scatter",
       mode = "markers",
       color = ~country,
-      colors = "RdYlBu",
+      colors = "Set1",
       alpha = 0.9,
       size = ~percentage,
       marker = list(sizemode = "diameter"),
