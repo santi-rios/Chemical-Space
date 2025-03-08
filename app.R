@@ -26,7 +26,7 @@ figure_article <- df |>
     percentage = percentage_x,
     country = country_x,
     year = year_x
-    )
+  )
 
 df_figures <- df |>
   filter(!is.na(percentage_y)) |>
@@ -35,13 +35,7 @@ df_figures <- df |>
     percentage = percentage_y,
     year = year_y,
     chemical = chemical_y
-    )
-# figure_article <- as_tidytable(arrow::read_parquet("./data/data_article.parquet")) |>
-#   # na.omit()
-#   filter(!country %in% c("CN-US collab/CN", "CN-US collab/US"))
-
-# df_figures <- as_tidytable(arrow::read_parquet("./data/supplements_data.parquet")) |>
-#   na.omit()
+  )
 
 
 ui <- page_navbar(
@@ -67,7 +61,7 @@ ui <- page_navbar(
       ),
       column(
         width = 6,
-        actionButton("selectAll", "Select All", class = "btn-success", style = "width: 100%;")
+        actionButton("selectAll", "Top 100 Countries", class = "btn-success", style = "width: 100%;")
       )
     ),
     fluidRow(
@@ -80,7 +74,7 @@ ui <- page_navbar(
       "countries", "Select Countries 🎌",
       choices = NULL,
       multiple = TRUE,
-      options = list(plugins = "remove_button"),
+      options = list(plugins = "remove_button", maxItems = 100, placeholder = 'Please select up to 100 countries'),
       width = "100%"
     ),
     hr()
@@ -132,7 +126,7 @@ ui <- page_navbar(
           value_box(
             title = uiOutput("summaryText"),
             value = uiOutput("flagButtons"),
-            max_height = "100px",
+            max_height = "130px",
             fill = TRUE
           )
         )
@@ -340,7 +334,8 @@ server <- function(input, output, session) {
     req(df())
     valid_countries <- df() %>%
       pull(country) %>%
-      unique()
+      unique() %>%
+      sort()
 
     # Keep intersection with previously selected (if any)
     current_selections <- isolate(input$countries)
@@ -353,7 +348,8 @@ server <- function(input, output, session) {
         group_by(country) %>%
         summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
         slice_max(total, n = 8) %>%
-        pull(country)
+        pull(country) %>%
+        sort()
 
       new_selection <- intersect(top_countries, valid_countries)
     }
@@ -407,13 +403,15 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "countries", selected = character(0))
   })
 
-  # "Select All" button
+  # "Top 100" button
   observeEvent(input$selectAll, {
     req(df())
-    valid_countries <- df() %>%
-      pull(country) %>%
-      unique()
-    updateSelectizeInput(session, "countries", selected = valid_countries)
+    top_countries <- df() %>%
+      group_by(country) %>%
+      summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+      slice_max(total, n = 100) %>%
+      pull(country)
+    updateSelectizeInput(session, "countries", selected = top_countries)
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -434,8 +432,8 @@ server <- function(input, output, session) {
       geom_text(
         data = data %>% filter(year == max(year)),
         aes(y = percentage, label = iso3c, color = country),
-        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
-        size = 4, check_overlap = TRUE, show.legend = FALSE
+        # hjust = -0.1, nudge_x = -0.1, nudge_y = -0.1,
+        size = 4, check_overlap = FALSE, show.legend = FALSE
       ) +
       theme_minimal() +
       theme(legend.position = "none")
@@ -774,56 +772,65 @@ server <- function(input, output, session) {
     do.call(tags$div, btns)
   })
 
-  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  # Modal
-  observeEvent(input$selectedCountry, {
-    req(filtered_data())
-    sel_iso <- input$selectedCountry
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Modal
+observeEvent(input$selectedCountry, {
+  req(df_global)
+  sel_iso <- input$selectedCountry
 
-    if (input$data_mode == "Individual Countries") {
-      # Switch to 'Collaborations' automatically
-      updateRadioButtons(session, "data_mode", selected = "Collaborations")
+  if (input$data_mode == "Individual Countries") {
+    # Switch to 'Collaborations' automatically and update countries accordingly:
+    updateRadioButtons(session, "data_mode", selected = "Collaborations")
 
-      # Optionally set 'countries' to show collaborations for the clicked country:
-      # (Assuming df_global contains is_collab=TRUE for pairs; adjust as needed)
-      collab_rows <- df_global %>%
-        filter(is_collab == TRUE, grepl(sel_iso, iso3c))
-      updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
-    }
+    collab_rows <- df_global %>%
+      filter(is_collab == TRUE, grepl(sel_iso, iso2c))
+    updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
+  }
 
-    if (input$data_mode == "Collaborations") {
-      flag_data <- filtered_data() %>% filter(grepl(sel_iso, iso3c))
-    } else {
-      flag_data <- filtered_data() %>% filter(iso2c == sel_iso)
-    }
-    if (nrow(flag_data) == 0) {
-      return()
-    }
+  # For collaborations, filter using df_global so that we get only rows
+  # where iso2c contains the selected country code.
+  flag_data <- df_global %>% 
+    filter(is_collab == TRUE, grepl(sel_iso, iso2c))
+  if (nrow(flag_data) == 0) {
+    return()
+  }
 
-    max_value <- max(flag_data$percentage, na.rm = TRUE)
-    min_value <- min(flag_data$percentage, na.rm = TRUE)
-    collab_countries <- unique(unlist(lapply(flag_data$iso3c, function(x) strsplit(x, "-")[[1]])))
-    collab_countries <- collab_countries[collab_countries != sel_iso]
+  collab_countries <- unique(unlist(lapply(flag_data$iso2c, function(x) strsplit(x, "-")[[1]])))
+  collab_countries <- collab_countries[collab_countries != sel_iso]
 
-    content <- tagList(
-      h4(paste("Information for", sel_iso)),
-      p(paste("Data Mode:", input$data_mode)),
-      p(paste("Max Percentage:", scales::percent(max_value, accuracy = 0.001, scale = 1))),
-      p(paste("Min Percentage:", scales::percent(min_value, accuracy = 0.001, scale = 1))),
-      if (length(collab_countries) > 0) {
-        p(paste("Collaborations from current selection include:", paste(collab_countries, collapse = ", ")))
-      } else {
-        p("No other collaborations found.")
-      }
+  # Create flags HTML for collaboration countries
+  flag_icons <- NULL
+  if (length(collab_countries) > 0) {
+    flag_icons <- tags$div(
+      lapply(collab_countries, function(iso) {
+        tags$span(
+          tags$img(
+            src = paste0("https://flagcdn.com/16x12/", tolower(iso), ".png"),
+            width = 16, height = 12,
+            style = "margin-right: 4px;"
+          )
+        )
+      })
     )
+  }
 
-    showModal(modalDialog(
-      title = paste("Country Details:", sel_iso),
-      content,
-      easyClose = TRUE,
-      footer = modalButton("Close")
-    ))
-  })
+  content <- tagList(
+    if (!is.null(flag_icons)) {
+      p("Collaborations from current country include:", flag_icons)
+    } else {
+      p("No other collaborations found.")
+    },
+    # Placeholder text for additional explanation
+    p("NOTE: Default Collaboration plot shows the top overall collaborations. Use the 'Select Countries' filter to explore more.")
+  )
+
+  showModal(modalDialog(
+    title = paste("Country Details:", sel_iso),
+    content,
+    easyClose = TRUE,
+    footer = modalButton("Close")
+  ))
+})
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Article Figures
