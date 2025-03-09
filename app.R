@@ -25,9 +25,6 @@ df_global <-
     select(percentage, country, year, region, iso2c, iso3c, lat, lng, is_collab, chemical)
 
 
-# For compatibility later in the app, assign df to df_global
-df <- df_global
-
 # For article figures, only load and rename the necessary columns (using projection)
 figure_article <- 
   ds %>%
@@ -84,7 +81,6 @@ df_figures <-
   })
   names(precomputed_flags) <- country_metadata$iso2c
 
-# Precompute collaboration relationships
 # Precompute collaboration relationships
 collab_expansion <- df_global %>%
   filter(is_collab == TRUE) %>%
