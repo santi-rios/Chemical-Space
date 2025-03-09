@@ -631,6 +631,16 @@ server <- function(input, output, session) {
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Cartogram
+
+  # Automatically process data whenever filters change
+  carto_data <- reactive({
+    req(nrow(filtered_data()) > 0, input$data_mode == "Individual Countries")
+    filtered_data() %>%
+      group_by(country, lat, lng) %>%
+      summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
+  })
+
+  # Initialize map
   output$geoPlot2 <- renderLeaflet({
     leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
       addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
@@ -638,12 +648,10 @@ server <- function(input, output, session) {
       setView(lng = 0, lat = 30, zoom = 2)
   }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
 
-  observeEvent(input$map2_reload, {
-    req(nrow(filtered_data()) > 0, input$data_mode == "Individual Countries")
-    data <- filtered_data() %>%
-      group_by(country, lat, lng) %>%
-      summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-
+  # Update markers and legend whenever carto_data changes
+  observe({
+    req(carto_data())
+    data <- carto_data()
     pal <- colorNumeric("Reds", domain = data$value)
 
     leafletProxy("geoPlot2", data = data) %>%
@@ -656,7 +664,7 @@ server <- function(input, output, session) {
         group = "Markers",
         popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
       ) %>%
-      clearControls() %>% # Clear existing controls
+      clearControls() %>%
       addLayersControl(
         baseGroups = c("NASA", "Continents"),
         overlayGroups = c("Markers"),
