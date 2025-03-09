@@ -13,60 +13,76 @@ library(ggplot2)
 library(data.table)
 library(shinycssloaders)
 
-# Convert Parquet to data.table-backed objects on the fly.
-df <- as_tidytable(arrow::open_dataset("./data6/df.parquet"))
+# Open the Arrow dataset with multithreading enabled for performance
+ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet")
 
-df_global <- df |>
-  filter(!is.na(percentage))
+ds <- as_tidytable(ds)
 
-figure_article <- df |>
-  filter(!is.na(percentage_x)) |>
-  select(-percentage, -country, -year) |>
-  rename(
-    percentage = percentage_x,
-    country = country_x,
-    year = year_x
-  )
+# For the main dataset, use predicate pushdown and restrict to needed columns
+df_global <- 
+  ds %>%
+    filter(!is.na(percentage)) %>%
+    select(percentage, country, year, region, iso2c, iso3c, lat, lng, is_collab, chemical)
 
-df_figures <- df |>
-  filter(!is.na(percentage_y)) |>
-  select(-percentage, -year, -chemical) |>
-  rename(
-    percentage = percentage_y,
-    year = year_y,
-    chemical = chemical_y
-  )
+
+# For compatibility later in the app, assign df to df_global
+df <- df_global
+
+# For article figures, only load and rename the necessary columns (using projection)
+figure_article <- 
+  ds %>%
+    filter(!is.na(percentage_x)) %>%
+    select(percentage_x, country_x, year_x, everything()) %>%
+    select(-percentage, -country, -year) %>%
+    rename(
+      percentage = percentage_x,
+      country = country_x,
+      year = year_x
+    )
+
+
+# For element figures, restrict columns and rename after filtering
+df_figures <- 
+  ds %>%
+    filter(!is.na(percentage_y)) %>%
+    select(percentage_y, year_y, chemical_y, everything()) %>%
+    select(-percentage, -year, -chemical) %>%
+    rename(
+      percentage = percentage_y,
+      year = year_y,
+      chemical = chemical_y
+    )
+
 
 
   # Define a reactive color map once:
-color_map_all <- {
   all_ctry <- sort(unique(df_global$country))
-  cmap <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
+  color_map_all <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
   # Override key countries just once here
-  cmap[c("China", "United States of America", "India", "Germany", "Japan",
-          "United Kingdom", "France", "Russia", "Mexico", "Colombia",
-          "Brazil", "Ecuador", "Argentina")] <- c("#c5051b", "#0a3161", "#ff671f", "#000000",
-                                                  "#995162", "#3b5091", "#000091", "#d51e9b",
-                                                  "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf")
-  cmap
-  }
+  override_countries <- c("China", "United States of America", "India", "Germany", "Japan",
+              "United Kingdom", "France", "Russia", "Mexico", "Colombia",
+              "Brazil", "Ecuador", "Argentina")
+  override_colors <- c("#c5051b", "#0a3161", "#ff671f", "#000000",
+             "#995162", "#3b5091", "#000091", "#d51e9b",
+             "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf")
+  color_map_all[override_countries] <- override_colors
 
 
-# Precompute country metadata and flags
-country_metadata <- unique(df_global[, .(iso2c, country)])
-precomputed_flags <- lapply(country_metadata$iso2c, function(iso) {
-  tags$button(
+  # Precompute country metadata and flags using data.table for efficiency
+  country_metadata <- unique(df_global[, .(iso2c, country)])
+  precomputed_flags <- lapply(country_metadata$iso2c, function(iso) {
+    tags$button(
     class = "btn btn-outline-secondary btn-sm",
     `data-iso` = iso,  # Add data attribute for easier handling
     tags$img(
       src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
-      width = 16, 
+      width = 16,
       height = 12
     ),
-    " ", iso
-  )
-})
-names(precomputed_flags) <- country_metadata$iso2c
+    paste0(" ", iso)
+    )
+  })
+  names(precomputed_flags) <- country_metadata$iso2c
 
 # Precompute collaboration relationships
 # Precompute collaboration relationships
@@ -81,13 +97,17 @@ collab_expansion <- df_global %>%
 # View(collab_expansion)
 
 ui <- page_navbar(
-  selected = "National Trends",
+  selected = "National Trends 📈",
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
   header = NULL,
-  navbar_options = navbar_options(collapsible = TRUE),
+  navbar_options = navbar_options(collapsible = TRUE, underline = TRUE),
   sidebar = sidebar(
     title = "Country and Region Filters 🌍",
     width = "14rem",
+      tooltip(
+      fontawesome::fa("info-circle", a11y = "sem", title = "Warnings"),
+      "Filters only apply to the 'National Trends' section. \nUse the 'Select Countries' filter to explore more."
+    ),
     sliderInput(
       "years", "📅 Year Range",
       min = 1996, max = 2022,
@@ -103,30 +123,27 @@ ui <- page_navbar(
       ),
       column(
         width = 6,
-        actionButton("selectAll", "Top 100 Countries", class = "btn-success", style = "width: 100%;")
-      )
-    ),
-    fluidRow(
-      column(
-        width = 12,
         actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
       )
     ),
-    selectizeInput(
-      "countries", "Select Countries 🎌",
-      choices = NULL,
-      multiple = TRUE,
-      options = list(plugins = "remove_button", maxItems = 100, placeholder = 'Please select up to 100 countries'),
-      width = "100%"
-    ),
-    hr()
+    hr(),
+    div(
+      style = "margin-bottom: 18rem;",  # Use CSS to create space underneath
+      selectizeInput(
+        "countries", "Select Countries 🎌",
+        choices = NULL,
+        multiple = TRUE,
+        options = list(plugins = "remove_button", maxItems = 100, placeholder = 'Please select up to 100 countries'),
+        width = "100%"
+      )
+    )
   ),
 
   # ------------------------------
   # 1) NATIONAL TRENDS NAV PANEL
   # ------------------------------
   nav_panel(
-    "National Trends",
+    "National Trends 📈",
 
     # Wrap everything in a fluidPage so you can arrange the new controls at the top:
     fluidPage(
@@ -141,7 +158,7 @@ ui <- page_navbar(
               "data_mode", "Data Mode 📊",
               choices = c("Individual Countries", "Collaborations"),
               selected = "Individual Countries",
-              inline = FALSE
+              inline = TRUE
             )
           ),
 
@@ -168,7 +185,8 @@ ui <- page_navbar(
           value_box(
             title = uiOutput("summaryText"),
             value = uiOutput("flagButtons"),
-            max_height = "130px",
+            max_height = "100px",
+            full_screen = TRUE,
             fill = TRUE
           )
         )
@@ -182,6 +200,18 @@ ui <- page_navbar(
             withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
           ),
           nav_panel("Map📌", uiOutput("mapPlot")),
+  nav_panel(
+    "Cartogram🗺️",
+    tooltip(
+      fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
+      "Cartogram only available for Individual Countries (Select in Main panel). \nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
+    ),
+    conditionalPanel(
+      condition = "input.data_mode == 'Individual Countries'",
+      actionButton("map2_reload", "Reload Map. Must be clicked every time you reload data or filters.", class = "btn-danger", style = "width: 100%;"),
+      leafletOutput("geoPlot2", height = 600)
+    )
+  ),
           nav_panel(
             "Substance Types🧪",
             fluidRow(
@@ -200,22 +230,6 @@ ui <- page_navbar(
           )
         )
       )
-    )
-  ),
-
-  # ------------------------------
-  # 2) CARTOGRAM NAV PANEL
-  # ------------------------------
-  nav_panel(
-    "Cartogram🗺️",
-    tooltip(
-      fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-      "Cartogram only available for Individual Countries (Select in Main panel). \nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
-    ),
-    conditionalPanel(
-      condition = "input.data_mode == 'Individual Countries'",
-      actionButton("map2_reload", "Reload Map. Must be clicked every time you reload data or filters.", class = "btn-danger", style = "width: 100%;"),
-      leafletOutput("geoPlot2", height = 600)
     )
   ),
 
@@ -303,6 +317,10 @@ ui <- page_navbar(
       ),
       br(),
       br(),
+      br(),
+      br(),
+      br(),
+      br(),
       hr(),
       fluidRow(
         column(
@@ -324,21 +342,56 @@ ui <- page_navbar(
 
 server <- function(input, output, session) {
   # -- 1) Base data reactive using Arrow dataset --
+# Optimized base data reactive
   df <- reactive({
-    d <- if (input$data_mode == "Individual Countries") {
-      df_global %>% filter(is_collab == FALSE)
+    if (input$data_mode == "Individual Countries") {
+      res <- df_global[is_collab == FALSE]
+      if (!is.null(input$region) && !("All" %in% input$region)) {
+        res <- res[region %in% input$region]
+      }
     } else {
-      df_global %>% filter(is_collab == TRUE)
+      res <- df_global[is_collab == TRUE]
     }
-
-    if (input$data_mode == "Individual Countries" &&
-      !is.null(input$region) &&
-      !("All" %in% input$region)) {
-      d <- d %>% filter(region %in% input$region)
-    }
-
-    d # Ensure data is in R data frame
+    res
   }) %>% bindCache(input$data_mode, input$region)
+
+# -- 3) Dynamic update of countries --
+observe({
+  req(df())
+  
+  valid_countries <- df() %>%
+    pull(country) %>%
+    unique() %>%
+    sort()
+  
+  # Check if this is the initial load
+  initial_load <- is.null(input$countries) || length(input$countries) == 0
+  
+  # For initial load or empty selection, use top 20 countries
+  if (initial_load) {
+    top_countries <- df() %>%
+      group_by(country) %>%
+      summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+      slice_max(total, n = 10) %>%
+      pull(country) %>%
+      sort()
+    
+    new_selection <- intersect(top_countries, valid_countries)
+  } else {
+    # Keep valid selections for subsequent updates
+    new_selection <- intersect(input$countries, valid_countries)
+  }
+  
+  # Only update if needed
+  if (!identical(new_selection, input$countries)) {
+    updateSelectizeInput(
+      session, "countries",
+      choices = valid_countries,
+      selected = new_selection,
+      server = TRUE
+    )
+  }
+}) %>% bindEvent(df(), ignoreInit = FALSE)
 
   # -- 2) region choices
   observe({
@@ -371,39 +424,6 @@ server <- function(input, output, session) {
     )
   })
 
-  # -- 3) Dynamic update of countries
-  observe({
-    req(df())
-    valid_countries <- df() %>%
-      pull(country) %>%
-      unique() %>%
-      sort()
-
-    # Keep intersection with previously selected (if any)
-    current_selections <- isolate(input$countries)
-    new_selection <- intersect(current_selections, valid_countries)
-
-    # If user has nothing selected or we filtered out everything,
-    # pick top 8 from the current (filtered) df
-    if (length(new_selection) == 0) {
-      top_countries <- df() %>%
-        group_by(country) %>%
-        summarise(total = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-        slice_max(total, n = 8) %>%
-        pull(country) %>%
-        sort()
-
-      new_selection <- intersect(top_countries, valid_countries)
-    }
-
-    updateSelectizeInput(
-      session, "countries",
-      choices = valid_countries,
-      selected = new_selection,
-      server = TRUE
-    )
-  })
-
   # -- 3b) "Plot Top Countries" button
   observeEvent(input$plotTopCountries, {
     req(df())
@@ -423,8 +443,8 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "countries", selected = new_selection)
   })
 
-  # -- Filtering
-# Optimized filtered data
+#   # -- Filtering
+# # Optimized filtered data
   filtered_data <- reactive({
     req(input$countries, input$years)
     df()[
@@ -496,9 +516,10 @@ server <- function(input, output, session) {
         scale_y_continuous(labels = scales::percent_format(accuracy = 0.1, scale = 1, trim = TRUE))
     }
 
-    ggplotly(p, tooltip = "text")
+    ggplotly(p, tooltip = "text") %>%
+      # plotly::partial_bundle() %>%
+      plotly::toWebGL()
   })
-
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Map UI
   output$mapPlot <- renderUI({
@@ -549,8 +570,8 @@ server <- function(input, output, session) {
       hc_subtitle(
         text  = paste0(
           "Mean value of Top Country in current selection = ",
-          scales::percent(max(map_data$value, na.rm = TRUE), 
-          accuracy = 0.01, 
+          scales::percent(max(map_data$value, na.rm = TRUE),
+          accuracy = 0.01,
           scale = 1
           )
           ),
@@ -561,6 +582,7 @@ server <- function(input, output, session) {
         style = list(color = "black")
       )
   }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
+
   # Highchart map - Collaborations
   collab_data <- reactive({
     req(filtered_data(), input$data_mode == "Collaborations")
@@ -568,7 +590,7 @@ server <- function(input, output, session) {
     dt[, Value := percentage]
     dt[, Year := year]
     dt
-  })
+  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
 
   output$collabMap <- renderHighchart({
     req(collab_data())
@@ -636,7 +658,7 @@ server <- function(input, output, session) {
         text  = "Percentage of new substances by Collaborations",
         style = list(color = "black")
       )
-  })
+  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Cartogram
@@ -645,7 +667,7 @@ server <- function(input, output, session) {
       addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
       addProviderTiles("CartoDB.Positron", group = "Continents") %>%
       setView(lng = 0, lat = 30, zoom = 2)
-  }) %>% bindCache("base_map")
+  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
 
   observeEvent(input$map2_reload, {
     req(nrow(filtered_data()) > 0, input$data_mode == "Individual Countries")
@@ -678,7 +700,7 @@ server <- function(input, output, session) {
         title = "Avg %",
         opacity = 0.5
       )
-  })
+  }) 
 
   observe({
     if (input$data_mode == "Individual Countries") {
@@ -732,7 +754,7 @@ server <- function(input, output, session) {
       plotly::partial_bundle() %>%
       plotly::toWebGL()
   }) %>% bindCache(input$chemicalSelector, input$countries, input$years)
-  
+
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Value boxes
   output$summaryText <- renderUI({
@@ -750,7 +772,7 @@ server <- function(input, output, session) {
 # Flag Buttons
 output$flagButtons <- renderUI({
   req(filtered_data())
-  
+
   # Get ordered ISO codes using data.table
 iso_data <- if (input$data_mode == "Collaborations") {
   filtered_data()[ iso2c %in% input$countries ][
@@ -761,23 +783,23 @@ iso_data <- if (input$data_mode == "Collaborations") {
 } else {
   filtered_data()[, .(totVal = sum(percentage)), by = .(isoSplit = iso2c)]
 }
-  
+
   ordered_iso <- iso_data[
-    order(-totVal), 
+    order(-totVal),
     head(isoSplit, 100)  # Limit to top 100
   ]
-  
+
   # Get precomputed flags and add click handlers
   flags <- precomputed_flags[ordered_iso]
   flags <- lapply(flags, function(flag) {
     iso <- flag$attribs$`data-iso`
     flag$attribs$onclick <- sprintf(
-      "Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", 
+      "Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})",
       iso
     )
     flag
   })
-  
+
   div(flags)
 })
 
@@ -798,7 +820,7 @@ observeEvent(input$selectedCountry, {
 
   # For collaborations, filter using df_global so that we get only rows
   # where iso2c contains the selected country code.
-  flag_data <- df_global %>% 
+  flag_data <- df_global %>%
     filter(is_collab == TRUE, grepl(sel_iso, iso2c))
   if (nrow(flag_data) == 0) {
     return()
@@ -845,7 +867,7 @@ observeEvent(input$selectedCountry, {
   # Article Figures
   output$articlePlot <- renderPlotly({
     req(input$article_source)
-    
+
     # Set y-axis title based on article_source
     y_title <- switch(input$article_source,
       "CS Growth" = "Percentage of new substances",
@@ -855,7 +877,7 @@ observeEvent(input$selectedCountry, {
       "Expansion of the CS" = "Number of new substances",
       "Value"  # default title if none match
     )
-    
+
     article_data <- subset(figure_article, source == input$article_source)
 
     p <- plot_ly(
@@ -884,7 +906,7 @@ observeEvent(input$selectedCountry, {
         redraw = FALSE
       )
 
-    p %>% 
+    p %>%
       plotly::partial_bundle() %>%
       plotly::toWebGL()
   }) %>% bindCache(input$article_source)
@@ -1048,7 +1070,7 @@ observeEvent(input$selectedCountry, {
   output$periodicTablePlot <- renderPlot({
     plot_data <- periodic_data()
     highlight_element <- selected_element()
-    
+
     p <- ggplot(plot_data, aes(x = display_column, y = display_row)) +
       # Tiles with no data (blank spaces)
       geom_tile(data = subset(plot_data, !present),
@@ -1058,7 +1080,7 @@ observeEvent(input$selectedCountry, {
       geom_tile(data = subset(plot_data, present),
                 aes(fill = type),
                 color = "white", width = 0.95, height = 0.95)
-    
+
     # Highlight the clicked element with orange color
     if (!is.null(highlight_element)) {
       p <- p + geom_tile(
@@ -1067,8 +1089,8 @@ observeEvent(input$selectedCountry, {
         width = 0.95, height = 0.95
       )
     }
-    
-    p + 
+
+    p +
       geom_text(aes(label = symbol), size = 5, fontface = "bold") +
       scale_fill_brewer(palette = "Set2", na.value = "#f8f9fa") +
       scale_y_reverse() +  # For proper periodic table orientation
