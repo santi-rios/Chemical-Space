@@ -141,16 +141,23 @@ ui <- page_navbar(
       )
     ),
     hr(),
-    div(
-      style = "margin-bottom: 18rem;", # Use CSS to create space underneath
-      selectizeInput(
-        "countries", "Select Countries 🎌",
+div(
+  style = "margin-bottom: 18rem;",
+  accordion(
+    id = "countryAccordion",
+    open = FALSE,
+    accordion_panel(
+      "Select Countries 🎌",
+      checkboxGroupInput(
+        inputId = "countries",
+        label = NULL,
         choices = NULL,
-        multiple = TRUE,
-        options = list(plugins = "remove_button", maxItems = 100, placeholder = "Please select up to 100 countries"),
+        selected = NULL,
         width = "100%"
       )
     )
+  )
+)
   ),
 
   # ------------------------------
@@ -368,7 +375,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "region", choices = c("All", sort(region_choices)), selected = "All")
 
     # Set initial top countries (using pre-calculated values)
-    updateSelectizeInput(session, "countries", selected = initial_top_countries, choices = all_ctry)
+    updateCheckboxGroupInput(session, "countries", selected = initial_top_countries, choices = all_ctry)
   })
 
   # Build the base data once, filtering by collab setting and region.
@@ -394,7 +401,7 @@ server <- function(input, output, session) {
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
       head(10)
-    updateSelectizeInput(session, "countries", choices = valid_countries, selected = top_countries$country, server = TRUE)
+    updateCheckboxGroupInput(session, "countries", choices = valid_countries, selected = top_countries$country)
   })
 
   # Observe event for "Top 20 Countries" button
@@ -405,12 +412,12 @@ server <- function(input, output, session) {
       arrange(desc(val)) %>%
       head(20)
     top_20_countries <- top_20_countries_df$country
-    updateSelectizeInput(session, "countries", selected = top_20_countries)
+    updateCheckboxGroupInput(session, "countries", selected = top_20_countries)
   })
 
   # Observe event for "Deselect All" button
   observeEvent(input$deselectAll, {
-    updateSelectizeInput(session, "countries", selected = character(0))
+    updateCheckboxGroupInput(session, "countries", selected = character(0))
   })
 
   # Filtered data reactive: by years and selected countries.
@@ -793,7 +800,7 @@ server <- function(input, output, session) {
 
       collab_rows <- df_global %>%
         filter(is_collab == TRUE, grepl(sel_iso, iso2c))
-      updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
+      updateCheckboxGroupInput(session, "countries", selected = unique(collab_rows$country))
     }
 
     # For collaborations, filter using df_global so that we get only rows
