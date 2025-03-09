@@ -20,405 +20,473 @@ ds <- as_tidytable(ds)
 
 # Full dataset with only needed columns
 df_global <- ds %>%
-    filter(!is.na(percentage)) %>%
-    dplyr::collect()
+  filter(!is.na(percentage)) %>%
+  dplyr::collect()
 
 # Subset for individual countries
 df_global_ind <- df_global %>%
-    filter(is_collab == FALSE) %>%
-    dplyr::collect()
+  filter(is_collab == FALSE) %>%
+  dplyr::collect()
 
 # Subset for collaborations
 df_global_collab <- df_global %>%
-    filter(is_collab == TRUE) %>%
-    dplyr::collect()
+  filter(is_collab == TRUE) %>%
+  dplyr::collect()
 
 # Articles: only load columns needed
 figure_article <- ds %>%
-    select(-percentage, -country, -year) %>%
-    filter(!is.na(percentage_x)) %>%
-    rename(
-        percentage = percentage_x,
-        country     = country_x,
-        year         = year_x
-    ) %>%
-    dplyr::collect()
+  select(-percentage, -country, -year) %>%
+  filter(!is.na(percentage_x)) %>%
+  rename(
+    percentage = percentage_x,
+    country = country_x,
+    year = year_x
+  ) %>%
+  dplyr::collect()
 
 # Element figures: only load columns needed
 df_figures <- ds %>%
-    select(-percentage, -year, -chemical) %>%
-    filter(!is.na(percentage_y)) %>%
-    rename(
-        percentage = percentage_y,
-        year         = year_y,
-        chemical     = chemical_y
-    ) %>%
-    dplyr::collect()
+  select(-percentage, -year, -chemical) %>%
+  filter(!is.na(percentage_y)) %>%
+  rename(
+    percentage = percentage_y,
+    year = year_y,
+    chemical = chemical_y
+  ) %>%
+  dplyr::collect()
+
+# --- Pre-calculate Initial Top 10 Countries (GLOBAL SCOPE) ---
+initial_top_countries_df <- df_global_ind %>%
+  group_by(country) %>%
+  summarise(val = sum(percentage, na.rm = TRUE)) %>%
+  arrange(desc(val)) %>%
+  head(10)
+
+initial_top_countries <- initial_top_countries_df$country
+# -----------------------------------------------------------
 
 # Color mappings (in-memory)
-all_ctry         <- sort(unique(df_global$country))
+all_ctry <- sort(unique(df_global$country))
 color_map_all <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
 
 override_countries <- c(
-    "China", "United States of America", "India", "Germany",
-    "Japan", "United Kingdom", "France", "Russia", "Mexico",
-    "Colombia", "Brazil", "Ecuador", "Argentina"
+  "China", "United States of America", "India", "Germany",
+  "Japan", "United Kingdom", "France", "Russia", "Mexico",
+  "Colombia", "Brazil", "Ecuador", "Argentina"
 )
 
 override_colors <- c(
-    "#c5051b", "#0a3161", "#ff671f", "#000000",
-    "#995162", "#3b5091", "#000091", "#d51e9b",
-    "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
+  "#c5051b", "#0a3161", "#ff671f", "#000000",
+  "#995162", "#3b5091", "#000091", "#d51e9b",
+  "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
 )
 
 color_map_all[override_countries] <- override_colors
 
 # Precompute country metadata for flags
 country_metadata <- df_global %>%
-    distinct(iso2c, country)
+  distinct(iso2c, country)
 
 precomputed_flags <- lapply(country_metadata$iso2c, function(iso) {
-    tags$button(
-        class = "btn btn-outline-secondary btn-sm",
-        `data-iso` = iso,
-        tags$img(
-            src     = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
-            width     = 16,
-            height = 12
-        ),
-        paste0(" ", iso)
-    )
+  tags$button(
+    class = "btn btn-outline-secondary btn-sm",
+    `data-iso` = iso,
+    tags$img(
+      src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
+      width = 16,
+      height = 12
+    ),
+    paste0(" ", iso)
+  )
 })
 names(precomputed_flags) <- country_metadata$iso2c
 
 # Collaboration expansion
 collab_expansion <- df_global_collab %>%
-    select(iso2c, year, percentage) %>%
-    mutate(isoSplit = strsplit(iso2c, "-")) %>%
-    tidytable::unnest(isoSplit) %>%
-    group_by(isoSplit) %>%
-    arrange(desc(percentage))
+  select(iso2c, year, percentage) %>%
+  mutate(isoSplit = strsplit(iso2c, "-")) %>%
+  tidytable::unnest(isoSplit) %>%
+  group_by(isoSplit) %>%
+  arrange(desc(percentage))
 
 
 ui <- page_navbar(
-    selected = "National Trends 📈",
-    theme = bs_theme(version = 5, bootswatch = "cosmo"),
-    header = NULL,
-    navbar_options = navbar_options(collapsible = TRUE, underline = TRUE),
-    sidebar = sidebar(
-        title = "Country and Region Filters 🌍",
-        width = "14rem",
-        tooltip(
-            fontawesome::fa("info-circle", a11y = "sem", title = "Warnings"),
-            "Filters only apply to the 'National Trends' section. \nUse the 'Select Countries' filter to explore more."
-        ),
-        sliderInput(
-            "years", "📅 Year Range",
-            min = 1996, max = 2022,
-            value = c(1996, 2022),
-            step = 1, sep = "", animate = FALSE,
-            width = "100%"
-        ),
-        hr(),
-        fluidRow(
-            column(
-                width = 6,
-                actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;")
-            ),
-            column(
-                width = 6,
-                actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
-            )
-        ),
-        hr(),
-        div(
-            style = "margin-bottom: 18rem;",     # Use CSS to create space underneath
-            selectizeInput(
-                "countries", "Select Countries 🎌",
-                choices = NULL,
-                multiple = TRUE,
-                options = list(plugins = "remove_button", maxItems = 100, placeholder = 'Please select up to 100 countries'),
-                width = "100%"
-            )
-        )
+  selected = "National Trends 📈",
+  theme = bs_theme(version = 5, bootswatch = "cosmo"),
+  header = NULL,
+  navbar_options = navbar_options(collapsible = TRUE, underline = TRUE),
+  sidebar = sidebar(
+    title = "Country and Region Filters 🌍",
+    width = "14rem",
+    tooltip(
+      fontawesome::fa("info-circle", a11y = "sem", title = "Warnings"),
+      "Filters only apply to the 'National Trends' section. \nUse the 'Select Countries' filter to explore more."
     ),
+    sliderInput(
+      "years", "📅 Year Range",
+      min = 1996, max = 2022,
+      value = c(1996, 2022),
+      step = 1, sep = "", animate = FALSE,
+      width = "100%"
+    ),
+    hr(),
+    fluidRow(
+      column(
+        width = 6,
+        actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;")
+      ),
+      column(
+        width = 6,
+        actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
+      )
+    ),
+    hr(),
+    div(
+      style = "margin-bottom: 18rem;", # Use CSS to create space underneath
+      selectizeInput(
+        "countries", "Select Countries 🎌",
+        choices = NULL,
+        multiple = TRUE,
+        options = list(plugins = "remove_button", maxItems = 100, placeholder = "Please select up to 100 countries"),
+        width = "100%"
+      )
+    )
+  ),
 
-    # ------------------------------
-    # 1) NATIONAL TRENDS NAV PANEL
-    # ------------------------------
-    nav_panel(
-        "National Trends 📈",
+  # ------------------------------
+  # 1) NATIONAL TRENDS NAV PANEL
+  # ------------------------------
+  nav_panel(
+    "National Trends 📈",
 
-        # Wrap everything in a fluidPage so you can arrange the new controls at the top:
-        fluidPage(
-            fluidRow(
-                column(
-                    width = 12,
+    # Wrap everything in a fluidPage so you can arrange the new controls at the top:
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
 
-                    # Data Mode
-                    div(
-                        style = "display:inline-block; margin-right:20px;",
-                        radioButtons(
-                            "data_mode", "Data Mode 📊",
-                            choices = c("Individual Countries", "Collaborations"),
-                            selected = "Individual Countries",
-                            inline = TRUE
-                        )
-                    ),
+          # Data Mode
+          div(
+            style = "display:inline-block; margin-right:20px;",
+            radioButtons(
+              "data_mode", "Data Mode 📊",
+              choices = c("Individual Countries", "Collaborations"),
+              selected = "Individual Countries",
+              inline = TRUE
+            )
+          ),
 
-                    # Region Filter
-                    div(
-                        style = "display:inline-block;",
-                        conditionalPanel(
-                            condition = "input.data_mode == 'Individual Countries'",
-                            selectizeInput(
-                                "region",
-                                "🗾Region Filter🍁",
-                                choices = "All",
-                                multiple = FALSE,
-                                options = list(plugins = "remove_button")
-                            )
-                        )
-                    )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    # Summary box with the flags
-                    value_box(
-                        title = uiOutput("summaryText"),
-                        value = uiOutput("flagButtons"),
-                        max_height = "100px",
-                        full_screen = TRUE,
-                        fill = TRUE
-                    )
-                )
-            ),
+          # Region Filter
+          div(
+            style = "display:inline-block;",
+            conditionalPanel(
+              condition = "input.data_mode == 'Individual Countries'",
+              selectizeInput(
+                "region",
+                "🗾Region Filter🍁",
+                choices = "All",
+                multiple = FALSE,
+                options = list(plugins = "remove_button")
+              )
+            )
+          )
+        )
+      ),
+      fluidRow(
+        column(
+          width = 12,
+          # Summary box with the flags
+          value_box(
+            title = uiOutput("summaryText"),
+            value = uiOutput("flagButtons"),
+            max_height = "100px",
+            full_screen = TRUE,
+            fill = TRUE
+          )
+        )
+      ),
 
-            # Existing card with sub-tabs
-            card(
-                navset_card_tab(
-                    nav_panel(
-                        "Trends📈",
-                        withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
-                    ),
-                    nav_panel("Map📌", uiOutput("mapPlot")),
-        nav_panel(
+      # Existing card with sub-tabs
+      card(
+        navset_card_tab(
+          nav_panel(
+            "Trends📈",
+            withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
+          ),
+          nav_panel("Map📌", uiOutput("mapPlot")),
+          nav_panel(
             "Cartogram🗺️",
             tooltip(
-                fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-                "Cartogram only available for Individual Countries (Select in Main panel). \nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
+              fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
+              "Cartogram only available for Individual Countries (Select in Main panel). \nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
             ),
             conditionalPanel(
-                condition = "input.data_mode == 'Individual Countries'",
-                actionButton("map2_reload", "Reload Map. Must be clicked every time you reload data or filters.", class = "btn-danger", style = "width: 100%;"),
-                leafletOutput("geoPlot2", height = 600)
+              condition = "input.data_mode == 'Individual Countries'",
+              actionButton("map2_reload", "Reload Map. Must be clicked every time you reload data or filters.", class = "btn-danger", style = "width: 100%;"),
+              leafletOutput("geoPlot2", height = 600)
             )
-        ),
-                    nav_panel(
-                        "Substance Types🧪",
-                        fluidRow(
-                            column(
-                                width = 12,
-                                selectInput(
-                                    "chemicalSelector",
-                                    "Select Chemical Type",
-                                    choices = c("Organic", "Organometallic", "Rare-Earths"),
-                                    selected = "Organic",
-                                    width = "30%"
-                                )
-                            )
-                        ),
-                        withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
-                    )
-                )
-            )
-        )
-    ),
-
-    # ------------------------------
-    # 3) ARTICLE FIGURES
-    # ------------------------------
-    nav_panel(
-        "Article Figures 📰",
-        fluidRow(
-            column(
+          ),
+          nav_panel(
+            "Substance Types🧪",
+            fluidRow(
+              column(
                 width = 12,
                 selectInput(
-                    "article_source", "Select Article Source",
-                    choices = unique(figure_article$source),
-                    selected = unique(figure_article$source)[1],
-                    width = "40%"
+                  "chemicalSelector",
+                  "Select Chemical Type",
+                  choices = c("Organic", "Organometallic", "Rare-Earths"),
+                  selected = "Organic",
+                  width = "30%"
                 )
-            )
-        ),
-        withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
-    ),
-
-    # ------------------------------
-    # 4) ELEMENT FIGURES
-    # ------------------------------
-    nav_panel(
-        "Element Figures 🧪",
-        fluidPage(
-            fluidRow(
-                column(
-                    width = 12,
-                    plotOutput("compositionPlot", height = "600px")
-                )
+              )
             ),
-            fluidRow(
-                column(
-                    width = 8,
-                    plotOutput("periodicTablePlot", click = "plot_click", height = "600px")
-                ),
-                column(
-                    width = 4,
-                    uiOutput("elementInfo")
-                )
-            )
+            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
+          )
         )
-    ),
-
-    # ------------------------------
-    # 5) KNOW MORE
-    # ------------------------------
-    nav_panel(
-        "Know more about the research 🥼",
-        fluidPage(
-            fluidRow(
-                column(
-                    width = 12,
-                    h3("China's rise in the chemical space and the decline of US influence"),
-                    p("This dashboard is based on the study ‘China's rise in the chemical space and the decline of US influence’. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
-                    p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
-                    p("Useful links for more information:"),
-                    tags$ul(
-                        tags$li(
-                            tags$a(
-                                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-                                target = "_blank",
-                                "Access the full preprint 📄"
-                            )
-                        ),
-                        tags$li(
-                            tags$a(
-                                href = "https://github.com/santi-rios/Chemical-Space/wiki",
-                                target = "_blank",
-                                "App wiki and documentation 📖"
-                            )
-                        ),
-                        tags$li(
-                            tags$a(
-                                href = "https://github.com/santi-rios/Chemical-Space",
-                                target = "_blank",
-                                "Code Repository 📦"
-                            )
-                        )
-                    )
-                )
-            ),
-            br(),
-            br(),
-            br(),
-            br(),
-            br(),
-            br(),
-            hr(),
-            fluidRow(
-                column(
-                    width = 12,
-                    tags$a(
-                        href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-                        target = "_blank",
-                        tags$img(
-                            src = "logos_footer.png",
-                            class = "img-fluid",
-                            style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
-                        )
-                    )
-                )
-            )
-        )
+      )
     )
+  ),
+
+  # ------------------------------
+  # 3) ARTICLE FIGURES
+  # ------------------------------
+  nav_panel(
+    "Article Figures 📰",
+    fluidRow(
+      column(
+        width = 12,
+        selectInput(
+          "article_source", "Select Article Source",
+          choices = unique(figure_article$source),
+          selected = unique(figure_article$source)[1],
+          width = "40%"
+        )
+      )
+    ),
+    withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
+  ),
+
+  # ------------------------------
+  # 4) ELEMENT FIGURES
+  # ------------------------------
+  nav_panel(
+    "Element Figures 🧪",
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+          plotOutput("compositionPlot", height = "600px")
+        )
+      ),
+      fluidRow(
+        column(
+          width = 8,
+          plotOutput("periodicTablePlot", click = "plot_click", height = "600px")
+        ),
+        column(
+          width = 4,
+          uiOutput("elementInfo")
+        )
+      )
+    )
+  ),
+
+  # ------------------------------
+  # 5) KNOW MORE
+  # ------------------------------
+  nav_panel(
+    "Know more about the research 🥼",
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+          h3("China's rise in the chemical space and the decline of US influence"),
+          p("This dashboard is based on the study ‘China's rise in the chemical space and the decline of US influence’. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
+          p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
+          p("Useful links for more information:"),
+          tags$ul(
+            tags$li(
+              tags$a(
+                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+                target = "_blank",
+                "Access the full preprint 📄"
+              )
+            ),
+            tags$li(
+              tags$a(
+                href = "https://github.com/santi-rios/Chemical-Space/wiki",
+                target = "_blank",
+                "App wiki and documentation 📖"
+              )
+            ),
+            tags$li(
+              tags$a(
+                href = "https://github.com/santi-rios/Chemical-Space",
+                target = "_blank",
+                "Code Repository 📦"
+              )
+            )
+          )
+        )
+      ),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      hr(),
+      fluidRow(
+        column(
+          width = 12,
+          tags$a(
+            href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+            target = "_blank",
+            tags$img(
+              src = "logos_footer.png",
+              class = "img-fluid",
+              style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
+            )
+          )
+        )
+      )
+    )
+  )
 )
 
 server <- function(input, output, session) {
-    # Dynamically update Region choices and show top 10 countries upon app initialization
-    observe({
-        req(df_global_ind, df_global_collab)
+  # Dynamically update Region choices and show initial top countries
+  observe({
+    req(df_global_ind, df_global_collab)
 
-        # Update region selectize input based on current data mode
-        region_choices <- if (input$data_mode == "Individual Countries") {
-            unique(df_global_ind$region[!is.na(df_global_ind$region)])
-        } else {
-            unique(df_global_collab$region[!is.na(df_global_collab$region)])
-        }
-        updateSelectizeInput(session, "region", choices = c("All", sort(region_choices)), selected = "All")
+    # Update region selectize input based on current data mode
+    region_choices <- if (input$data_mode == "Individual Countries") {
+      unique(df_global_ind$region[!is.na(df_global_ind$region)])
+    } else {
+      unique(df_global_collab$region[!is.na(df_global_collab$region)])
+    }
+    updateSelectizeInput(session, "region", choices = c("All", sort(region_choices)), selected = "All")
 
-        # Show top 10 countries from the default dataset (Individual Countries initially)
-        default_data <- df_global_ind # Directly use df_global_ind for initial top 10
-        top_countries <- default_data %>%
-            group_by(country) %>%
-            summarise(val = sum(percentage, na.rm = TRUE)) %>%
-            arrange(desc(val)) %>%
-            head(10)
-        updateSelectizeInput(session, "countries", selected = top_countries$country, choices = all_ctry) # Use choices = all_ctry
-    })
+    # Set initial top countries (using pre-calculated values)
+    updateSelectizeInput(session, "countries", selected = initial_top_countries, choices = all_ctry)
+  })
 
-    # Build the base data once, filtering by collab setting and region.
-    df <- reactive({
-        if (input$data_mode == "Individual Countries") {
-            res <- df_global_ind
-            if (!is.null(input$region) && !("All" %in% input$region)) {
-                res <- res[region %in% input$region]
-            }
-        } else {
-            res <- df_global_collab
-        }
-        res
-    })
-    # bindCache(input$data_mode, input$region)
+  # Build the base data once, filtering by collab setting and region.
+  df <- reactive({
+    if (input$data_mode == "Individual Countries") {
+      res <- df_global_ind
+      if (!is.null(input$region) && !("All" %in% input$region)) {
+        res <- res[region %in% input$region]
+      }
+    } else {
+      res <- df_global_collab
+    }
+    res
+  })
+  # bindCache(input$data_mode, input$region)
 
-    # Update available country choices based on df.
-    observe({
-        req(df())
-        valid_countries <- sort(unique(df()$country))
-        top_countries <- df() %>% # Use df() here to recalculate top countries based on current filters
-            group_by(country) %>%
-            summarise(val = sum(percentage, na.rm = TRUE)) %>%
-            arrange(desc(val)) %>%
-            head(10)
-        updateSelectizeInput(session, "countries", choices = valid_countries, selected = top_countries$country, server = TRUE)
-    })
+  # Update available country choices based on df.
+  observe({
+    req(df())
+    valid_countries <- sort(unique(df()$country))
+    top_countries <- df() %>% # Use df() here to recalculate top countries based on current filters
+      group_by(country) %>%
+      summarise(val = sum(percentage, na.rm = TRUE)) %>%
+      arrange(desc(val)) %>%
+      head(10)
+    updateSelectizeInput(session, "countries", choices = valid_countries, selected = top_countries$country, server = TRUE)
+  })
 
-    # Filtered data reactive: by years and selected countries.
-    filtered_data <- reactive({
-        req(input$countries, input$years)
-        df() %>% # use df() here to apply current data filtering
-            filter(
-            year >= input$years[1] & year <= input$years[2] &
-                country %in% input$countries
+  # Observe event for "Top 20 Countries" button
+  observeEvent(input$plotTopCountries, {
+    top_20_countries_df <- df() %>%
+      group_by(country) %>%
+      summarise(val = sum(percentage, na.rm = TRUE)) %>%
+      arrange(desc(val)) %>%
+      head(20)
+    top_20_countries <- top_20_countries_df$country
+    updateSelectizeInput(session, "countries", selected = top_20_countries)
+  })
+
+  # Observe event for "Deselect All" button
+  observeEvent(input$deselectAll, {
+    updateSelectizeInput(session, "countries", selected = character(0))
+  })
+
+  # Filtered data reactive: by years and selected countries.
+  filtered_data <- reactive({
+    req(input$countries, input$years)
+    df() %>% # use df() here to apply current data filtering
+      filter(
+        year >= input$years[1] & year <= input$years[2] &
+          country %in% input$countries
+      )
+  })
+  # bindCache(input$years, input$countries, input$data_mode, input$region) %>%
+  # debounce(300)
+
+  # Trend plot
+  output$trendPlot <- renderPlotly({
+    req(nrow(filtered_data()) > 0)
+    data <- filtered_data() %>% filter(chemical == "All")
+    p <- ggplot(
+      data,
+      aes(
+        x = year,
+        y = percentage,
+        color = country,
+        group = country,
+        text = paste0(
+          "<b>Country:</b> ", country,
+          "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
+          "<br><b>Year:</b> ", year,
+          "<br><b>Region:</b> ", region
         )
-    })
-    # bindCache(input$years, input$countries, input$data_mode, input$region) %>%
-    # debounce(300)
+      )
+    ) +
+      geom_line() +
+      geom_point(aes(size = percentage / 100), alpha = 0.4, show.legend = FALSE) +
+      geom_text(
+        data = data %>% filter(year == max(year)),
+        aes(y = percentage, label = iso3c, color = country),
+        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
+        size = 4, check_overlap = TRUE, show.legend = FALSE
+      ) +
+      theme_minimal() +
+      scale_color_manual(values = color_map_all) +
+      scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size= 8, face="bold"),                                 
+        legend.title = element_blank()
+        )
+    
+    if (input$data_mode == "Collaborations") {
+      p <- p + labs(
+        title = "Percentage of new compunds by Collaborations",
+        y = "% of new substances",
+        colour = ""
+        )
+    } else {
+      p <- p + labs(
+        title = "Percentage of new compunds reported by each country in journals",
+        y = "% of new substances",
+        colour = ""
+        )
+    }
 
-    # Trend plot
-    output$trendPlot <- renderPlotly({
-        req(nrow(filtered_data()) > 0)
-        data <- filtered_data()
-        p <- ggplot(data, aes(x = year, y = percentage, color = country)) +
-            geom_line() +
-            geom_point(aes(size = percentage / 100), alpha = 0.4) +
-            theme_minimal() +
-            scale_color_manual(values = color_map_all) +
-            scale_y_continuous(labels = scales::percent_format(scale = 1))
-
-        ggplotly(p, tooltip = "text") %>%
-            plotly::toWebGL()
-    })
+    ggplotly(p, tooltip = "text") %>%
+      plotly::layout(
+      legend = list(
+        orientation = "h",
+        x = 0.5,
+        xanchor = "center",
+        y = -0.3
+      ),
+      margin = list(b = 50)
+      ) %>%
+      plotly::toWebGL()
+  })
   # bindCache(filtered_data)
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -469,13 +537,13 @@ server <- function(input, output, session) {
         enableDoubleClickZoom = TRUE
       ) %>%
       hc_subtitle(
-        text  = paste0(
+        text = paste0(
           "Mean value of Top Country in current selection = ",
           scales::percent(max(map_data$value, na.rm = TRUE),
-          accuracy = 0.01,
-          scale = 1
+            accuracy = 0.01,
+            scale = 1
           )
-          ),
+        ),
         style = list(color = "black")
       ) %>%
       hc_title(
@@ -548,7 +616,7 @@ server <- function(input, output, session) {
       )) %>%
       hc_mapNavigation(enabled = TRUE) %>%
       hc_subtitle(
-        text  = paste0(
+        text = paste0(
           "Top collaborator (mean) = ",
           map_data$iso3c[which.max(map_data$value)],
           " (", scales::percent(max_val, accuracy = 0.01, scale = 1), ")"
@@ -601,7 +669,7 @@ server <- function(input, output, session) {
         title = "Avg %",
         opacity = 0.5
       )
-  }) 
+  })
 
   observe({
     if (input$data_mode == "Individual Countries") {
@@ -649,7 +717,7 @@ server <- function(input, output, session) {
       theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
-    p <- p 
+    p <- p
     # + scale_color_manual(values = color_map_all)
 
     ggplotly(p, tooltip = "text") %>%
@@ -671,99 +739,99 @@ server <- function(input, output, session) {
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
-# Flag Buttons
-output$flagButtons <- renderUI({
-  req(filtered_data())
+  # Flag Buttons
+  output$flagButtons <- renderUI({
+    req(filtered_data())
 
-  # Get ordered ISO codes using data.table
-iso_data <- if (input$data_mode == "Collaborations") {
-  filtered_data()[ iso2c %in% input$countries ][
-    collab_expansion,
-    on = .(iso2c),
-    allow.cartesian = TRUE
-  ][, .(totVal = sum(percentage)), by = .(isoSplit = isoSplit)]
-} else {
-  filtered_data()[, .(totVal = sum(percentage)), by = .(isoSplit = iso2c)]
-}
+    # Get ordered ISO codes using data.table
+    iso_data <- if (input$data_mode == "Collaborations") {
+      filtered_data()[iso2c %in% input$countries][
+        collab_expansion,
+        on = .(iso2c),
+        allow.cartesian = TRUE
+      ][, .(totVal = sum(percentage)), by = .(isoSplit = isoSplit)]
+    } else {
+      filtered_data()[, .(totVal = sum(percentage)), by = .(isoSplit = iso2c)]
+    }
 
-  ordered_iso <- iso_data[
-    order(-totVal),
-    head(isoSplit, 100)  # Limit to top 100
-  ]
+    ordered_iso <- iso_data[
+      order(-totVal),
+      head(isoSplit, 100) # Limit to top 100
+    ]
 
-  # Get precomputed flags and add click handlers
-  flags <- precomputed_flags[ordered_iso]
-  flags <- lapply(flags, function(flag) {
-    iso <- flag$attribs$`data-iso`
-    flag$attribs$onclick <- sprintf(
-      "Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})",
-      iso
-    )
-    flag
+    # Get precomputed flags and add click handlers
+    flags <- precomputed_flags[ordered_iso]
+    flags <- lapply(flags, function(flag) {
+      iso <- flag$attribs$`data-iso`
+      flag$attribs$onclick <- sprintf(
+        "Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})",
+        iso
+      )
+      flag
+    })
+
+    div(flags)
   })
 
-  div(flags)
-})
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Modal
+  observeEvent(input$selectedCountry, {
+    req(df_global)
+    sel_iso <- input$selectedCountry
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Modal
-observeEvent(input$selectedCountry, {
-  req(df_global)
-  sel_iso <- input$selectedCountry
+    if (input$data_mode == "Individual Countries") {
+      # Switch to 'Collaborations' automatically and update countries accordingly:
+      updateRadioButtons(session, "data_mode", selected = "Collaborations")
 
-  if (input$data_mode == "Individual Countries") {
-    # Switch to 'Collaborations' automatically and update countries accordingly:
-    updateRadioButtons(session, "data_mode", selected = "Collaborations")
+      collab_rows <- df_global %>%
+        filter(is_collab == TRUE, grepl(sel_iso, iso2c))
+      updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
+    }
 
-    collab_rows <- df_global %>%
+    # For collaborations, filter using df_global so that we get only rows
+    # where iso2c contains the selected country code.
+    flag_data <- df_global %>%
       filter(is_collab == TRUE, grepl(sel_iso, iso2c))
-    updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
-  }
+    if (nrow(flag_data) == 0) {
+      return()
+    }
 
-  # For collaborations, filter using df_global so that we get only rows
-  # where iso2c contains the selected country code.
-  flag_data <- df_global %>%
-    filter(is_collab == TRUE, grepl(sel_iso, iso2c))
-  if (nrow(flag_data) == 0) {
-    return()
-  }
+    collab_countries <- unique(unlist(lapply(flag_data$iso2c, function(x) strsplit(x, "-")[[1]])))
+    collab_countries <- collab_countries[collab_countries != sel_iso]
 
-  collab_countries <- unique(unlist(lapply(flag_data$iso2c, function(x) strsplit(x, "-")[[1]])))
-  collab_countries <- collab_countries[collab_countries != sel_iso]
-
-  # Create flags HTML for collaboration countries
-  flag_icons <- NULL
-  if (length(collab_countries) > 0) {
-    flag_icons <- tags$div(
-      lapply(collab_countries, function(iso) {
-        tags$span(
-          tags$img(
-            src = paste0("https://flagcdn.com/16x12/", tolower(iso), ".png"),
-            width = 16, height = 12,
-            style = "margin-right: 4px;"
+    # Create flags HTML for collaboration countries
+    flag_icons <- NULL
+    if (length(collab_countries) > 0) {
+      flag_icons <- tags$div(
+        lapply(collab_countries, function(iso) {
+          tags$span(
+            tags$img(
+              src = paste0("https://flagcdn.com/16x12/", tolower(iso), ".png"),
+              width = 16, height = 12,
+              style = "margin-right: 4px;"
+            )
           )
-        )
-      })
+        })
+      )
+    }
+
+    content <- tagList(
+      if (!is.null(flag_icons)) {
+        p("Collaborations from current country include:", flag_icons)
+      } else {
+        p("No other collaborations found.")
+      },
+      # Placeholder text for additional explanation
+      p("NOTE: Default Collaboration plot shows the top overall collaborations. Use the 'Select Countries' filter to explore more.")
     )
-  }
 
-  content <- tagList(
-    if (!is.null(flag_icons)) {
-      p("Collaborations from current country include:", flag_icons)
-    } else {
-      p("No other collaborations found.")
-    },
-    # Placeholder text for additional explanation
-    p("NOTE: Default Collaboration plot shows the top overall collaborations. Use the 'Select Countries' filter to explore more.")
-  )
-
-  showModal(modalDialog(
-    title = paste("Country Details:", sel_iso),
-    content,
-    easyClose = TRUE,
-    footer = modalButton("Close")
-  ))
-})
+    showModal(modalDialog(
+      title = paste("Country Details:", sel_iso),
+      content,
+      easyClose = TRUE,
+      footer = modalButton("Close")
+    ))
+  })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Article Figures
@@ -777,7 +845,7 @@ observeEvent(input$selectedCountry, {
       "Growth rate of GDP" = "GDP per capira growth (annual %)",
       "Number of Researchers" = "Researchs",
       "Expansion of the CS" = "Number of new substances",
-      "Value"  # default title if none match
+      "Value" # default title if none match
     )
 
     article_data <- subset(figure_article, source == input$article_source)
@@ -800,7 +868,7 @@ observeEvent(input$selectedCountry, {
         title = paste("Article Figures - Source:", input$article_source),
         xaxis = list(title = "Year"),
         yaxis = list(title = y_title),
-        plot_bgcolor = 'rgb(199, 204, 204)'
+        plot_bgcolor = "rgb(199, 204, 204)"
       ) %>%
       animation_opts(
         frame = 300,
@@ -901,10 +969,10 @@ observeEvent(input$selectedCountry, {
           round(element_data$first_ionization_potential, 2)
         ),
         hr(),
-      h3("Discovered by:"),
-      p(element_data$discoverer),
-      h3("Year of Discovery:"),
-      p(element_data$year_of_discovery)
+        h3("Discovered by:"),
+        p(element_data$discoverer),
+        h3("Year of Discovery:"),
+        p(element_data$year_of_discovery)
       )
     } else {
       h4("Click an element in the periodic table to view details")
@@ -966,7 +1034,7 @@ observeEvent(input$selectedCountry, {
     }
 
     base_plot
-  })  %>% bindCache(selected_element())
+  }) %>% bindCache(selected_element())
 
   # Periodic table plot
   output$periodicTablePlot <- renderPlot({
@@ -975,13 +1043,17 @@ observeEvent(input$selectedCountry, {
 
     p <- ggplot(plot_data, aes(x = display_column, y = display_row)) +
       # Tiles with no data (blank spaces)
-      geom_tile(data = subset(plot_data, !present),
-                fill = "#f8f9fa", color = "white",
-                width = 0.95, height = 0.95) +
+      geom_tile(
+        data = subset(plot_data, !present),
+        fill = "#f8f9fa", color = "white",
+        width = 0.95, height = 0.95
+      ) +
       # Tiles coloured by "type" for cells with data
-      geom_tile(data = subset(plot_data, present),
-                aes(fill = type),
-                color = "white", width = 0.95, height = 0.95)
+      geom_tile(
+        data = subset(plot_data, present),
+        aes(fill = type),
+        color = "white", width = 0.95, height = 0.95
+      )
 
     # Highlight the clicked element with orange color
     if (!is.null(highlight_element)) {
@@ -995,7 +1067,7 @@ observeEvent(input$selectedCountry, {
     p +
       geom_text(aes(label = symbol), size = 5, fontface = "bold") +
       scale_fill_brewer(palette = "Set2", na.value = "#f8f9fa") +
-      scale_y_reverse() +  # For proper periodic table orientation
+      scale_y_reverse() + # For proper periodic table orientation
       theme_void() +
       theme(
         plot.background = element_rect(fill = "white", color = NA),
