@@ -14,24 +14,24 @@ library(data.table)
 library(shinycssloaders)
 
 # Efficient data preparation using Arrow and dplyr
-ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet")
+ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
+  as_tidytable()
 
-ds <- as_tidytable(ds)
+# Pre-filter at the Arrow level before collecting
+ds_filtered <- ds %>% filter(!is.na(percentage)) 
 
-# Full dataset with only needed columns
-df_global <- ds %>%
-  filter(!is.na(percentage)) %>%
-  dplyr::collect()
+# Full dataset with only needed columns - collect once
+df_global <- ds_filtered %>% dplyr::collect()
 
-# Subset for individual countries
-df_global_ind <- df_global %>%
-  filter(is_collab == FALSE) %>%
-  dplyr::collect()
+# Use data.table directly - faster than tidytable for these operations
+setDT(df_global)
 
-# Subset for collaborations
-df_global_collab <- df_global %>%
-  filter(is_collab == TRUE) %>%
-  dplyr::collect()
+# Create indices on frequently filtered columns for faster subsetting
+data.table::setindex(df_global, is_collab, country, year)
+
+# Create views instead of copies - much more memory efficient
+df_global_ind <- df_global[is_collab == FALSE]
+df_global_collab <- df_global[is_collab == TRUE]
 
 # Articles: only load columns needed
 figure_article <- ds %>%
@@ -110,6 +110,31 @@ collab_expansion <- df_global_collab %>%
   arrange(desc(percentage))
 
 
+# Pre-compute the Highchart map data at startup instead of in reactive context
+map_data_cache <- list()
+
+# Initialize the cache for individual countries
+map_data_cache$individual <- df_global_ind %>%
+  group_by(iso3c, year, region) %>%
+  summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
+  group_by(iso3c) %>%
+  summarise(
+    value      = mean(yearly_avg, na.rm = TRUE),
+    best_year  = year[which.max(yearly_avg)],
+    worst_year = year[which.min(yearly_avg)],
+    region     = first(region),
+    .groups    = "drop"
+  )
+
+# Initialize the cache for collaborations
+map_data_cache$collab_expanded <- as.data.table(df_global_collab)[, .(
+  splitted_iso = unlist(strsplit(iso3c, "-")),
+  combo = rep(iso3c, sapply(strsplit(iso3c, "-"), length)),
+  value = rep(percentage, sapply(strsplit(iso3c, "-"), length)),
+  year = rep(year, sapply(strsplit(iso3c, "-"), length))
+)]
+
+
 ui <- page_navbar(
   selected = "National Trends 📈",
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
@@ -145,7 +170,7 @@ div(
   style = "margin-bottom: 18rem;",
   accordion(
     id = "countryAccordion",
-    open = FALSE,
+    open = TRUE,
     accordion_panel(
       "Select Countries 🎌",
       checkboxGroupInput(
@@ -369,6 +394,7 @@ server <- function(input, output, session) {
     # Update region selectize input based on current data mode
     region_choices <- if (input$data_mode == "Individual Countries") {
       unique(df_global_ind$region[!is.na(df_global_ind$region)])
+      unique(df_global_ind$region[!is.na(df_global_ind$region)])
     } else {
       unique(df_global_collab$region[!is.na(df_global_collab$region)])
     }
@@ -557,17 +583,36 @@ server <- function(input, output, session) {
         text  = paste0("Top Country (Total Value) = ", map_data$iso3c[which.max(map_data$value)]),
         style = list(color = "black")
       )
-  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
-
+  }) %>% 
+  bindCache(list(
+    input$data_mode, 
+    paste(sort(unique(filtered_data()$iso3c)), collapse=","),
+    input$years[1], 
+    input$years[2]
+  ))
   # Highchart map - Collaborations
-  collab_data <- reactive({
-    req(filtered_data(), input$data_mode == "Collaborations")
-    dt <- as.data.table(filtered_data())
-    dt[, Value := percentage]
-    dt[, Year := year]
-    dt
-  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
-
+# Replace the collab_data reactive with a more optimized version
+collab_data <- reactive({
+  req(filtered_data(), input$data_mode == "Collaborations")
+  
+  # Get unique combinations of countries and years from filtered data
+  filtered_combos <- filtered_data()[, .(iso3c, year)]
+  
+  # Efficiently filter the pre-computed expanded data
+  result <- map_data_cache$collab_expanded[
+    combo %in% filtered_combos$iso3c & 
+    year >= input$years[1] & 
+    year <= input$years[2]
+  ]
+  
+  result
+}) %>% 
+  bindCache(
+    input$data_mode, 
+    paste0(sort(unique(filtered_data()$iso3c)), collapse=","), 
+    input$years[1], 
+    input$years[2]
+  )
   output$collabMap <- renderHighchart({
     req(collab_data())
     map_data_by_pair <- collab_data()[, .(
@@ -648,44 +693,44 @@ server <- function(input, output, session) {
   })
 
   # Initialize map
-  output$geoPlot2 <- renderLeaflet({
-    leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
-      addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
-      addProviderTiles("CartoDB.Positron", group = "Continents") %>%
-      setView(lng = 0, lat = 30, zoom = 2)
-  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
+# Initialize map only once and use proxy more effectively
+output$geoPlot2 <- renderLeaflet({
+  leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+    addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
+    addProviderTiles("CartoDB.Positron", group = "Continents") %>%
+    addLayersControl(
+      baseGroups = c("NASA", "Continents"),
+      overlayGroups = c("Markers"),
+      position = "topright"
+    ) %>%
+    setView(lng = 0, lat = 30, zoom = 2)
+})
 
-  # Update markers and legend whenever carto_data changes
-  observe({
-    req(carto_data())
-    data <- carto_data()
-    pal <- colorNumeric("Reds", domain = data$value)
+# Update markers using observeEvent to control when it happens
+observeEvent(input$map2_reload, {
+  req(carto_data())
+  data <- carto_data()
+  pal <- colorNumeric("Reds", domain = data$value)
 
-    leafletProxy("geoPlot2", data = data) %>%
-      clearMarkers() %>%
-      addCircleMarkers(
-        lng = ~lng, lat = ~lat,
-        radius = ~ scales::rescale(value, c(5, 30)),
-        color = ~ pal(value),
-        fillOpacity = 0.7,
-        group = "Markers",
-        popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
-      ) %>%
-      clearControls() %>%
-      addLayersControl(
-        baseGroups = c("NASA", "Continents"),
-        overlayGroups = c("Markers"),
-        position = "topright"
-      ) %>%
-      addLegend(
-        "bottomright",
-        pal = pal,
-        values = ~value,
-        title = "Avg %",
-        opacity = 0.5
-      )
-  })
-
+  leafletProxy("geoPlot2", data = data) %>%
+    clearMarkers() %>%
+    clearControls() %>%
+    addCircleMarkers(
+      lng = ~lng, lat = ~lat,
+      radius = ~ scales::rescale(value, c(5, 30)),
+      color = ~ pal(value),
+      fillOpacity = 0.7,
+      group = "Markers",
+      popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
+    ) %>%
+    addLegend(
+      "bottomright",
+      pal = pal,
+      values = ~value,
+      title = "Avg %",
+      opacity = 0.5
+    )
+}, ignoreInit = TRUE)
   observe({
     if (input$data_mode == "Individual Countries") {
       showNotification("Country and Region Filters refresh Plots automatically except for Cartogram which requires manual reload.", type = "warning")
