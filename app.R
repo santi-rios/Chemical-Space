@@ -14,7 +14,7 @@ library(data.table)
 library(shinycssloaders)
 
 # Convert Parquet to data.table-backed objects on the fly.
-df <- as_tidytable(arrow::read_parquet("./data6/df.parquet"))
+df <- as_tidytable(arrow::open_dataset("./data6/df.parquet"))
 
 df_global <- df |>
   filter(!is.na(percentage))
@@ -37,6 +37,7 @@ df_figures <- df |>
     chemical = chemical_y
   )
 
+
   # Define a reactive color map once:
 color_map_all <- {
   all_ctry <- sort(unique(df_global$country))
@@ -49,6 +50,35 @@ color_map_all <- {
                                                   "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf")
   cmap
   }
+
+
+# Precompute country metadata and flags
+country_metadata <- unique(df_global[, .(iso2c, country)])
+precomputed_flags <- lapply(country_metadata$iso2c, function(iso) {
+  tags$button(
+    class = "btn btn-outline-secondary btn-sm",
+    `data-iso` = iso,  # Add data attribute for easier handling
+    tags$img(
+      src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
+      width = 16, 
+      height = 12
+    ),
+    " ", iso
+  )
+})
+names(precomputed_flags) <- country_metadata$iso2c
+
+# Precompute collaboration relationships
+# Precompute collaboration relationships
+collab_expansion <- df_global %>%
+  filter(is_collab == TRUE) %>%
+  select(iso2c, year, percentage) %>%
+  mutate(isoSplit = strsplit(iso2c, "-")) %>%
+  unnest(isoSplit) %>%
+  group_by(isoSplit) %>%
+  arrange(desc(percentage))
+
+# View(collab_expansion)
 
 ui <- page_navbar(
   selected = "National Trends",
@@ -308,7 +338,7 @@ server <- function(input, output, session) {
     }
 
     d # Ensure data is in R data frame
-  })
+  }) %>% bindCache(input$data_mode, input$region)
 
   # -- 2) region choices
   observe({
@@ -394,21 +424,15 @@ server <- function(input, output, session) {
   })
 
   # -- Filtering
-  filtered_data_raw <- reactive({
-    req(df())
-    df() %>%
-      filter(
-        year >= input$years[1],
-        year <= input$years[2],
-        country %in% input$countries
-      )
-  })
-
-  filtered_data_debounced <- filtered_data_raw %>% debounce(300)
-
+# Optimized filtered data
   filtered_data <- reactive({
-    filtered_data_raw()
-  }) %>% bindCache(input$years, input$countries, input$data_mode, input$region)
+    req(input$countries, input$years)
+    df()[
+      year >= input$years[1] & year <= input$years[2] &
+        country %in% input$countries
+    ]
+  }) %>% bindCache(input$years, input$countries, input$data_mode, input$region) %>%
+    debounce(300)
 
   # "Deselect All" button
   observeEvent(input$deselectAll, {
@@ -536,7 +560,7 @@ server <- function(input, output, session) {
         text  = paste0("Top Country (Total Value) = ", map_data$iso3c[which.max(map_data$value)]),
         style = list(color = "black")
       )
-  })
+  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
   # Highchart map - Collaborations
   collab_data <- reactive({
     req(filtered_data(), input$data_mode == "Collaborations")
@@ -621,7 +645,7 @@ server <- function(input, output, session) {
       addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
       addProviderTiles("CartoDB.Positron", group = "Continents") %>%
       setView(lng = 0, lat = 30, zoom = 2)
-  })
+  }) %>% bindCache("base_map")
 
   observeEvent(input$map2_reload, {
     req(nrow(filtered_data()) > 0, input$data_mode == "Individual Countries")
@@ -630,6 +654,7 @@ server <- function(input, output, session) {
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
 
     pal <- colorNumeric("Reds", domain = data$value)
+
     leafletProxy("geoPlot2", data = data) %>%
       clearMarkers() %>%
       addCircleMarkers(
@@ -674,7 +699,7 @@ server <- function(input, output, session) {
       filter(chemical == input$chemicalSelector)
 
     p <- ggplot(data, aes(
-      x = year, y = percentage, group = country, fill = country, color = country,
+      x = year, y = percentage, color = country, group = country,
       text = paste0(
         "<b>Country:</b> ", country,
         "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
@@ -682,8 +707,8 @@ server <- function(input, output, session) {
         "<br><b>Region:</b> ", region
       )
     )) +
-      geom_line(aes(color = country), show.legend = TRUE) +
-      geom_point(aes(size = percentage / 100, color = country),
+      geom_line() +
+      geom_point(aes(size = percentage / 100),
         alpha = 0.4, show.legend = FALSE
       ) +
       labs(
@@ -703,9 +728,11 @@ server <- function(input, output, session) {
 
     p <- p + scale_color_manual(values = color_map_all)
 
-    ggplotly(p, tooltip = "text")
-  })
-
+    ggplotly(p, tooltip = "text") %>%
+      plotly::partial_bundle() %>%
+      plotly::toWebGL()
+  }) %>% bindCache(input$chemicalSelector, input$countries, input$years)
+  
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Value boxes
   output$summaryText <- renderUI({
@@ -720,43 +747,39 @@ server <- function(input, output, session) {
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
-  output$flagButtons <- renderUI({
-    req(filtered_data())
-    # Summarize total by iso2c
-    if (input$data_mode == "Collaborations") {
-      # expand combos
-      iso_values <- filtered_data() %>%
-        mutate(isoSplit = strsplit(iso2c, "-")) %>%
-        unnest(isoSplit) %>% # Use tidytable's unnest syntax
-        group_by(isoSplit) %>%
-        summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-        arrange(desc(totVal))
-      all_iso <- iso_values$isoSplit
-    } else {
-      iso_values <- filtered_data() %>%
-        group_by(iso2c) %>%
-        summarise(totVal = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-        arrange(desc(totVal))
-      all_iso <- iso_values$iso2c
-    }
-
-    if (length(all_iso) == 0) {
-      return(NULL)
-    }
-
-    btns <- lapply(all_iso, function(iso) {
-      tags$button(
-        class = "btn btn-outline-secondary btn-sm",
-        onclick = paste0("Shiny.setInputValue('selectedCountry', '", iso, "', {priority: 'event'})"),
-        tags$img(
-          src = paste0("https://flagcdn.com/16x12/", tolower(iso), ".png"),
-          width = 16, height = 12
-        ),
-        " ", iso
-      )
-    })
-    do.call(tags$div, btns)
+# Flag Buttons
+output$flagButtons <- renderUI({
+  req(filtered_data())
+  
+  # Get ordered ISO codes using data.table
+iso_data <- if (input$data_mode == "Collaborations") {
+  filtered_data()[ iso2c %in% input$countries ][
+    collab_expansion,
+    on = .(iso2c),
+    allow.cartesian = TRUE
+  ][, .(totVal = sum(percentage)), by = .(isoSplit = isoSplit)]
+} else {
+  filtered_data()[, .(totVal = sum(percentage)), by = .(isoSplit = iso2c)]
+}
+  
+  ordered_iso <- iso_data[
+    order(-totVal), 
+    head(isoSplit, 100)  # Limit to top 100
+  ]
+  
+  # Get precomputed flags and add click handlers
+  flags <- precomputed_flags[ordered_iso]
+  flags <- lapply(flags, function(flag) {
+    iso <- flag$attribs$`data-iso`
+    flag$attribs$onclick <- sprintf(
+      "Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", 
+      iso
+    )
+    flag
   })
+  
+  div(flags)
+})
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Modal
@@ -861,8 +884,10 @@ observeEvent(input$selectedCountry, {
         redraw = FALSE
       )
 
-    p
-  })
+    p %>% 
+      plotly::partial_bundle() %>%
+      plotly::toWebGL()
+  }) %>% bindCache(input$article_source)
 
   observe({
     if (input$article_source %in% c("China-US collaboration")) {
@@ -893,7 +918,7 @@ observeEvent(input$selectedCountry, {
       mutate(
         present = symbol %in% unique(df_figures$symbol)
       )
-  })
+  }) %>% bindCache("periodic_data")
 
   # Handle periodic table clicks
   observeEvent(input$plot_click, {
@@ -960,7 +985,7 @@ observeEvent(input$selectedCountry, {
     } else {
       h4("Click an element in the periodic table to view details")
     }
-  })
+  }) %>% bindCache(selected_element())
 
   # Composition timeline plot
   output$compositionPlot <- renderPlot({
@@ -1017,7 +1042,7 @@ observeEvent(input$selectedCountry, {
     }
 
     base_plot
-  })
+  })  %>% bindCache(selected_element())
 
   # Periodic table plot
   output$periodicTablePlot <- renderPlot({
