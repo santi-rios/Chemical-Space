@@ -9,7 +9,8 @@ library(leaflet)
 library(highcharter)
 library(viridisLite)
 library(glue)
-library(ggplot2); theme_set(theme_light())
+library(ggplot2)
+theme_set(theme_light())
 library(data.table)
 library(shinycssloaders)
 
@@ -18,7 +19,13 @@ ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
   as_tidytable()
 
 # Pre-filter at the Arrow level before collecting
-ds_filtered <- ds %>% filter(!is.na(percentage)) 
+ds_filtered <- ds %>%
+  filter(!is.na(percentage)) %>%
+  select(
+    iso2c, year, percentage, chemical,
+    iso3c, country, lat, lng,
+    region, is_collab
+  )
 
 # Full dataset with only needed columns - collect once
 df_global <- ds_filtered %>% dplyr::collect()
@@ -27,7 +34,7 @@ df_global <- ds_filtered %>% dplyr::collect()
 setDT(df_global)
 
 # Create indices on frequently filtered columns for faster subsetting
-data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, chemical)
+data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, chemical) # nolint
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
@@ -35,19 +42,21 @@ df_global_collab <- df_global[is_collab == TRUE]
 
 # Articles: only load columns needed
 figure_article <- ds %>%
-  select(-percentage, -country, -year) %>%
   filter(!is.na(percentage_x)) %>%
-  rename(
-    percentage = percentage_x,
-    country = country_x,
-    year = year_x
-  ) %>%
+  select(
+    percentage = percentage_x, 
+    country = country_x, 
+    year = year_x,
+    source
+    ) %>%
   dplyr::collect()
 
 # Element figures: only load columns needed
 df_figures <- ds %>%
-  select(-percentage, -year, -chemical) %>%
   filter(!is.na(percentage_y)) %>%
+  select(
+    15:39
+  ) %>%
   rename(
     percentage = percentage_y,
     year = year_y,
@@ -129,12 +138,16 @@ map_data_cache$individual <- df_global_ind %>%
 # Initialize the cache for collaborations with splitted iso3c renamed,
 # ensuring that the original iso3c value is captured separately.
 map_data_cache$collab_expanded <- df_global_collab %>%
-  mutate(orig_iso = iso3c,
-         iso3c = strsplit(iso3c, "-")) %>%
+  mutate(
+    orig_iso = iso3c,
+    iso3c = strsplit(iso3c, "-")
+  ) %>%
   tidyr::unnest(cols = iso3c) %>%
-  mutate(combo = orig_iso,
-         value = percentage,
-         year = year) %>%
+  mutate(
+    combo = orig_iso,
+    value = percentage,
+    year = year
+  ) %>%
   select(-orig_iso)
 
 
@@ -153,7 +166,7 @@ ui <- page_navbar(
     sliderInput(
       "years", "📅 Year Range",
       min = 1996, max = 2022,
-      value = c(1996, 2022),
+      value = c(1996, 2021),
       step = 1, sep = "", animate = FALSE,
       width = "100%"
     ),
@@ -165,20 +178,27 @@ ui <- page_navbar(
       ),
       column(
         width = 6,
-        actionButton("plotTopCountries", "Top 20 Countries", class = "btn-danger", style = "width: 100%;")
+        actionButton("plotTopCountries", "Top 10 Countries", class = "btn-danger", style = "width: 100%;")
+      ),
+      br(),
+      br(),
+      br(),
+      column(
+        width = 12,
+        actionButton("plotTop100Countries", "Top 100 Countries", class = "btn-success", style = "width: 100%;")
       )
     ),
     hr(),
-div(
+    div(
       style = "margin-bottom: 18rem;", # Use CSS to create space underneath
       selectizeInput(
         "countries", "Select Countries 🎌",
         choices = NULL,
         multiple = TRUE,
-        options = list(plugins = "remove_button", maxItems = 30, placeholder = "Please select up to 100 countries"),
+        options = list(plugins = "remove_button", maxItems = 100, placeholder = "Select up to 100 countries"),
         width = "100%"
-  )
-)
+      )
+    )
   ),
 
   # ------------------------------
@@ -239,7 +259,7 @@ div(
         navset_card_tab(
           nav_panel(
             "Trends📈",
-            withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173")
+            withSpinner(plotlyOutput("trendPlot", width = "100%", height = 800), color = "#024173")
           ),
           nav_panel("Map📌", uiOutput("mapPlot")),
           nav_panel(
@@ -411,8 +431,7 @@ server <- function(input, output, session) {
       res <- df_global_collab
     }
     res
-  })
-  # bindCache(input$data_mode, input$region)
+  }) %>% bindCache(input$data_mode, input$region)
 
   # Update available country choices based on df.
   observe({
@@ -426,21 +445,34 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "countries", choices = valid_countries, selected = top_countries$country, server = TRUE)
   })
 
-  # Observe event for "Top 20 Countries" button
+  # Observe event for "Top 10 Countries" button
   observeEvent(input$plotTopCountries, {
-    top_20_countries_df <- df() %>%
+    top_10_countries_df <- df() %>%
       group_by(country) %>%
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
-      head(20)
-    top_20_countries <- top_20_countries_df$country
-    updateSelectizeInput(session, "countries", selected = top_20_countries)
+      head(10)
+    top_10_countries <- top_10_countries_df$country
+    updateSelectizeInput(session, "countries", selected = top_10_countries)
   })
 
   # Observe event for "Deselect All" button
   observeEvent(input$deselectAll, {
     updateSelectizeInput(session, "countries", selected = character(0))
   })
+
+
+  # Observe event for "Top 100 Countries" button
+  observeEvent(input$plotTop100Countries, {
+    top_100_countries_df <- df() %>%
+      group_by(country) %>%
+      summarise(val = sum(percentage, na.rm = TRUE)) %>%
+      arrange(desc(val)) %>%
+      head(100)
+    top_100_countries <- top_100_countries_df$country
+    updateSelectizeInput(session, "countries", selected = top_100_countries)
+  })
+
 
   # Filtered data reactive: by years and selected countries.
   filtered_data <- reactive({
@@ -450,10 +482,11 @@ server <- function(input, output, session) {
         year >= input$years[1] & year <= input$years[2] &
           country %in% input$countries
       )
-  })
-  # bindCache(input$years, input$countries, input$data_mode, input$region) %>%
-  # debounce(300)
+  }) %>%
+    bindCache(input$years, input$countries, input$data_mode, input$region) %>%
+    debounce(300)
 
+  # Trend plot with lines + markers and animation
   # Trend plot
   output$trendPlot <- renderPlotly({
     req(nrow(filtered_data()) > 0)
@@ -479,45 +512,43 @@ server <- function(input, output, session) {
         data = data %>% filter(year == max(year)),
         aes(y = percentage, label = iso3c, color = country),
         hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
-        size = 3, check_overlap = TRUE, show.legend = FALSE
+        size = 4, check_overlap = TRUE, show.legend = FALSE
       ) +
       scale_color_manual(values = color_map_all) +
       scale_y_continuous(labels = scales::percent_format(scale = 1)) +
       theme(
         legend.position = "bottom",
-        legend.text = element_text(size= 8, face="bold"),                                 
+        legend.text = element_text(size = 8, face = "bold"),
         legend.title = element_blank(),
         axis.title.x = element_blank()
-        )
-    
+      )
+
     if (input$data_mode == "Collaborations") {
       p <- p + labs(
-        title = "Percentage of new compunds by Collaborations",
+        title = "Percentage of new compounds by Collaborations",
         y = "% of new substances",
         colour = ""
-        )
+      )
     } else {
       p <- p + labs(
-        title = "Percentage of new compunds reported by each country in journals",
+        title = "Percentage of new compounds reported by each country in journals",
         y = "% of new substances",
         colour = ""
-        )
+      )
     }
 
     ggplotly(p, tooltip = "text") %>%
       plotly::layout(
-      legend = list(
-        orientation = "h",
-        x = 0.5,
-        xanchor = "center",
-        y = -0.3
-      ),
-      margin = list(b = 50)
+        legend = list(
+          orientation = "h",
+          x = 0.5,
+          xanchor = "center",
+          y = -0.3
+        ),
+        margin = list(b = 50)
       ) %>%
       plotly::toWebGL()
   })
-  # bindCache(filtered_data)
-
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Map UI
   output$mapPlot <- renderUI({
@@ -550,8 +581,8 @@ server <- function(input, output, session) {
       name   = "Average Contribution"
     ) %>%
       hc_colorAxis(
-        minColor = "#071f33",
-        maxColor = "#e8041e",
+        minColor = "#02192b",
+        maxColor = "#ff0320",
         labels   = list(format = "{value}%"),
         title    = list(text = "Contribution (%)", style = list(color = "white"))
       ) %>%
@@ -579,17 +610,17 @@ server <- function(input, output, session) {
         text  = paste0("Top Country (Total Value) = ", map_data$iso3c[which.max(map_data$value)]),
         style = list(color = "black")
       )
-  }) %>% 
-  bindCache(list(
-    input$data_mode, 
-    paste(sort(unique(filtered_data()$iso3c)), collapse=","),
-    input$years[1], 
-    input$years[2]
-  ))
+  }) %>%
+    bindCache(list(
+      input$data_mode,
+      paste(sort(unique(filtered_data()$iso3c)), collapse = ","),
+      input$years[1],
+      input$years[2]
+    ))
   # Highchart map - Collaborations
-# Replace the collab_data reactive with a more optimized version
-collab_data <- reactive({
-  req(filtered_data(), input$data_mode == "Collaborations")
+  # Replace the collab_data reactive with a more optimized version
+  collab_data <- reactive({
+    req(filtered_data(), input$data_mode == "Collaborations")
     dt <- as.data.table(filtered_data())
     dt[, Value := percentage]
     dt[, Year := year]
@@ -672,44 +703,51 @@ collab_data <- reactive({
   })
 
   # Initialize map
-# Initialize map only once and use proxy more effectively
-output$geoPlot2 <- renderLeaflet({
-  leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
-    addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
-    addProviderTiles("CartoDB.Positron", group = "Continents") %>%
-    addLayersControl(
-      baseGroups = c("NASA", "Continents"),
-      overlayGroups = c("Markers"),
-      position = "topright"
-    ) %>%
-    setView(lng = 0, lat = 30, zoom = 2)
-})
+  # Initialize map only once and use proxy more effectively
+  output$geoPlot2 <- renderLeaflet({
+    leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+      addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
+      addProviderTiles("CartoDB.Positron", group = "Continents") %>%
+      addLayersControl(
+        baseGroups = c("NASA", "Continents"),
+        overlayGroups = c("Markers"),
+        position = "topright"
+      ) %>%
+      setView(lng = 0, lat = 30, zoom = 1)
+  })
 
-# Update markers using observeEvent to control when it happens
-observeEvent(input$map2_reload, {
-  req(carto_data())
-  data <- carto_data()
-  pal <- colorNumeric("Reds", domain = data$value)
+  # Update markers and legend whenever carto_data changes
+  observe({
+      req(carto_data())
+      data <- carto_data()
+      pal <- colorNumeric("Reds", domain = data$value)
 
-  leafletProxy("geoPlot2", data = data) %>%
-    clearMarkers() %>%
-    clearControls() %>%
-    addCircleMarkers(
-      lng = ~lng, lat = ~lat,
-      radius = ~ scales::rescale(value, c(5, 30)),
-      color = ~ pal(value),
-      fillOpacity = 0.7,
-      group = "Markers",
-      popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
-    ) %>%
-    addLegend(
-      "bottomright",
-      pal = pal,
-      values = ~value,
-      title = "Avg %",
-      opacity = 0.5
-    )
-}, ignoreInit = TRUE)
+      leafletProxy("geoPlot2", data = data) %>%
+        clearMarkers() %>%
+        clearControls() %>%
+        addCircleMarkers(
+          lng = ~lng, lat = ~lat,
+          radius = ~ scales::rescale(value, c(5, 30)),
+          color = ~ pal(value),
+          fillOpacity = 0.7,
+          group = "Markers",
+          popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
+        ) %>%
+      clearControls() %>%
+      addLayersControl(
+        baseGroups = c("NASA", "Continents"),
+        overlayGroups = c("Markers"),
+        position = "topright"
+      ) %>%
+        addLegend(
+          "bottomright",
+          pal = pal,
+          values = ~value,
+          title = "Avg %",
+          opacity = 0.5
+        )
+  })
+
   observe({
     if (input$data_mode == "Individual Countries") {
       showNotification("Country and Region Filters refresh Plots automatically except for Cartogram which requires manual reload.", type = "warning")
@@ -755,8 +793,7 @@ observeEvent(input$map2_reload, {
       theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
-    p <- p
-    # + scale_color_manual(values = color_map_all)
+    p <- p + scale_color_manual(values = color_map_all)
 
     ggplotly(p, tooltip = "text") %>%
       plotly::partial_bundle() %>%
