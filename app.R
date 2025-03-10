@@ -27,7 +27,7 @@ df_global <- ds_filtered %>% dplyr::collect()
 setDT(df_global)
 
 # Create indices on frequently filtered columns for faster subsetting
-data.table::setindex(df_global, is_collab, country, year)
+data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, chemical)
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
@@ -126,13 +126,16 @@ map_data_cache$individual <- df_global_ind %>%
     .groups    = "drop"
   )
 
-# Initialize the cache for collaborations
-map_data_cache$collab_expanded <- as.data.table(df_global_collab)[, .(
-  splitted_iso = unlist(strsplit(iso3c, "-")),
-  combo = rep(iso3c, sapply(strsplit(iso3c, "-"), length)),
-  value = rep(percentage, sapply(strsplit(iso3c, "-"), length)),
-  year = rep(year, sapply(strsplit(iso3c, "-"), length))
-)]
+# Initialize the cache for collaborations with splitted iso3c renamed,
+# ensuring that the original iso3c value is captured separately.
+map_data_cache$collab_expanded <- df_global_collab %>%
+  mutate(orig_iso = iso3c,
+         iso3c = strsplit(iso3c, "-")) %>%
+  tidyr::unnest(cols = iso3c) %>%
+  mutate(combo = orig_iso,
+         value = percentage,
+         year = year) %>%
+  select(-orig_iso)
 
 
 ui <- page_navbar(
@@ -167,20 +170,13 @@ ui <- page_navbar(
     ),
     hr(),
 div(
-  style = "margin-bottom: 18rem;",
-  accordion(
-    id = "countryAccordion",
-    open = TRUE,
-    accordion_panel(
-      "Select Countries 🎌",
-      checkboxGroupInput(
-        inputId = "countries",
-        label = NULL,
+      style = "margin-bottom: 18rem;", # Use CSS to create space underneath
+      selectizeInput(
+        "countries", "Select Countries 🎌",
         choices = NULL,
-        selected = NULL,
+        multiple = TRUE,
+        options = list(plugins = "remove_button", maxItems = 30, placeholder = "Please select up to 100 countries"),
         width = "100%"
-      )
-    )
   )
 )
   ),
@@ -401,7 +397,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "region", choices = c("All", sort(region_choices)), selected = "All")
 
     # Set initial top countries (using pre-calculated values)
-    updateCheckboxGroupInput(session, "countries", selected = initial_top_countries, choices = all_ctry)
+    updateSelectizeInput(session, "countries", selected = initial_top_countries, choices = all_ctry, server = TRUE)
   })
 
   # Build the base data once, filtering by collab setting and region.
@@ -427,7 +423,7 @@ server <- function(input, output, session) {
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
       head(10)
-    updateCheckboxGroupInput(session, "countries", choices = valid_countries, selected = top_countries$country)
+    updateSelectizeInput(session, "countries", choices = valid_countries, selected = top_countries$country, server = TRUE)
   })
 
   # Observe event for "Top 20 Countries" button
@@ -438,12 +434,12 @@ server <- function(input, output, session) {
       arrange(desc(val)) %>%
       head(20)
     top_20_countries <- top_20_countries_df$country
-    updateCheckboxGroupInput(session, "countries", selected = top_20_countries)
+    updateSelectizeInput(session, "countries", selected = top_20_countries)
   })
 
   # Observe event for "Deselect All" button
   observeEvent(input$deselectAll, {
-    updateCheckboxGroupInput(session, "countries", selected = character(0))
+    updateSelectizeInput(session, "countries", selected = character(0))
   })
 
   # Filtered data reactive: by years and selected countries.
@@ -594,25 +590,12 @@ server <- function(input, output, session) {
 # Replace the collab_data reactive with a more optimized version
 collab_data <- reactive({
   req(filtered_data(), input$data_mode == "Collaborations")
-  
-  # Get unique combinations of countries and years from filtered data
-  filtered_combos <- filtered_data()[, .(iso3c, year)]
-  
-  # Efficiently filter the pre-computed expanded data
-  result <- map_data_cache$collab_expanded[
-    combo %in% filtered_combos$iso3c & 
-    year >= input$years[1] & 
-    year <= input$years[2]
-  ]
-  
-  result
-}) %>% 
-  bindCache(
-    input$data_mode, 
-    paste0(sort(unique(filtered_data()$iso3c)), collapse=","), 
-    input$years[1], 
-    input$years[2]
-  )
+    dt <- as.data.table(filtered_data())
+    dt[, Value := percentage]
+    dt[, Year := year]
+    dt
+  })
+
   output$collabMap <- renderHighchart({
     req(collab_data())
     map_data_by_pair <- collab_data()[, .(
@@ -668,18 +651,14 @@ collab_data <- reactive({
       )) %>%
       hc_mapNavigation(enabled = TRUE) %>%
       hc_subtitle(
-        text = paste0(
-          "Top collaborator (mean) = ",
-          map_data$iso3c[which.max(map_data$value)],
-          " (", scales::percent(max_val, accuracy = 0.01, scale = 1), ")"
-        ),
+        text  = paste0("Top collaboration = ", scales::percent(max_val, accuracy = 0.01, scale = 1)),
         style = list(color = "black")
       ) %>%
       hc_title(
-        text  = "Percentage of new substances by Collaborations",
+        text  = "Percentage of new substances with participation of country pairs",
         style = list(color = "black")
       )
-  }) %>% bindCache(input$data_mode, input$region, input$countries, input$years)
+  })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Cartogram
@@ -845,7 +824,7 @@ observeEvent(input$map2_reload, {
 
       collab_rows <- df_global %>%
         filter(is_collab == TRUE, grepl(sel_iso, iso2c))
-      updateCheckboxGroupInput(session, "countries", selected = unique(collab_rows$country))
+      updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
     }
 
     # For collaborations, filter using df_global so that we get only rows
