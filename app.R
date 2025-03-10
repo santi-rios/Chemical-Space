@@ -9,7 +9,7 @@ library(leaflet)
 library(highcharter)
 library(viridisLite)
 library(glue)
-library(ggplot2)
+library(ggplot2); theme_set(theme_light())
 library(data.table)
 library(shinycssloaders)
 
@@ -479,15 +479,15 @@ server <- function(input, output, session) {
         data = data %>% filter(year == max(year)),
         aes(y = percentage, label = iso3c, color = country),
         hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
-        size = 4, check_overlap = TRUE, show.legend = FALSE
+        size = 3, check_overlap = TRUE, show.legend = FALSE
       ) +
-      theme_minimal() +
       scale_color_manual(values = color_map_all) +
       scale_y_continuous(labels = scales::percent_format(scale = 1)) +
       theme(
         legend.position = "bottom",
         legend.text = element_text(size= 8, face="bold"),                                 
-        legend.title = element_blank()
+        legend.title = element_blank(),
+        axis.title.x = element_blank()
         )
     
     if (input$data_mode == "Collaborations") {
@@ -752,7 +752,6 @@ observeEvent(input$map2_reload, {
         hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
         size = 4, check_overlap = TRUE, show.legend = FALSE
       ) +
-      theme_minimal() +
       theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
@@ -1041,7 +1040,6 @@ observeEvent(input$map2_reload, {
         title = "Elemental Composition Over Time",
         x = "Year", y = "Percentage of Chemical Space"
       ) +
-      theme_classic() +
       theme(
         legend.position = "bottom",
         panel.grid.minor = element_blank(),
