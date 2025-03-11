@@ -165,7 +165,7 @@ ui <- page_navbar(
     sliderInput(
       "years", "📅 Year Range",
       min = 1996, max = 2022,
-      value = c(1996, 2021),
+      value = c(1996, 2022),
       step = 1, sep = "", animate = FALSE,
       width = "100%"
     ),
@@ -348,24 +348,29 @@ ui <- page_navbar(
           )
           ),
     br(),
+    br(),
+    hr(),
+    tags$h3("Original country and collaborations contributions to the chemical space from the original article"),
+    tags$p("Here we show, by analysing the chemical space between 1996 and 2022, that the chemical space expansion has been dominated by China ever since 2013. Chinese dominance is mainly the product of the country’s own efforts, rather than the result of international collaboration. Alternatively, the US share of the chemical space is more dependent on international collaboration, which mainly occurs with China."),
+    
     fluidRow(
       column(
-        width = 6,
-        tags$img(
-          src = "trends_country.gif",
-          width = "100%",
-          style = "display:block; margin:0 auto;"
-        ),
-        p("Country contribution to chemical space", style = "text-align:center;")
+      width = 6,
+      tags$img(
+        src = "trends_country.gif",
+        width = "100%",
+        style = "display:block; margin:0 auto;"
+      ),
+      p("Country contribution to chemical space", style = "text-align:center;")
       ),
       column(
-        width = 6,
-        tags$img(
-          src = "trends_collab.gif",
-          width = "100%",
-          style = "display:block; margin:0 auto;"
-        ),
-        p("Collaborations contributions to chemical space", style = "text-align:center;")
+      width = 6,
+      tags$img(
+        src = "trends_collab.gif",
+        width = "100%",
+        style = "display:block; margin:0 auto;"
+      ),
+      p("Collaborations contributions to chemical space", style = "text-align:center;")
       )
     )
   ),
@@ -492,7 +497,8 @@ server <- function(input, output, session) {
       res <- df_global_collab
     }
     res
-  }) %>% bindCache(input$data_mode, input$region)
+  }) 
+  # %>% bindCache(input$data_mode, input$region)
 
   # Update available country choices based on df.
   observe({
@@ -544,7 +550,7 @@ server <- function(input, output, session) {
           country %in% input$countries
       )
   }) %>%
-    bindCache(input$years, input$countries, input$data_mode, input$region) %>%
+    # bindCache(input$years, input$countries, input$data_mode, input$region) %>%
     debounce(300)
 
   # Trend plot with lines + markers and animation
@@ -859,7 +865,8 @@ server <- function(input, output, session) {
     ggplotly(p, tooltip = "text") %>%
       plotly::partial_bundle() %>%
       plotly::toWebGL()
-  }) %>% bindCache(input$chemicalSelector, input$countries, input$years)
+  }) 
+  # %>% bindCache(input$chemicalSelector, input$countries, input$years)
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Value boxes
@@ -997,7 +1004,7 @@ server <- function(input, output, session) {
       alpha = 0.9,
       size = ~percentage,
       marker = list(sizemode = "diameter"),
-      text = ~ paste("Country: ", country, "<br>Year: ", year, "<br>Percentage: ", percentage),
+      text = ~ paste("Country: ", country, "<br>Year: ", year, "<br>Value: ", percentage),
       frame = ~year
     ) %>%
       layout(
@@ -1015,7 +1022,8 @@ server <- function(input, output, session) {
     p %>%
       plotly::partial_bundle() %>%
       plotly::toWebGL()
-  }) %>% bindCache(input$article_source)
+  }) 
+  # %>% bindCache(input$article_source)
 
   observe({
     if (input$article_source %in% c("China-US collaboration")) {
@@ -1046,7 +1054,8 @@ server <- function(input, output, session) {
       mutate(
         present = symbol %in% unique(df_figures$symbol)
       )
-  }) %>% bindCache("periodic_data")
+  }) 
+  # %>% bindCache("periodic_data")
 
   # Handle periodic table clicks
   observeEvent(input$plot_click, {
@@ -1113,7 +1122,8 @@ server <- function(input, output, session) {
     } else {
       h4("Click an element in the periodic table to view details")
     }
-  }) %>% bindCache(selected_element())
+  }) 
+  # %>% bindCache(selected_element())
 
   # Composition timeline plot
   output$compositionPlot <- renderPlot({
@@ -1168,9 +1178,10 @@ server <- function(input, output, session) {
           )
         )
     }
-Z
+
     base_plot
-  }) %>% bindCache(selected_element())
+  }) 
+  # %>% bindCache(selected_element())
 
   # Periodic table plot
   output$periodicTablePlot <- renderPlot({
