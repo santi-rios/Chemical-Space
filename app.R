@@ -823,7 +823,7 @@ server <- function(input, output, session) {
 
   observe({
     if (input$data_mode == "Collaborations") {
-      showNotification("Cartogram is only available for Individual Countries data", type = "warning")
+      showNotification("Cartogram is only available for Individual Countries.", type = "warning")
     }
   })
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -918,63 +918,118 @@ server <- function(input, output, session) {
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Modal
-  observeEvent(input$selectedCountry, {
-    req(df_global)
-    sel_iso <- input$selectedCountry
+# Modal when flag is clicked
+observeEvent(input$selectedCountry, {
+  sel_iso <- input$selectedCountry
 
-    if (input$data_mode == "Individual Countries") {
-      # Switch to 'Collaborations' automatically and update countries accordingly:
-      updateRadioButtons(session, "data_mode", selected = "Collaborations")
+  # First try to get data from filtered_data() - this respects current filters
+  relevant_data <- filtered_data()[grepl(sel_iso, iso2c)]
+  
+  # If no data, try broader df() scope which respects the data mode and region filters
+  if (nrow(relevant_data) == 0) {
+    relevant_data <- df()[grepl(sel_iso, iso2c)]
+  }
+  
+  if (nrow(relevant_data) == 0) {
+    showNotification(paste("No data found for country code:", sel_iso), type = "warning")
+    return()
+  }
+  
+  # If in Individual Countries mode, switch to Collaborations
+  if (input$data_mode == "Individual Countries") {
+    # Switch to 'Collaborations' mode
+    updateRadioButtons(session, "data_mode", selected = "Collaborations")
+    
+    # Find all countries that collaborate with this country
+    collab_partners <- df_global %>%
+      filter(is_collab == TRUE, grepl(sel_iso, iso2c)) %>% 
+      pull(country) %>% 
+      unique()
+    
+    # Update the selected countries to show these collaborations
+    updateSelectizeInput(session, "countries", selected = collab_partners)
+  }
+  
+  # Extract collaboration info using vectorized operations instead of lapply
+  collab_codes <- unique(unlist(strsplit(relevant_data$iso2c, "-")))
+  collab_codes <- collab_codes[collab_codes != sel_iso]
+  
+  # Get country names for the modal title
+  selected_country_name <- country_metadata[country_metadata$iso2c == sel_iso, "country"]
 
-      collab_rows <- df_global %>%
-        filter(is_collab == TRUE, grepl(sel_iso, iso2c))
-      updateSelectizeInput(session, "countries", selected = unique(collab_rows$country))
+  # Create flag icons using precomputed flags (more efficient)
+  flag_icons <- NULL
+  if (length(collab_codes) > 0) {
+    valid_codes <- collab_codes[collab_codes %in% names(precomputed_flags)]
+    flags <- precomputed_flags[valid_codes]
+    
+    if (length(flags) > 0) {
+      # Remove click handlers from these flags since they're just for display
+      flags <- lapply(flags, function(flag) {
+        flag$attribs$onclick <- NULL
+        flag
+      })
+      flag_icons <- div(class = "d-flex flex-wrap gap-2 mb-3", flags)
     }
+  }
 
-    # For collaborations, filter using df_global so that we get only rows
-    # where iso2c contains the selected country code.
-    flag_data <- df_global %>%
-      filter(is_collab == TRUE, grepl(sel_iso, iso2c))
-    if (nrow(flag_data) == 0) {
-      return()
-    }
-
-    collab_countries <- unique(unlist(lapply(flag_data$iso2c, function(x) strsplit(x, "-")[[1]])))
-    collab_countries <- collab_countries[collab_countries != sel_iso]
-
-    # Create flags HTML for collaboration countries
-    flag_icons <- NULL
-    if (length(collab_countries) > 0) {
-      flag_icons <- tags$div(
-        lapply(collab_countries, function(iso) {
-          tags$span(
-            tags$img(
-              src = paste0("https://flagcdn.com/16x12/", tolower(iso), ".png"),
-              width = 16, height = 12,
-              style = "margin-right: 4px;"
-            )
-          )
-        })
-      )
-    }
-
-    content <- tagList(
-      if (!is.null(flag_icons)) {
-        p("Collaborations from current country include:", flag_icons)
-      } else {
-        p("No other collaborations found.")
-      },
-      # Placeholder text for additional explanation
-      p("NOTE: Default Collaboration plot shows the top overall collaborations. Use the 'Select Countries' filter to explore more.")
+  # Create a summary table of collaboration data
+  summary_data <- relevant_data %>%
+    group_by(year) %>%
+    summarise(
+      avg_percentage = mean(percentage, na.rm = TRUE),
+      total_percentage = sum(percentage, na.rm = TRUE),
+      collaborations = n_distinct(iso2c),
+      .groups = "drop"
     )
-
-    showModal(modalDialog(
-      title = paste("Country Details:", sel_iso),
-      content,
-      easyClose = TRUE,
-      footer = modalButton("Close")
-    ))
+  
+  # Create a small trend plot to show in the modal
+  trend_plot <- renderPlot({
+    ggplot(relevant_data, aes(x = year, y = percentage, color = iso2c, group = iso2c)) +
+      geom_line(linewidth = 1) + 
+      geom_point() +
+      labs(
+        title = paste("Collaboration trends for", selected_country_name),
+        x = "Year",
+        y = "Percentage",
+        color = "Collaboration"
+      ) +
+      theme_minimal() +
+      theme(legend.position = "none")
   })
+  
+  # Assemble the modal content
+  content <- tagList(
+    h4("Collaboration Partners:"),
+    if (!is.null(flag_icons)) {
+      flag_icons
+    } else {
+      p("No collaborations found in the current filter selection.")
+    },
+    
+    h4("Trend Analysis:"),
+    plotOutput("modalPlot", height = "300px"),
+    
+    h4("Summary Statistics:"),
+    renderTable({
+      summary_data
+    }),
+    
+    p("NOTE: For a full view of all collaborations, use the 'Select Countries' filter to explore more countries.")
+  )
+
+  # Show the modal with proper title and the trend plot
+  showModal(modalDialog(
+    title = paste("Country Details:", selected_country_name, "(", sel_iso, ")"),
+    content,
+    size = "l",
+    easyClose = TRUE,
+    footer = modalButton("Close")
+  ))
+  
+  # Render the trend plot inside the modal after it's created
+  output$modalPlot <- trend_plot
+})
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Article Figures
