@@ -135,7 +135,7 @@ map_data_cache$individual <- df_global_ind %>%
     .groups    = "drop"
   )
 
-# Initialize the cache for collaborations with splitted iso3c renamed,
+# Initialize the cache for collaborations with split iso3c renamed,
 # ensuring that the original iso3c value is captured separately.
 map_data_cache$collab_expanded <- df_global_collab %>%
   mutate(
@@ -161,8 +161,7 @@ ui <- page_navbar(
     width = "14rem",
     tooltip(
       fontawesome::fa("info-circle", a11y = "sem", title = "Warnings"),
-      "Filters only apply to the 'National Trends' section. \nUse the 'Select Countries' filter to explore more."
-    ),
+      "For more interactive visualizations, select the different tabs on the TOP panel. \n\n"), # nolint
     sliderInput(
       "years", "📅 Year Range",
       min = 1996, max = 2022,
@@ -174,18 +173,18 @@ ui <- page_navbar(
     fluidRow(
       column(
         width = 6,
-        actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;")
+        actionButton("deselectAll", "Deselect All", class = "btn-primary", style = "width: 100%;") # nolint: line_length_linter.
       ),
       column(
         width = 6,
-        actionButton("plotTopCountries", "Top 10 Countries", class = "btn-danger", style = "width: 100%;")
+        actionButton("plotTopCountries", "Top 10 Countries", class = "btn-danger", style = "width: 100%;") # nolint # nolint: line_length_linter.
       ),
       br(),
       br(),
       br(),
       column(
         width = 12,
-        actionButton("plotTop100Countries", "Top 100 Countries", class = "btn-success", style = "width: 100%;")
+        actionButton("plotTop100Countries", "Top 100 Countries", class = "btn-success", style = "width: 100%;") # nolint: line_length_linter.
       )
     ),
     hr(),
@@ -195,7 +194,7 @@ ui <- page_navbar(
         "countries", "Select Countries 🎌",
         choices = NULL,
         multiple = TRUE,
-        options = list(plugins = "remove_button", maxItems = 100, placeholder = "Select up to 100 countries"),
+        options = list(plugins = "remove_button", maxItems = 100, placeholder = "Select up to 100 countries"), # nolint: line_length_linter.
         width = "100%"
       )
     )
@@ -206,8 +205,6 @@ ui <- page_navbar(
   # ------------------------------
   nav_panel(
     "National Trends 📈",
-
-    # Wrap everything in a fluidPage so you can arrange the new controls at the top:
     fluidPage(
       fluidRow(
         column(
@@ -231,7 +228,7 @@ ui <- page_navbar(
               condition = "input.data_mode == 'Individual Countries'",
               selectizeInput(
                 "region",
-                "🗾Region Filter🍁",
+                "Region Filter🗾",
                 choices = "All",
                 multiple = FALSE,
                 options = list(plugins = "remove_button")
@@ -247,7 +244,7 @@ ui <- page_navbar(
           value_box(
             title = uiOutput("summaryText"),
             value = uiOutput("flagButtons"),
-            max_height = "100px",
+            max_height = "130px",
             full_screen = TRUE,
             fill = TRUE
           )
@@ -259,23 +256,51 @@ ui <- page_navbar(
         navset_card_tab(
           nav_panel(
             "Trends📈",
-            withSpinner(plotlyOutput("trendPlot", width = "100%", height = 800), color = "#024173")
+            tooltip(
+              bsicons::bs_icon("question-circle"),
+              "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.", # nolint: line_length_linter.
+              placement = "left"
+            ),
+            withSpinner(plotlyOutput("trendPlot", width = "100%", height = 800), color = "#024173"), # nolint: line_length_linter.
+          card_footer(
+            "Source: China's rise in the chemical space and the decline of US influence.",
+          popover(
+            a("Learn more", href = "#"),
+            markdown(
+              "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+            )
+          )
+          )
           ),
-          nav_panel("Map📌", uiOutput("mapPlot")),
+          nav_panel(
+            "Map📌",
+              tooltip(
+              bsicons::bs_icon("question-circle"),
+              "An interactive map uses colors to show how much each country has contributed on average over your selected years. For individual countries, the map also highlights which year was the best (or worst) for each country.", # nolint: line_length_linter.
+              placement = "left"
+            ), 
+            uiOutput("mapPlot")
+            ),
           nav_panel(
             "Cartogram🗺️",
-            tooltip(
-              fontawesome::fa("info-circle", a11y = "sem", title = "Warning"),
-              "Cartogram only available for Individual Countries (Select in Main panel). \nClick 'Reload Map' to see the markers.\nClick on the markers for more details.\nData depicts the average contribution of the years selected."
-            ),
+              tooltip(
+              bsicons::bs_icon("question-circle"),
+              "Cartogram only available for individual countries. The size and color of each circle represent how strong a country’s contribution is.", # nolint: line_length_linter.
+              placement = "left"
+            ), 
             conditionalPanel(
               condition = "input.data_mode == 'Individual Countries'",
-              actionButton("map2_reload", "Reload Map. Must be clicked every time you reload data or filters.", class = "btn-danger", style = "width: 100%;"),
-              leafletOutput("geoPlot2", height = 600)
+              actionButton("map2_reload", "Cartogram only available for individual countries. Please change year range to see this plot.", class = "btn-danger", style = "width: 100%;"), # nolint
+              leafletOutput("geoPlot2", height = 750)
             )
           ),
           nav_panel(
             "Substance Types🧪",
+            tooltip(
+              bsicons::bs_icon("question-circle"),
+              "Explore the percentage of new compounds reported by each country in journals for different chemical types. Toggle between Organic, Organometallic, and Rare-Earths to see the trends.", # nolint: line_length_linter.
+              placement = "left"
+            ),
             fluidRow(
               column(
                 width = 12,
@@ -311,7 +336,38 @@ ui <- page_navbar(
         )
       )
     ),
-    withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173")
+
+    withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173"),
+    card_footer(
+            "Countrywise expansion of the chemical space.",
+          popover(
+            a("Learn more", href = "#"),
+            markdown(
+              "This plots show the chemichap space growth, enfatising China's rise in the chemical space (CS) and the decline of US influence."
+            )
+          )
+          ),
+    br(),
+    fluidRow(
+      column(
+        width = 6,
+        tags$img(
+          src = "trends_country.gif",
+          width = "100%",
+          style = "display:block; margin:0 auto;"
+        ),
+        p("Country contribution to chemical space", style = "text-align:center;")
+      ),
+      column(
+        width = 6,
+        tags$img(
+          src = "trends_collab.gif",
+          width = "100%",
+          style = "display:block; margin:0 auto;"
+        ),
+        p("Collaborations contributions to chemical space", style = "text-align:center;")
+      )
+    )
   ),
 
   # ------------------------------
@@ -321,6 +377,11 @@ ui <- page_navbar(
     "Element Figures 🧪",
     fluidPage(
       fluidRow(
+        tooltip(
+          bsicons::bs_icon("question-circle"),
+          "Elemental and compositional spans of the regions of the chemical space. A few other organogenic elements, mainly H followed by N and O, constitute most of the organic compounds. In terms of compositions, most of the organic CS is concentrated on CHNO compounds.", # nolint: line_length_linter.
+          placement = "left"
+        ),
         column(
           width = 12,
           plotOutput("compositionPlot", height = "600px")
@@ -1075,6 +1136,7 @@ server <- function(input, output, session) {
       )) +
       labs(
         title = "Elemental Composition Over Time",
+        caption = "Line represents total percentage of chemical space",
         x = "Year", y = "Percentage of Chemical Space"
       ) +
       theme(
@@ -1106,7 +1168,7 @@ server <- function(input, output, session) {
           )
         )
     }
-
+Z
     base_plot
   }) %>% bindCache(selected_element())
 
