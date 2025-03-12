@@ -22,6 +22,7 @@ ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
 # Pre-filter at the Arrow level before collecting
 ds_filtered <- ds %>%
   filter(!is.na(percentage)) %>%
+  filter(!country %in% (country %in% c("IN-IQ", "US-UY"))) %>%
   select(
     iso2c, year, percentage, chemical,
     iso3c, country, lat, lng,
@@ -52,10 +53,10 @@ df_global_collab <- df_global[is_collab == TRUE & !(country %in% c("IN-IQ", "US-
 
 df_global_collab_top20 <- df_global_collab %>%
   filter(iso2c %in% c(
- "CN-US", "DE-US", "GB-US", "IN-US", "CN-JP", "DE-RU", "CA-US", "JP-US", "DE-FR",
-"FR-US", "ES-GB", "IT-US", "DE-ES", "ES-FR", "CN-DE",  "KR-US",
-"FR-GB", "DE-GB", "ES-IT", "DE-IN", "ES-US"
-))
+    "CN-US", "DE-US", "GB-US", "IN-US", "CN-JP", "DE-RU", "CA-US", "JP-US", "DE-FR",
+    "FR-US", "ES-GB", "IT-US", "DE-ES", "ES-FR", "CN-DE", "KR-US",
+    "FR-GB", "DE-GB", "ES-IT", "DE-IN", "ES-US"
+  ))
 
 # Define the 20 country codes for collaborations
 us_codes <- c("DE-US", "GB-US", "IN-US", "CA-US", "JP-US", "FR-US", "IT-US", "KR-US", "ES-US")
@@ -67,9 +68,10 @@ us_colors <- colorRampPalette(brewer.pal(9, "Blues"))(length(us_codes))
 other_colors <- colorRampPalette(brewer.pal(9, "Set1"))(length(other_codes))
 
 # Create a named vector for mapping
-collab_color_map <- c(setNames(us_colors, us_codes),
-            setNames(other_colors, other_codes)
-            )
+collab_color_map <- c(
+  setNames(us_colors, us_codes),
+  setNames(other_colors, other_codes)
+)
 
 
 
@@ -77,11 +79,11 @@ collab_color_map <- c(setNames(us_colors, us_codes),
 figure_article <- ds %>%
   filter(!is.na(percentage_x)) %>%
   select(
-    percentage = percentage_x, 
-    country = country_x, 
+    percentage = percentage_x,
+    country = country_x,
     year = year_x,
     source
-    ) %>%
+  ) %>%
   dplyr::collect()
 
 # Element figures: only load columns needed
@@ -314,10 +316,19 @@ ui <- page_navbar(
   # ------------------------------
   # 2) COLLABORATION TRENDS
   # ------------------------------
+  # ------------------------------
+  # 2) COLLABORATION TRENDS
+  # ------------------------------
   nav_panel(
     "Collaboration Trends 🤝",
     fluidPage(
-            card(
+      fluidRow(
+        column(
+          width = 12,
+          # Removed value_box here
+        )
+      ),
+      card(
         navset_card_tab(
           nav_panel(
             "Trends📈",
@@ -328,15 +339,6 @@ ui <- page_navbar(
             ),
             withSpinner(plotlyOutput("collabTrendPlot", width = "100%", height = 800), color = "#024173")
           ),
-          # nav_panel(
-          #   "Map📌",
-          #   tooltip(
-          #     bsicons::bs_icon("question-circle"),
-          #     "Interactive map showing country contributions...",
-          #     placement = "left"
-          #   ),
-          #   highchartOutput("mapPlot")
-          # ),
           nav_panel(
             "Substance Types🧪",
             tooltip(
@@ -359,156 +361,164 @@ ui <- page_navbar(
             withSpinner(plotlyOutput("collabSubstancePlot", width = "100%"), color = "#024173")
           )
         )
-      )
-    ),
-    fluidRow(
-      column(12, uiOutput("collabFlagButtons"))
-    ),
-    fluidRow(
-      column(12, plotlyOutput("collabDetailPlot", height = "600px") %>% withSpinner())
-    )
-  ),
-
-  # ------------------------------
-  # 3) ARTICLE FIGURES
-  # ------------------------------
-  nav_panel(
-    "Article Figures 📰",
-    fluidRow(
-      column(
-        width = 12,
-        selectInput(
-          "article_source", "Select Article Source",
-          choices = unique(figure_article$source),
-          selected = unique(figure_article$source)[1],
-          width = "40%"
+      ),
+      fluidPage(
+        fluidRow(
+          column(
+            width = 12,
+            tags$h4("All Countries' Flags:"),
+            uiOutput("collabFlagButtons")
+          )
+        ),
+        fluidRow(
+          column(
+            width = 12,
+            tags$h4("Collaboration Partners Trend:"),
+            plotlyOutput("collabPartnersPlot", height = "400px")
+          )
         )
-      )
-    ),
+      ),
 
-    withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173"),
-    card_footer(
-            "Countrywise expansion of the chemical space.",
+      # ------------------------------
+      # 3) ARTICLE FIGURES
+      # ------------------------------
+      nav_panel(
+        "Article Figures 📰",
+        fluidRow(
+          column(
+            width = 12,
+            selectInput(
+              "article_source", "Select Article Source",
+              choices = unique(figure_article$source),
+              selected = unique(figure_article$source)[1],
+              width = "40%"
+            )
+          )
+        ),
+        withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173"),
+        card_footer(
+          "Countrywise expansion of the chemical space.",
           popover(
             a("Learn more", href = "#"),
             markdown(
               "This plots show the chemichap space growth, enfatising China's rise in the chemical space (CS) and the decline of US influence."
             )
           )
+        ),
+        br(),
+        br(),
+        hr(),
+        tags$h3("Original country and collaborations contributions to the chemical space from the original article"),
+        tags$p("Here we show, by analysing the chemical space between 1996 and 2022, that the chemical space expansion has been dominated by China ever since 2013. Chinese dominance is mainly the product of the country’s own efforts, rather than the result of international collaboration. Alternatively, the US share of the chemical space is more dependent on international collaboration, which mainly occurs with China."),
+        fluidRow(
+          column(
+            width = 6,
+            tags$img(
+              src = "trends_country.gif",
+              width = "100%",
+              style = "display:block; margin:0 auto;"
+            ),
+            p("Country contribution to chemical space", style = "text-align:center;")
           ),
-    br(),
-    br(),
-    hr(),
-    tags$h3("Original country and collaborations contributions to the chemical space from the original article"),
-    tags$p("Here we show, by analysing the chemical space between 1996 and 2022, that the chemical space expansion has been dominated by China ever since 2013. Chinese dominance is mainly the product of the country’s own efforts, rather than the result of international collaboration. Alternatively, the US share of the chemical space is more dependent on international collaboration, which mainly occurs with China."),
-    
-    fluidRow(
-      column(
-      width = 6,
-      tags$img(
-        src = "trends_country.gif",
-        width = "100%",
-        style = "display:block; margin:0 auto;"
-      ),
-      p("Country contribution to chemical space", style = "text-align:center;")
-      ),
-      column(
-      width = 6,
-      tags$img(
-        src = "trends_collab.gif",
-        width = "100%",
-        style = "display:block; margin:0 auto;"
-      ),
-      p("Collaborations contributions to chemical space", style = "text-align:center;")
-      )
-    )
-  ),
-
-  # ------------------------------
-  # 4) ELEMENT FIGURES
-  # ------------------------------
-  nav_panel(
-    "Element Figures 🧪",
-    fluidPage(
-      fluidRow(
-        tooltip(
-          bsicons::bs_icon("question-circle"),
-          "Elemental and compositional spans of the regions of the chemical space. A few other organogenic elements, mainly H followed by N and O, constitute most of the organic compounds. In terms of compositions, most of the organic CS is concentrated on CHNO compounds.", # nolint: line_length_linter.
-          placement = "left"
-        ),
-        column(
-          width = 12,
-          plotOutput("compositionPlot", height = "600px")
+          column(
+            width = 6,
+            tags$img(
+              src = "trends_collab.gif",
+              width = "100%",
+              style = "display:block; margin:0 auto;"
+            ),
+            p("Collaborations contributions to chemical space", style = "text-align:center;")
+          )
         )
       ),
-      fluidRow(
-        column(
-          width = 8,
-          plotOutput("periodicTablePlot", click = "plot_click", height = "600px")
-        ),
-        column(
-          width = 4,
-          uiOutput("elementInfo")
-        )
-      )
-    )
-  ),
 
-  # ------------------------------
-  # 5) KNOW MORE
-  # ------------------------------
-  nav_panel(
-    "Know more about the research 🥼",
-    fluidPage(
-      fluidRow(
-        column(
-          width = 12,
-          h3("China's rise in the chemical space and the decline of US influence"),
-          p("This dashboard is based on the study ‘China's rise in the chemical space and the decline of US influence’. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
-          p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
-          p("Useful links for more information:"),
-          tags$ul(
-            tags$li(
-              tags$a(
-                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-                target = "_blank",
-                "Access the full preprint 📄"
-              )
+      # ------------------------------
+      # 4) ELEMENT FIGURES
+      # ------------------------------
+      nav_panel(
+        "Element Figures 🧪",
+        fluidPage(
+          fluidRow(
+            tooltip(
+              bsicons::bs_icon("question-circle"),
+              "Elemental and compositional spans of the regions of the chemical space. A few other organogenic elements, mainly H followed by N and O, constitute most of the organic compounds. In terms of compositions, most of the organic CS is concentrated on CHNO compounds.", # nolint: line_length_linter.
+              placement = "left"
             ),
-            tags$li(
-              tags$a(
-                href = "https://github.com/santi-rios/Chemical-Space/wiki",
-                target = "_blank",
-                "App wiki and documentation 📖"
-              )
+            column(
+              width = 12,
+              plotOutput("compositionPlot", height = "600px")
+            )
+          ),
+          fluidRow(
+            column(
+              width = 8,
+              plotOutput("periodicTablePlot", click = "plot_click", height = "600px")
             ),
-            tags$li(
-              tags$a(
-                href = "https://github.com/santi-rios/Chemical-Space",
-                target = "_blank",
-                "Code Repository 📦"
-              )
+            column(
+              width = 4,
+              uiOutput("elementInfo")
             )
           )
         )
       ),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      hr(),
-      fluidRow(
-        column(
-          width = 12,
-          tags$a(
-            href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-            target = "_blank",
-            tags$img(
-              src = "logos_footer.png",
-              class = "img-fluid",
-              style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
+
+      # ------------------------------
+      # 5) KNOW MORE
+      # ------------------------------
+      nav_panel(
+        "Know more about the research 🥼",
+        fluidPage(
+          fluidRow(
+            column(
+              width = 12,
+              h3("China's rise in the chemical space and the decline of US influence"),
+              p("This dashboard is based on the study ‘China's rise in the chemical space and the decline of US influence’. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
+              p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
+              p("Useful links for more information:"),
+              tags$ul(
+                tags$li(
+                  tags$a(
+                    href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+                    target = "_blank",
+                    "Access the full preprint 📄"
+                  )
+                ),
+                tags$li(
+                  tags$a(
+                    href = "https://github.com/santi-rios/Chemical-Space/wiki",
+                    target = "_blank",
+                    "App wiki and documentation 📖"
+                  )
+                ),
+                tags$li(
+                  tags$a(
+                    href = "https://github.com/santi-rios/Chemical-Space",
+                    target = "_blank",
+                    "Code Repository 📦"
+                  )
+                )
+              )
+            )
+          ),
+          br(),
+          br(),
+          br(),
+          br(),
+          br(),
+          br(),
+          hr(),
+          fluidRow(
+            column(
+              width = 12,
+              tags$a(
+                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+                target = "_blank",
+                tags$img(
+                  src = "logos_footer.png",
+                  class = "img-fluid",
+                  style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
+                )
+              )
             )
           )
         )
@@ -520,23 +530,22 @@ ui <- page_navbar(
 
 
 server <- function(input, output, session) {
-
   ###################
   # Reactive Values #
   ###################
 
   # Track active tab
   active_tab <- reactive(input$selected)
-  
+
   # Precomputed connection data cache
   connection_cache <- reactiveValues()
-  
+
   # Update region choices (National Trends only)
   observe({
     req(active_tab() == "National Trends 📈")
     region_choices <- unique(df_global_ind$region[!is.na(df_global_ind$region)])
     updateSelectizeInput(session, "region", choices = c("All", sort(region_choices)), selected = "All")
-  }) 
+  })
   # %>% bindCache(active_tab())
 
   # Base data reactive with caching
@@ -550,7 +559,7 @@ server <- function(input, output, session) {
       res <- df_global_collab
     }
     res
-  }) 
+  })
   # %>% bindCache(active_tab(), input$region)
 
   # Country selection updates
@@ -562,8 +571,10 @@ server <- function(input, output, session) {
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
       head(10)
-    updateSelectizeInput(session, "countries", choices = valid_countries, 
-                        selected = top_countries$country, server = TRUE)
+    updateSelectizeInput(session, "countries",
+      choices = valid_countries,
+      selected = top_countries$country, server = TRUE
+    )
   })
   # %>% bindCache(df())
 
@@ -575,9 +586,9 @@ server <- function(input, output, session) {
         year >= input$years[1] & year <= input$years[2] &
           country %in% input$countries
       )
-})
-# %>% bindCache(active_tab(), input$years, input$countries, input$region) %>%
-    # debounce(300)
+  })
+  # %>% bindCache(active_tab(), input$years, input$countries, input$region) %>%
+  # debounce(300)
 
 
   # Observe event for "Top 10 Countries" button
@@ -610,8 +621,8 @@ server <- function(input, output, session) {
   output$trendPlot <- renderPlotly({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
     data <- filtered_data() %>% filter(chemical == "All")
-    
-        p <- ggplot(
+
+    p <- ggplot(
       data,
       aes(
         x = year,
@@ -643,7 +654,7 @@ server <- function(input, output, session) {
         axis.title.x = element_blank()
       ) +
       labs(title = "National Contributions to Chemical Space", y = "% of New Substances")
-    
+
     ggplotly(p, tooltip = "text") %>%
       plotly::layout(
         legend = list(
@@ -655,16 +666,16 @@ server <- function(input, output, session) {
         margin = list(b = 50)
       ) %>%
       plotly::toWebGL()
-  }) 
+  })
   # %>% bindCache(active_tab(), filtered_data())
 
-# Collaboration Trends Plot
+  # Collaboration Trends Plot
   output$collabTrendPlot <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝")
-    
+
     data <- df_global_collab_top20 %>% filter(chemical == "All")
-    
-        p <- ggplot(
+
+    p <- ggplot(
       data,
       aes(
         x = year,
@@ -696,7 +707,7 @@ server <- function(input, output, session) {
         axis.title.x = element_blank()
       ) +
       labs(title = "Collaborative Contributions to Chemical Space", y = "% of New Substances")
-    
+
     ggplotly(p, tooltip = "text") %>%
       plotly::layout(
         legend = list(
@@ -712,10 +723,10 @@ server <- function(input, output, session) {
   # %>% bindCache(active_tab(), filtered_data())
 
   # Highchart map - Individual Countries
-# National Map
+  # National Map
   output$mapPlot <- renderHighchart({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
-    
+
     map_data <- filtered_data() %>%
       group_by(iso3c, year, region) %>%
       summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
@@ -780,7 +791,7 @@ server <- function(input, output, session) {
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Cartogram
 
-# Cartogram (National only)
+  # Cartogram (National only)
   carto_data <- reactive({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
     filtered_data() %>%
@@ -788,7 +799,7 @@ server <- function(input, output, session) {
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
   })
   # %>% bindCache(active_tab(), filtered_data())
-  
+
   # Initialize map
   # Initialize map only once and use proxy more effectively
   output$geoPlot2 <- renderLeaflet({
@@ -804,20 +815,20 @@ server <- function(input, output, session) {
   })
 
   # Update markers and legend whenever carto_data changes
-# Cartogram (National only)
-# Cartogram (National only)
+  # Cartogram (National only)
+  # Cartogram (National only)
   carto_data <- reactive({
     req(active_tab() == "National Trends 📈")
     filtered_data() %>%
       group_by(country, lat, lng) %>%
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-  }) 
+  })
   # %>% bindCache(active_tab(), filtered_data())
 
   observe({
     data <- carto_data()
     pal <- colorNumeric("Reds", domain = data$value)
-    
+
     leafletProxy("geoPlot2", data = data) %>%
       clearMarkers() %>%
       addCircleMarkers(
@@ -846,7 +857,7 @@ server <- function(input, output, session) {
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Substance Types
-# Substance Plots
+  # Substance Plots
 
 
   output$substancePlot <- renderPlotly({
@@ -886,10 +897,10 @@ server <- function(input, output, session) {
     ggplotly(p, tooltip = "text") %>%
       plotly::partial_bundle() %>%
       plotly::toWebGL()
-  }) 
+  })
   # %>% bindCache(input$chemicalSelector, input$countries, input$years)
 
-output$collabSubstancePlot <- renderPlotly({
+  output$collabSubstancePlot <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
 
     data <- filtered_data() %>%
@@ -927,83 +938,91 @@ output$collabSubstancePlot <- renderPlotly({
     ggplotly(p, tooltip = "text") %>%
       plotly::partial_bundle() %>%
       plotly::toWebGL()
-
-  }) 
+  })
   # %>% bindCache(active_tab(), input$collabChemicalSelector, filtered_data())
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
-
-  # New flag rendering logic
-output$collabFlagButtons <- renderUI({
-  req(active_tab() == "Collaboration Trends 🤝")
-  
-  # Get all unique ISO codes from the complete collaboration dataset
-  unique_isos <- unique(df_global_ind$iso2c)
-  
-  # Create flag buttons for every unique ISO code
-  flags <- lapply(unique_isos, function(iso) {
-    tags$button(
-      class = "btn btn-outline-secondary btn-sm",
-      `data-iso` = iso,
-      tags$img(
-        src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
-        width = 16,
-        height = 12
-      ),
-      paste0(" ", iso),
-      onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
-    )
-  })
-  
-  # Wrap the buttons in a container; you can add styling (e.g., flexbox) as needed
-  div(class = "d-flex flex-wrap gap-2", flags)
-})
-
-# Reactive value for selected country
-  selected_country <- reactiveVal(NULL)
-  
-  # When flag is clicked
-  observeEvent(input$selectedCountry, {
-    req(input$selectedCountry)
-    selected_country(input$selectedCountry)
-  })
-
-  # Collaboration detail plot
-  output$collabDetailPlot <- renderPlotly({
-    req(selected_country())
-    
-    # Get collaborations involving selected country
-    data <- df_global_collab %>%
-      filter(grepl(selected_country(), iso2c)) %>%
-      mutate(
-        partners = stringr::str_replace_all(iso2c, selected_country(), ""),
-        partners = stringr::str_replace_all(partners, "-", "")
-      )
-    
-    validate(need(nrow(data) > 0, "No collaboration data available for selected country"))
-    
-    # Create interactive plot
-    plot_ly(data, x = ~year, y = ~percentage, 
-            color = ~iso2c, colors = collab_color_map,
-            type = 'scatter', mode = 'lines+markers',
-            hoverinfo = 'text',
-            text = ~paste(
-              "<b>Collaboration:</b> ", iso2c,
-              "<br><b>Partner:</b> ", partners,
-              "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.1),
-            marker = list(size = ~percentage/2))) %>%
-      layout(
-        title = paste("Collaboration Details for", selected_country()),
-        yaxis = list(title = "Percentage", tickformat = ".1%"),
-        xaxis = list(title = "Year"),
-        hoverlabel = list(bgcolor = "white"),
-        showlegend = FALSE
-      ) %>%
-      toWebGL()
-  })
-
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # -------------------------------
+  # Flag buttons (unchanged, but ensure using the full list)
+  output$collabFlagButtons <- renderUI({
+    req(active_tab() == "Collaboration Trends 🤝")
+
+    # Use all unique ISO codes from the complete dataset (here using df_global_ind as example)
+    unique_isos <- unique(df_global_ind$iso2c)
+
+    # Create flag buttons for every unique ISO code
+    flags <- lapply(unique_isos, function(iso) {
+      tags$button(
+        class = "btn btn-outline-secondary btn-sm",
+        `data-iso` = iso,
+        tags$img(
+          src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
+          width = 16,
+          height = 12
+        ),
+        paste0(" ", iso),
+        onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
+      )
+    })
+
+    # Wrap the buttons in a container with flex styling
+    div(class = "d-flex flex-wrap gap-2", flags)
+  })
+
+  # -------------------------------
+  # Observe flag clicks and update the partners plot (using Plotly)
+  observeEvent(input$selectedCountry, {
+    sel_iso <- input$selectedCountry
+
+    # Filter the collaboration data from the complete collab dataset (do not apply any region or main trends filters)
+    relevant_data <- df_global_collab[grepl(sel_iso, iso2c)]
+
+    if (nrow(relevant_data) == 0) {
+      showNotification(paste("No collaboration data found for country code:", sel_iso), type = "warning")
+      return()
+    }
+
+    # For each record, determine the collaborating partner.
+    # This assumes iso2c is formatted as "XX-YY" (a two-country code)
+    relevant_data <- relevant_data %>%
+      mutate(
+        partner = sapply(strsplit(country, "-"), function(x) {
+          # Remove the selected country's code and take the first remaining value
+          setdiff(x, sel_iso)[1]
+        })
+      )
+
+    # Create an interactive Plotly plot showing trends for each collaboration partner
+    p <- ggplot(relevant_data, aes(
+      x = year,
+      y = percentage,
+      color = partner,
+      group = partner,
+      text = paste0(
+        "Partner: ", partner,
+        "<br>Year: ", year,
+        "<br>Percentage: ", scales::percent(percentage, accuracy = 0.01, scale = 1)
+      )
+    )) +
+      geom_point(shape = 4) +
+      labs(
+        title = paste("Collaboration Trends for", sel_iso, "with Partners"),
+        x = "Year",
+        y = "Percentage",
+        color = "Partner"
+      ) +
+      theme_minimal() +
+      theme(legend.position = "none")
+
+    # Update the dedicated Plotly output with the new plot
+    output$collabPartnersPlot <- renderPlotly({
+    ggplotly(p, tooltip = "text") %>%
+      plotly::toWebGL()
+    })
+  })
+
   # Article Figures
   output$articlePlot <- renderPlotly({
     req(input$article_source)
@@ -1049,7 +1068,7 @@ output$collabFlagButtons <- renderUI({
     p %>%
       plotly::partial_bundle() %>%
       plotly::toWebGL()
-  }) 
+  })
   # %>% bindCache(input$article_source)
 
   observe({
@@ -1081,7 +1100,7 @@ output$collabFlagButtons <- renderUI({
       mutate(
         present = symbol %in% unique(df_figures$symbol)
       )
-  }) 
+  })
   # %>% bindCache("periodic_data")
 
   # Handle periodic table clicks
@@ -1149,7 +1168,7 @@ output$collabFlagButtons <- renderUI({
     } else {
       h4("Click an element in the periodic table to view details")
     }
-  }) 
+  })
   # %>% bindCache(selected_element())
 
   # Composition timeline plot
@@ -1207,7 +1226,7 @@ output$collabFlagButtons <- renderUI({
     }
 
     base_plot
-  }) 
+  })
   # %>% bindCache(selected_element())
 
   # Periodic table plot
