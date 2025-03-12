@@ -934,7 +934,7 @@ output$collabSubstancePlot <- renderPlotly({
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
 
-# New flag rendering logic
+  # New flag rendering logic
 output$collabFlagButtons <- renderUI({
   req(active_tab() == "Collaboration Trends 🤝")
   
@@ -959,92 +959,49 @@ output$collabFlagButtons <- renderUI({
   # Wrap the buttons in a container; you can add styling (e.g., flexbox) as needed
   div(class = "d-flex flex-wrap gap-2", flags)
 })
-  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  # Modal
-# Modal when flag is clicked
-observeEvent(input$selectedCountry, {
-  sel_iso <- input$selectedCountry
 
-  # First try to get data from filtered_data() - this respects current filters
-  relevant_data <- collab_expansion
-
-
-  if (nrow(relevant_data) == 0) {
-    showNotification(paste("No data found for country code:", sel_iso), type = "warning")
-    return()
-  }
-
-    # Find all countries that collaborate with this country
-    collab_partners <- relevant_data 
-
-  # Extract collaboration info using vectorized operations instead of lapply
-  collab_codes <- unique(unlist(strsplit(relevant_data$iso2c, "-")))
-  collab_codes <- collab_codes[collab_codes != sel_iso]
+# Reactive value for selected country
+  selected_country <- reactiveVal(NULL)
   
-  # Get country names for the modal title
-  selected_country_name <- country_metadata[country_metadata$iso2c == sel_iso, "country"]
-
-  # Create flag icons using precomputed flags (more efficient)
-  flag_icons <- NULL
-  if (length(collab_codes) > 0) {
-    valid_codes <- collab_codes[collab_codes %in% names(precomputed_flags)]
-    flags <- precomputed_flags[valid_codes]
-    
-    if (length(flags) > 0) {
-      # Remove click handlers from these flags since they're just for display
-      flags <- lapply(flags, function(flag) {
-        flag$attribs$onclick <- NULL
-        flag
-      })
-      flag_icons <- div(class = "d-flex flex-wrap gap-2 mb-3", flags)
-    }
-  }
-
-  # Create a small trend plot to show in the modal
-  trend_plot <- renderPlot({
-    ggplot(relevant_data, aes(x = year, y = percentage, color = iso2c, group = iso2c)) +
-      geom_line(linewidth = 1) + 
-      geom_point() +
-      labs(
-        title = paste("Collaboration trends for", selected_country_name),
-        x = "Year",
-        y = "Percentage",
-        color = "Collaboration"
-      ) +
-      theme_minimal() +
-      theme(legend.position = "none")
+  # When flag is clicked
+  observeEvent(input$selectedCountry, {
+    req(input$selectedCountry)
+    selected_country(input$selectedCountry)
   })
-  
-  # Assemble the modal content
-  content <- tagList(
-    h4("Collaboration Partners:"),
-    if (!is.null(flag_icons)) {
-      flag_icons
-    } else {
-      p("No collaborations found in the current filter selection.")
-    },
+
+  # Collaboration detail plot
+  output$collabDetailPlot <- renderPlotly({
+    req(selected_country())
     
-    h4("Trend Analysis:"),
-    plotOutput("modalPlot", height = "300px"),
+    # Get collaborations involving selected country
+    data <- df_global_collab %>%
+      filter(grepl(selected_country(), iso2c)) %>%
+      mutate(
+        partners = stringr::str_replace_all(iso2c, selected_country(), ""),
+        partners = stringr::str_replace_all(partners, "-", "")
+      )
     
-    p("NOTE: For a full view of all collaborations, use the 'Select Countries' filter to explore more countries.")
-  )
-
-  # Show the modal with proper title and the trend plot
-  showModal(modalDialog(
-    title = paste("Country Details:", selected_country_name, "(", sel_iso, ")"),
-    content,
-    size = "l",
-    easyClose = TRUE,
-    footer = modalButton("Close")
-  ))
-  
-  # Render the trend plot inside the modal after it's created
-  output$modalPlot <- trend_plot
-})
-
-
-
+    validate(need(nrow(data) > 0, "No collaboration data available for selected country"))
+    
+    # Create interactive plot
+    plot_ly(data, x = ~year, y = ~percentage, 
+            color = ~iso2c, colors = collab_color_map,
+            type = 'scatter', mode = 'lines+markers',
+            hoverinfo = 'text',
+            text = ~paste(
+              "<b>Collaboration:</b> ", iso2c,
+              "<br><b>Partner:</b> ", partners,
+              "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.1),
+            marker = list(size = ~percentage/2))) %>%
+      layout(
+        title = paste("Collaboration Details for", selected_country()),
+        yaxis = list(title = "Percentage", tickformat = ".1%"),
+        xaxis = list(title = "Year"),
+        hoverlabel = list(bgcolor = "white"),
+        showlegend = FALSE
+      ) %>%
+      toWebGL()
+  })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Article Figures
