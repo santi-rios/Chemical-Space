@@ -13,6 +13,7 @@ library(ggplot2)
 theme_set(theme_light())
 library(data.table)
 library(shinycssloaders)
+library(RColorBrewer)
 
 # Efficient data preparation using Arrow and dplyr
 ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
@@ -38,7 +39,39 @@ data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, 
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
-df_global_collab <- df_global[is_collab == TRUE]
+df_global_collab <- df_global[is_collab == TRUE & !(country %in% c("IN-IQ", "US-UY"))]
+
+# top20_groups <- df_global_collab %>%
+#   group_by(iso2c) %>%
+#   summarise(val = sum(percentage, na.rm = TRUE)) %>%
+#   arrange(desc(val)) %>%
+#   head(25) %>%
+#   pull(iso2c)
+
+# print(top20_groups)
+
+df_global_collab_top20 <- df_global_collab %>%
+  filter(iso2c %in% c(
+ "CN-US", "DE-US", "GB-US", "IN-US", "CN-JP", "DE-RU", "CA-US", "JP-US", "DE-FR",
+"FR-US", "ES-GB", "IT-US", "DE-ES", "ES-FR", "CN-DE",  "KR-US",
+"FR-GB", "DE-GB", "ES-IT", "DE-IN", "ES-US"
+))
+
+# Define the 20 country codes for collaborations
+us_codes <- c("DE-US", "GB-US", "IN-US", "CA-US", "JP-US", "FR-US", "IT-US", "KR-US", "ES-US")
+other_codes <- c("CN-US", "CN-JP", "CN-DE", "DE-RU", "DE-FR", "ES-GB", "DE-ES", "ES-FR", "FR-GB", "DE-GB", "ES-IT", "DE-IN")
+
+# Generate 10 distinct blue shades (avoid very light hues) for codes containing "US"
+us_colors <- colorRampPalette(brewer.pal(9, "Blues"))(length(us_codes))
+# For the remaining countries, use a contrasting palette (e.g., "Paired" has 9 distinct colours)
+other_colors <- colorRampPalette(brewer.pal(9, "Set1"))(length(other_codes))
+
+# Create a named vector for mapping
+collab_color_map <- c(setNames(us_colors, us_codes),
+            setNames(other_colors, other_codes)
+            )
+
+
 
 # Articles: only load columns needed
 figure_article <- ds %>%
@@ -186,7 +219,7 @@ ui <- page_navbar(
     fluidRow(
       column(
         width = 12,
-        actionButton("plotTop100Countries", "Top 100 Countries", class = "btn-success", style = "width: 100%;")
+        actionButton("plotTop100Countries", "Plot All", class = "btn-success", style = "width: 100%;")
       )
     ),
     hr(),
@@ -198,7 +231,6 @@ ui <- page_navbar(
         multiple = TRUE,
         options = list(
           plugins = "remove_button",
-          maxItems = 100,
           placeholder = "Select up to 100 countries"
         ),
         width = "100%"
@@ -224,18 +256,6 @@ ui <- page_navbar(
           )
         )
       ),
-      fluidRow(
-        column(
-          width = 12,
-          value_box(
-            title = uiOutput("summaryText"),
-            value = uiOutput("flagButtons"),
-            max_height = "130px",
-            full_screen = TRUE,
-            fill = TRUE
-          )
-        )
-      ),
       card(
         navset_card_tab(
           nav_panel(
@@ -254,7 +274,7 @@ ui <- page_navbar(
               "Interactive map showing country contributions...",
               placement = "left"
             ),
-            uiOutput("mapPlot")
+            highchartOutput("mapPlot")
           ),
           nav_panel(
             "Cartogram🗺️",
@@ -297,35 +317,38 @@ ui <- page_navbar(
   nav_panel(
     "Collaboration Trends 🤝",
     fluidPage(
-      fluidRow(
-        column(
-          width = 12,
-          value_box(
-            title = uiOutput("collabSummaryText"),
-            value = uiOutput("collabFlagButtons"),
-            max_height = "130px",
-            full_screen = TRUE,
-            fill = TRUE
-          )
-        )
-      ),
-      card(
+            card(
         navset_card_tab(
           nav_panel(
             "Trends📈",
-            withSpinner(plotlyOutput("collabTrendPlot", height = 800), color = "#024173"
+            tooltip(
+              bsicons::bs_icon("question-circle"),
+              "China's Chemical Revolution: From 1996 to 2022...",
+              placement = "left"
+            ),
+            withSpinner(plotlyOutput("collabTrendPlot", width = "100%", height = 800), color = "#024173")
           ),
-          nav_panel(
-            "Connections🌐",
-            withSpinner(plotOutput("collabMap", height = 800), color = "#024173"
-          ),
+          # nav_panel(
+          #   "Map📌",
+          #   tooltip(
+          #     bsicons::bs_icon("question-circle"),
+          #     "Interactive map showing country contributions...",
+          #     placement = "left"
+          #   ),
+          #   highchartOutput("mapPlot")
+          # ),
           nav_panel(
             "Substance Types🧪",
+            tooltip(
+              bsicons::bs_icon("question-circle"),
+              "Chemical type distribution over time...",
+              placement = "left"
+            ),
             fluidRow(
               column(
                 width = 12,
                 selectInput(
-                  "collabChemicalSelector",
+                  "chemicalSelectorcollab",
                   "Select Chemical Type",
                   choices = c("Organic", "Organometallic", "Rare-Earths"),
                   selected = "Organic",
@@ -337,6 +360,12 @@ ui <- page_navbar(
           )
         )
       )
+    ),
+    fluidRow(
+      column(12, uiOutput("collabFlagButtons"))
+    ),
+    fluidRow(
+      column(12, plotlyOutput("collabDetailPlot", height = "600px") %>% withSpinner())
     )
   ),
 
@@ -487,10 +516,15 @@ ui <- page_navbar(
     )
   )
 )
-)
-)
+
+
 
 server <- function(input, output, session) {
+
+  ###################
+  # Reactive Values #
+  ###################
+
   # Track active tab
   active_tab <- reactive(input$selected)
   
@@ -530,7 +564,7 @@ server <- function(input, output, session) {
       head(10)
     updateSelectizeInput(session, "countries", choices = valid_countries, 
                         selected = top_countries$country, server = TRUE)
-  }) 
+  })
   # %>% bindCache(df())
 
   # Filtered data with caching
@@ -541,207 +575,207 @@ server <- function(input, output, session) {
         year >= input$years[1] & year <= input$years[2] &
           country %in% input$countries
       )
-}) 
+})
 # %>% bindCache(active_tab(), input$years, input$countries, input$region) %>%
     # debounce(300)
+
+
+  # Observe event for "Top 10 Countries" button
+  observeEvent(input$plotTopCountries, {
+    top_10_countries_df <- df() %>%
+      group_by(country) %>%
+      summarise(val = sum(percentage, na.rm = TRUE)) %>%
+      arrange(desc(val)) %>%
+      head(10)
+    top_10_countries <- top_10_countries_df$country
+    updateSelectizeInput(session, "countries", selected = top_10_countries)
+  })
+
+  # Observe event for "Deselect All" button
+  observeEvent(input$deselectAll, {
+    updateSelectizeInput(session, "countries", selected = character(0))
+  })
+
+  # Observe event for "Top 100 Countries" button
+  observeEvent(input$plotTop100Countries, {
+    all_countries <- sort(unique(df()$country))
+    updateSelectizeInput(session, "countries", selected = all_countries)
+  })
+
+  #########
+  # Plots #
+  #########
 
   # National Trends Plot
   output$trendPlot <- renderPlotly({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
     data <- filtered_data() %>% filter(chemical == "All")
     
-    p <- ggplot(data, aes(x = year, y = percentage, color = country, text = paste(
-      "<b>Country:</b> ", country,
-      "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01),
-      "<br><b>Year:</b> ", year
-    ))) +
+        p <- ggplot(
+      data,
+      aes(
+        x = year,
+        y = percentage,
+        color = country,
+        group = country,
+        text = paste0(
+          "<b>Country:</b> ", country,
+          "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
+          "<br><b>Year:</b> ", year,
+          "<br><b>Region:</b> ", region
+        )
+      )
+    ) +
       geom_line() +
-      geom_point(size = 2, alpha = 0.7) +
+      geom_point(aes(size = percentage / 100), alpha = 0.4, show.legend = FALSE) +
+      geom_text(
+        data = data %>% filter(year == max(year)),
+        aes(y = percentage, label = iso3c, color = country),
+        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
+        size = 4, check_overlap = TRUE, show.legend = FALSE
+      ) +
       scale_color_manual(values = color_map_all) +
       scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 8, face = "bold"),
+        legend.title = element_blank(),
+        axis.title.x = element_blank()
+      ) +
       labs(title = "National Contributions to Chemical Space", y = "% of New Substances")
     
-    ggplotly(p, tooltip = "text") %>% 
+    ggplotly(p, tooltip = "text") %>%
+      plotly::layout(
+        legend = list(
+          orientation = "h",
+          x = 0.5,
+          xanchor = "center",
+          y = -0.3
+        ),
+        margin = list(b = 50)
+      ) %>%
       plotly::toWebGL()
   }) 
   # %>% bindCache(active_tab(), filtered_data())
 
 # Collaboration Trends Plot
   output$collabTrendPlot <- renderPlotly({
-    req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
-    data <- filtered_data() %>% filter(chemical == "All")
+    req(active_tab() == "Collaboration Trends 🤝")
     
-    p <- ggplot(data, aes(x = year, y = percentage, color = country, text = paste(
-      "<b>Collaboration:</b> ", country,
-      "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01),
-      "<br><b>Year:</b> ", year
-    ))) +
+    data <- df_global_collab_top20 %>% filter(chemical == "All")
+    
+        p <- ggplot(
+      data,
+      aes(
+        x = year,
+        y = percentage,
+        color = iso2c,
+        group = iso2c,
+        text = paste0(
+          "<b>Country:</b> ", iso2c,
+          "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
+          "<br><b>Year:</b> ", year,
+          "<br><b>Region:</b> ", region
+        )
+      )
+    ) +
       geom_line() +
-      geom_point(size = 2, alpha = 0.7) +
-      scale_color_manual(values = color_map_all) +
+      geom_point(aes(size = percentage / 100), alpha = 0.4, show.legend = FALSE) +
+      geom_text(
+        data = data %>% filter(year == max(year)),
+        aes(y = percentage, label = iso3c, color = iso2c),
+        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
+        size = 4, check_overlap = TRUE, show.legend = FALSE
+      ) +
+      scale_color_manual(values = collab_color_map) +
       scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 8, face = "bold"),
+        legend.title = element_blank(),
+        axis.title.x = element_blank()
+      ) +
       labs(title = "Collaborative Contributions to Chemical Space", y = "% of New Substances")
     
-    ggplotly(p, tooltip = "text") %>% 
+    ggplotly(p, tooltip = "text") %>%
+      plotly::layout(
+        legend = list(
+          orientation = "h",
+          x = 0.5,
+          xanchor = "center",
+          y = -0.3
+        ),
+        margin = list(b = 50)
+      ) %>%
       plotly::toWebGL()
-  }) 
-  # %>% bindCache(active_tab(), filtered_data())
-
-  collab_data <- reactive({
-    req(filtered_data(), active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
-    dt <- as.data.table(filtered_data())
-    dt[, Value := percentage]
-    dt[, Year := year]
-    dt
   })
-
-# Connection Map for Collaborations
-  output$collabMap <- renderPlot({
-    req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
-    
-    # Check cache first
-    cache_key <- digest::digest(list(input$years, input$countries))
-    if (!is.null(connection_cache[[cache_key]])) {
-      return(connection_cache[[cache_key]])
-    }
-    
-    # Process collaboration pairs
-    collab_pairs <- filtered_data() %>%
-      mutate(country_pairs = strsplit(iso2c, "-")) %>%
-      tidyr::unnest(country_pairs) %>%
-      left_join(
-        df_global_ind %>% distinct(iso2c, lat, lng),
-        by = c("country_pairs" = "iso2c")
-      ) %>%
-      group_by(iso2c) %>%
-      mutate(
-        pair_type = ifelse(row_number() == 1, "source", "target")
-      ) %>%
-      pivot_wider(names_from = pair_type, values_from = c(country_pairs, lat, lng)) %>%
-      filter(!is.na(lat_source) & !is.na(lat_target))
-    
-    # Create connection lines
-    connections <- collab_pairs %>%
-      group_by(source = country_pairs_source, target = country_pairs_target) %>%
-      summarise(
-        total = sum(percentage, na.rm = TRUE),
-        source_lon = first(lng_source),
-        source_lat = first(lat_source),
-        target_lon = first(lng_target),
-        target_lat = first(lat_target),
-        .groups = "drop"
-      )
-    
-    # Generate great circle routes
-    routes <- purrr::map2_df(
-      connections$source_lon, connections$source_lat,
-      connections$target_lon, connections$target_lat,
-      ~{
-        gcIntermediate(c(.x, .y), c(.x2, .y2), n = 50, addStartEnd = TRUE, sp = TRUE) %>%
-          sf::st_as_sf() %>%
-          mutate(total = .$total)
-      }
-    )
-    
-    # Create plot
-    p <- ggplot() +
-      geom_sf(data = routes, aes(alpha = total, color = total), 
-              linewidth = 0.7, show.legend = FALSE) +
-      scale_alpha_continuous(range = c(0.1, 0.7)) +
-      scale_color_gradient(low = "#FFA500", high = "#FF4500") +
-      theme_void() +
-      theme(
-        panel.background = element_rect(fill = "#02152b", colour = NA),
-        plot.background = element_rect(fill = "#02152b", colour = NA)
-      )
-    
-    # Cache and return
-    connection_cache[[cache_key]] <- p
-    p
-  }) 
   # %>% bindCache(active_tab(), filtered_data())
-
-  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  # Map UI
 
   # Highchart map - Individual Countries
 # National Map
-  output$geoPlot <- renderHighchart({
+  output$mapPlot <- renderHighchart({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
     
     map_data <- filtered_data() %>%
+      group_by(iso3c, year, region) %>%
+      summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
       group_by(iso3c) %>%
-      summarise(value = mean(percentage, na.rm = TRUE))
-    
-    hcmap("custom/world-robinson-lowres", data = map_data) %>%
-      hc_colorAxis(stops = color_stops(colors = viridisLite::viridis(10))) %>%
-      hc_tooltip(pointFormat = "{point.name}: {point.value:.2f}%")
-  }) 
-  # %>% bindCache(active_tab(), filtered_data())
-  # Collaboration Map
-  output$collabMap <- renderHighchart({
-    req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
-    map_data_by_pair <- collab_data()[, .(
-      iso3c_combo = iso3c,
-      Value, Year
-    )]
-
-    map_data_by_pair <- map_data_by_pair[, .(
-      value      = mean(Value, na.rm = TRUE),
-      best_year  = Year[which.max(Value)],
-      worst_year = Year[which.min(Value)]
-    ), by = iso3c_combo]
-
-    # Expand each iso3c_combo into individual iso codes
-    map_expanded <- map_data_by_pair[, .(
-      splitted_iso     = unlist(strsplit(iso3c_combo, "-")),
-      combo            = rep(iso3c_combo, sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_value      = rep(value, sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_best_year  = rep(best_year, sapply(strsplit(iso3c_combo, "-"), length)),
-      combo_worst_year = rep(worst_year, sapply(strsplit(iso3c_combo, "-"), length))
-    )]
-
-    map_data <- map_expanded[, .(
-      value = mean(combo_value, na.rm = TRUE),
-      best_year = combo_best_year[which.max(combo_value)],
-      worst_year = combo_worst_year[which.min(combo_value)],
-      collab_list = paste0(
-        unique(paste0(combo, " (best year: ", combo_best_year, ")")),
-        collapse = "; "
+      summarise(
+        value      = mean(yearly_avg, na.rm = TRUE),
+        best_year  = year[which.max(yearly_avg)],
+        worst_year = year[which.min(yearly_avg)],
+        region     = first(region),
+        .groups    = "drop"
       )
-    ), by = splitted_iso]
 
-    setnames(map_data, "splitted_iso", "iso3c")
-    max_val <- max(map_data$value, na.rm = TRUE)
-
-    hcmap("custom/world-robinson-lowres",
+    hcmap("custom/world-robinson-lowres.js",
       data   = map_data,
       joinBy = c("iso-a3", "iso3c"),
       value  = "value",
-      name   = "Collaboration"
+      name   = "Average Contribution"
     ) %>%
       hc_colorAxis(
-        minColor = "#04131f",
-        maxColor = "#c5051b",
-        labels   = list(format = "{value:.2f}%"),
-        title    = list(text = "Collaboration (%)", style = list(color = "black"))
+        minColor = "#071f33",
+        maxColor = "#e8041e",
+        labels   = list(format = "{value}%"),
+        title    = list(text = "Contribution (%)", style = list(color = "white"))
       ) %>%
       hc_tooltip(pointFormat = paste0(
-        "{point.name}: {point.value:.2f}%,<br>",
-        "Pairs: {point.collab_list}<br>",
-        "Best Year: {point.best_year},<br>",
+        "{point.name}: {point.value:.2f}%, <br> Region: {point.region}, <br>",
+        "<br> Best Year: {point.best_year}, <br>",
         "Worst Year: {point.worst_year}"
       )) %>%
-      hc_mapNavigation(enabled = TRUE) %>%
+      hc_mapNavigation(
+        enabled = TRUE,
+        enableMouseWheelZoom = TRUE,
+        enableDoubleClickZoom = TRUE
+      ) %>%
       hc_subtitle(
-        text  = paste0("Top collaboration = ", scales::percent(max_val, accuracy = 0.01, scale = 1)),
+        text = paste0(
+          "Mean value of Top Country in current selection = ",
+          scales::percent(max(map_data$value, na.rm = TRUE),
+            accuracy = 0.01,
+            scale = 1
+          )
+        ),
         style = list(color = "black")
       ) %>%
       hc_title(
-        text  = "Percentage of new substances with participation of country pairs",
+        text  = paste0("Top Country (Total Value) = ", map_data$iso3c[which.max(map_data$value)]),
         style = list(color = "black")
       )
   })
+  # %>% bindCache(input$data_mode, input$region, input$countries, input$years)
+
+
+  # collab_data <- reactive({
+  #   req(filtered_data(), active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
+  #   dt <- as.data.table(filtered_data())
+  #   dt[, Value := percentage]
+  #   dt[, Year := year]
+  #   dt
+  # })
+
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Cartogram
@@ -752,8 +786,9 @@ server <- function(input, output, session) {
     filtered_data() %>%
       group_by(country, lat, lng) %>%
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-  }) 
+  })
   # %>% bindCache(active_tab(), filtered_data())
+  
   # Initialize map
   # Initialize map only once and use proxy more effectively
   output$geoPlot2 <- renderLeaflet({
@@ -781,20 +816,39 @@ server <- function(input, output, session) {
 
   observe({
     data <- carto_data()
-    pal <- colorNumeric("viridis", domain = data$value)
+    pal <- colorNumeric("Reds", domain = data$value)
     
     leafletProxy("geoPlot2", data = data) %>%
       clearMarkers() %>%
       addCircleMarkers(
         lng = ~lng, lat = ~lat,
-        radius = ~scales::rescale(value, c(5, 30)),
-        color = ~pal(value),
-        popup = ~glue("{country}<br>Avg: {round(value, 2)}%")
+        radius = ~ scales::rescale(value, c(5, 30)),
+        color = ~ pal(value),
+        fillOpacity = 0.7,
+        group = "Markers",
+        popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
+      ) %>%
+      clearControls() %>%
+      addLayersControl(
+        baseGroups = c("NASA", "Continents"),
+        overlayGroups = c("Markers"),
+        position = "topright"
+      ) %>%
+      addLegend(
+        "bottomright",
+        pal = pal,
+        values = ~value,
+        title = "Avg %",
+        opacity = 0.5
       )
   })
+
+
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Substance Types
 # Substance Plots
+
+
   output$substancePlot <- renderPlotly({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
     data <- filtered_data() %>%
@@ -837,46 +891,74 @@ server <- function(input, output, session) {
 
 output$collabSubstancePlot <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
-    # Collaboration version of substance plot
+
+    data <- filtered_data() %>%
+      filter(chemical == input$chemicalSelectorcollab)
+
+    p <- ggplot(data, aes(
+      x = year, y = percentage, color = iso2c, group = iso2c,
+      text = paste0(
+        "<b>Country:</b> ", iso2c,
+        "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
+        "<br><b>Year:</b> ", year,
+        "<br><b>Region:</b> ", region
+      )
+    )) +
+      geom_line() +
+      geom_point(aes(size = percentage / 100),
+        alpha = 0.4, show.legend = FALSE
+      ) +
+      labs(
+        title = "Percentage of new compounds reported by each country in journals",
+        x = "Year",
+        y = "Percentage of new substances"
+      ) +
+      geom_text(
+        data = data %>% filter(year == max(year)),
+        aes(y = percentage, label = iso3c, color = iso2c),
+        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
+        size = 4, check_overlap = TRUE, show.legend = FALSE
+      ) +
+      theme(legend.position = "none") +
+      scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
+
+    p <- p + scale_color_manual(values = collab_color_map)
+
+    ggplotly(p, tooltip = "text") %>%
+      plotly::partial_bundle() %>%
+      plotly::toWebGL()
+
   }) 
   # %>% bindCache(active_tab(), input$collabChemicalSelector, filtered_data())
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
-  # Flag Buttons
-  output$flagButtons <- renderUI({
-    req(filtered_data())
 
-    # Get ordered ISO codes using data.table
-    iso_data <- if (input$data_mode == "Collaborations") {
-      filtered_data()[iso2c %in% input$countries][
-        collab_expansion,
-        on = .(iso2c),
-        allow.cartesian = TRUE
-      ][, .(totVal = sum(percentage)), by = .(isoSplit = isoSplit)]
-    } else {
-      filtered_data()[, .(totVal = sum(percentage)), by = .(isoSplit = iso2c)]
-    }
-
-    ordered_iso <- iso_data[
-      order(-totVal),
-      head(isoSplit, 100) # Limit to top 100
-    ]
-
-    # Get precomputed flags and add click handlers
-    flags <- precomputed_flags[ordered_iso]
-    flags <- lapply(flags, function(flag) {
-      iso <- flag$attribs$`data-iso`
-      flag$attribs$onclick <- sprintf(
-        "Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})",
-        iso
-      )
-      flag
-    })
-
-    div(flags)
+# New flag rendering logic
+output$collabFlagButtons <- renderUI({
+  req(active_tab() == "Collaboration Trends 🤝")
+  
+  # Get all unique ISO codes from the complete collaboration dataset
+  unique_isos <- unique(df_global_ind$iso2c)
+  
+  # Create flag buttons for every unique ISO code
+  flags <- lapply(unique_isos, function(iso) {
+    tags$button(
+      class = "btn btn-outline-secondary btn-sm",
+      `data-iso` = iso,
+      tags$img(
+        src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
+        width = 16,
+        height = 12
+      ),
+      paste0(" ", iso),
+      onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
+    )
   })
-
+  
+  # Wrap the buttons in a container; you can add styling (e.g., flexbox) as needed
+  div(class = "d-flex flex-wrap gap-2", flags)
+})
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Modal
 # Modal when flag is clicked
@@ -884,33 +966,17 @@ observeEvent(input$selectedCountry, {
   sel_iso <- input$selectedCountry
 
   # First try to get data from filtered_data() - this respects current filters
-  relevant_data <- filtered_data()[grepl(sel_iso, iso2c)]
-  
-  # If no data, try broader df() scope which respects the data mode and region filters
-  if (nrow(relevant_data) == 0) {
-    relevant_data <- df()[grepl(sel_iso, iso2c)]
-  }
-  
+  relevant_data <- collab_expansion
+
+
   if (nrow(relevant_data) == 0) {
     showNotification(paste("No data found for country code:", sel_iso), type = "warning")
     return()
   }
-  
-  # If in Individual Countries mode, switch to Collaborations
-  if (input$data_mode == "Individual Countries") {
-    # Switch to 'Collaborations' mode
-    updateNavbarPage(session, "selected", selected = "Collaboration Trends 🤝")
-    
+
     # Find all countries that collaborate with this country
-    collab_partners <- df_global %>%
-      filter(is_collab == TRUE, grepl(sel_iso, iso2c)) %>% 
-      pull(country) %>% 
-      unique()
-    
-    # Update the selected countries to show these collaborations
-    updateSelectizeInput(session, "countries", selected = collab_partners)
-  }
-  
+    collab_partners <- relevant_data 
+
   # Extract collaboration info using vectorized operations instead of lapply
   collab_codes <- unique(unlist(strsplit(relevant_data$iso2c, "-")))
   collab_codes <- collab_codes[collab_codes != sel_iso]
@@ -934,16 +1000,6 @@ observeEvent(input$selectedCountry, {
     }
   }
 
-  # Create a summary table of collaboration data
-  summary_data <- relevant_data %>%
-    group_by(year) %>%
-    summarise(
-      avg_percentage = mean(percentage, na.rm = TRUE),
-      total_percentage = sum(percentage, na.rm = TRUE),
-      collaborations = n_distinct(iso2c),
-      .groups = "drop"
-    )
-  
   # Create a small trend plot to show in the modal
   trend_plot <- renderPlot({
     ggplot(relevant_data, aes(x = year, y = percentage, color = iso2c, group = iso2c)) +
@@ -971,11 +1027,6 @@ observeEvent(input$selectedCountry, {
     h4("Trend Analysis:"),
     plotOutput("modalPlot", height = "300px"),
     
-    h4("Summary Statistics:"),
-    renderTable({
-      summary_data
-    }),
-    
     p("NOTE: For a full view of all collaborations, use the 'Select Countries' filter to explore more countries.")
   )
 
@@ -991,6 +1042,9 @@ observeEvent(input$selectedCountry, {
   # Render the trend plot inside the modal after it's created
   output$modalPlot <- trend_plot
 })
+
+
+
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Article Figures
