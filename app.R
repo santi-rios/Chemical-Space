@@ -40,7 +40,7 @@ data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, 
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
-df_global_collab <- df_global[is_collab == TRUE & !(country %in% c("IN-IQ", "US-UY"))]
+df_global_collab <- df_global[is_collab == TRUE]
 
 # top20_groups <- df_global_collab %>%
 #   group_by(iso2c) %>%
@@ -227,15 +227,19 @@ ui <- page_navbar(
     hr(),
     div(
       style = "margin-bottom: 18rem;",
-      selectizeInput(
-        "countries", "Select Countries 🎌",
+  accordion(
+    id = "countryAccordion",
+    open = TRUE,
+    accordion_panel(
+      "Select Countries 🎌",
+      checkboxGroupInput(
+        inputId = "countries",
+        label = NULL,
         choices = NULL,
-        multiple = TRUE,
-        options = list(
-          plugins = "remove_button",
-          placeholder = "Select up to 100 countries"
-        ),
+        selected = NULL,
         width = "100%"
+      )
+    )
       )
     )
   ),
@@ -316,9 +320,7 @@ ui <- page_navbar(
   # ------------------------------
   # 2) COLLABORATION TRENDS
   # ------------------------------
-  # ------------------------------
-  # 2) COLLABORATION TRENDS
-  # ------------------------------
+
   nav_panel(
     "Collaboration Trends 🤝",
     fluidPage(
@@ -359,6 +361,21 @@ ui <- page_navbar(
               )
             ),
             withSpinner(plotlyOutput("collabSubstancePlot", width = "100%"), color = "#024173")
+          ),
+          nav_panel(
+            "Collaborative contribution visualization 🌍",
+            fluidRow(
+              column(
+                width = 12,
+                tags$h4("Collaborative contribution visualization"),
+                tags$img(
+                  src = "collabs.gif",
+                  width = "30%",
+                  style = "display:block; margin:0 auto;"
+                ),
+                p("Map with lines (routes) connecting countries. The line width represents the percentage value for each year.")
+              )
+            )
           )
         )
       ),
@@ -377,6 +394,8 @@ ui <- page_navbar(
             plotlyOutput("collabPartnersPlot", height = "400px")
           )
         )
+      )
+    )
       ),
 
       # ------------------------------
@@ -412,23 +431,23 @@ ui <- page_navbar(
         tags$p("Here we show, by analysing the chemical space between 1996 and 2022, that the chemical space expansion has been dominated by China ever since 2013. Chinese dominance is mainly the product of the country’s own efforts, rather than the result of international collaboration. Alternatively, the US share of the chemical space is more dependent on international collaboration, which mainly occurs with China."),
         fluidRow(
           column(
-            width = 6,
+            width = 12,
             tags$img(
               src = "trends_country.gif",
               width = "100%",
               style = "display:block; margin:0 auto;"
             ),
             p("Country contribution to chemical space", style = "text-align:center;")
-          ),
-          column(
-            width = 6,
-            tags$img(
-              src = "trends_collab.gif",
-              width = "100%",
-              style = "display:block; margin:0 auto;"
-            ),
-            p("Collaborations contributions to chemical space", style = "text-align:center;")
           )
+          # column(
+          #   width = 6,
+          #   tags$img(
+          #     src = "trends_collab.gif",
+          #     width = "100%",
+          #     style = "display:block; margin:0 auto;"
+          #   ),
+          #   p("Collaborations contributions to chemical space", style = "text-align:center;")
+          # )
         )
       ),
 
@@ -524,8 +543,6 @@ ui <- page_navbar(
         )
       )
     )
-  )
-)
 
 
 
@@ -571,10 +588,7 @@ server <- function(input, output, session) {
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
       head(10)
-    updateSelectizeInput(session, "countries",
-      choices = valid_countries,
-      selected = top_countries$country, server = TRUE
-    )
+    updateCheckboxGroupInput(session, "countries", choices = valid_countries, selected = top_countries$country)
   })
   # %>% bindCache(df())
 
@@ -597,14 +611,14 @@ server <- function(input, output, session) {
       group_by(country) %>%
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
-      head(10)
-    top_10_countries <- top_10_countries_df$country
-    updateSelectizeInput(session, "countries", selected = top_10_countries)
+      head(20)
+    top_20_countries <- top_20_countries_df$country
+    updateCheckboxGroupInput(session, "countries", selected = top_10_countries_df)
   })
 
   # Observe event for "Deselect All" button
   observeEvent(input$deselectAll, {
-    updateSelectizeInput(session, "countries", selected = character(0))
+    updateCheckboxGroupInput(session, "countries", selected = character(0))
   })
 
   # Observe event for "Top 100 Countries" button
@@ -811,7 +825,7 @@ server <- function(input, output, session) {
         overlayGroups = c("Markers"),
         position = "topright"
       ) %>%
-      setView(lng = 0, lat = 30, zoom = 1)
+      setView(lng = 0, lat = 30, zoom = 2)
   })
 
   # Update markers and legend whenever carto_data changes
@@ -940,20 +954,23 @@ server <- function(input, output, session) {
       plotly::toWebGL()
   })
   # %>% bindCache(active_tab(), input$collabChemicalSelector, filtered_data())
-
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # -------------------------------
-  # Flag buttons (unchanged, but ensure using the full list)
+  # Sort the flags by country name
   output$collabFlagButtons <- renderUI({
     req(active_tab() == "Collaboration Trends 🤝")
 
-    # Use all unique ISO codes from the complete dataset (here using df_global_ind as example)
-    unique_isos <- unique(df_global_ind$iso2c)
+    # Collect all unique iso2c-country pairs, then sort by country name
+    sorted_countries <- df_global_ind %>%
+      distinct(iso2c, country) %>%
+      arrange(country)
 
-    # Create flag buttons for every unique ISO code
-    flags <- lapply(unique_isos, function(iso) {
+    # Create flag buttons for every sorted country
+    flags <- lapply(seq_len(nrow(sorted_countries)), function(i) {
+      iso <- sorted_countries$iso2c[i]
+      country_name <- sorted_countries$country[i]
       tags$button(
         class = "btn btn-outline-secondary btn-sm",
         `data-iso` = iso,
@@ -962,12 +979,11 @@ server <- function(input, output, session) {
           width = 16,
           height = 12
         ),
-        paste0(" ", iso),
+        paste0(" ", country_name),
         onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
       )
     })
 
-    # Wrap the buttons in a container with flex styling
     div(class = "d-flex flex-wrap gap-2", flags)
   })
 
@@ -1022,8 +1038,16 @@ server <- function(input, output, session) {
       plotly::toWebGL()
     })
   })
+  #################
+  # MAP GIF
+  ##################
 
+
+
+  #################
   # Article Figures
+  ##################
+
   output$articlePlot <- renderPlotly({
     req(input$article_source)
 
