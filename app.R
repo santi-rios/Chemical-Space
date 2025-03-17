@@ -90,7 +90,7 @@ figure_article <- ds %>%
 df_figures <- ds %>%
   filter(!is.na(percentage_y)) %>%
   select(
-    15:39
+    16:40
   ) %>%
   rename(
     percentage = percentage_y,
@@ -401,55 +401,33 @@ ui <- page_navbar(
       # ------------------------------
       # 3) ARTICLE FIGURES
       # ------------------------------
-      nav_panel(
-        "Article Figures 📰",
-        fluidRow(
-          column(
-            width = 12,
-            selectInput(
-              "article_source", "Select Article Source",
-              choices = unique(figure_article$source),
-              selected = unique(figure_article$source)[1],
-              width = "40%"
-            )
-          )
-        ),
-        withSpinner(plotlyOutput("articlePlot", height = 600, width = "100%"), color = "#024173"),
-        card_footer(
-          "Countrywise expansion of the chemical space.",
-          popover(
-            a("Learn more", href = "#"),
-            markdown(
-              "This plots show the chemichap space growth, enfatising China's rise in the chemical space (CS) and the decline of US influence."
-            )
-          )
-        ),
-        br(),
-        br(),
-        hr(),
-        tags$h3("Original country and collaborations contributions to the chemical space from the original article"),
-        tags$p("Here we show, by analysing the chemical space between 1996 and 2022, that the chemical space expansion has been dominated by China ever since 2013. Chinese dominance is mainly the product of the country’s own efforts, rather than the result of international collaboration. Alternatively, the US share of the chemical space is more dependent on international collaboration, which mainly occurs with China."),
-        fluidRow(
-          column(
-            width = 12,
-            tags$img(
-              src = "trends_country.gif",
-              width = "100%",
-              style = "display:block; margin:0 auto;"
-            ),
-            p("Country contribution to chemical space", style = "text-align:center;")
-          )
-          # column(
-          #   width = 6,
-          #   tags$img(
-          #     src = "trends_collab.gif",
-          #     width = "100%",
-          #     style = "display:block; margin:0 auto;"
-          #   ),
-          #   p("Collaborations contributions to chemical space", style = "text-align:center;")
-          # )
+  nav_panel(
+    "Article Figures 📰",
+    fluidRow(
+      column(
+        width = 12,
+        selectInput(
+          "selected_figure", "Select Figure",
+          choices = c("Country participation in the CS" = "figure1a.gif",
+                      "China-US in the CS" = "figure1c.gif",
+                      "Annual growth rate of the GDP" = "figure1d.gif",
+                      "Number of researchers in research" = "figure1e.gif"),
+          selected = "figure1a.gif",
+          width = "85%"
         )
-      ),
+      )
+    ),
+    # Display a caption and a popover with additional text
+    card_footer(
+      uiOutput("figureCaption"),
+      popover(
+        a("Learn more", href = "#"),
+        markdown(uiOutput("figureDescription"))
+      )
+    ),
+    # Display the GIF image using uiOutput wrapped in a spinner
+    withSpinner(uiOutput("figureDisplay"), color = "#024173")
+  ),
 
       # ------------------------------
       # 4) ELEMENT FIGURES
@@ -1048,57 +1026,62 @@ server <- function(input, output, session) {
   # Article Figures
   ##################
 
-  output$articlePlot <- renderPlotly({
-    req(input$article_source)
-
-    # Set y-axis title based on article_source
-    y_title <- switch(input$article_source,
-      "CS Growth" = "Percentage of new substances",
-      "China-US collaboration" = "Percentage of national contribution",
-      "Growth rate of GDP" = "GDP per capira growth (annual %)",
-      "Number of Researchers" = "Researchs",
-      "Expansion of the CS" = "Number of new substances",
-      "Value" # default title if none match
-    )
-
-    article_data <- subset(figure_article, source == input$article_source)
-
-    p <- plot_ly(
-      article_data,
-      x = ~year,
-      y = ~percentage,
-      type = "scatter",
-      mode = "markers",
-      color = ~country,
-      colors = "Set1",
-      alpha = 0.9,
-      size = ~percentage,
-      marker = list(sizemode = "diameter"),
-      text = ~ paste("Country: ", country, "<br>Year: ", year, "<br>Value: ", percentage),
-      frame = ~year
-    ) %>%
-      layout(
-        title = paste("Article Figures - Source:", input$article_source),
-        xaxis = list(title = "Year"),
-        yaxis = list(title = y_title),
-        plot_bgcolor = "rgb(199, 204, 204)"
-      ) %>%
-      animation_opts(
-        frame = 300,
-        transition = 0,
-        redraw = FALSE
+  # Define the texts and captions for each figure
+  figure_info <- list(
+    "figure1a.gif" = list(
+      caption = "Country Contribution to the Chemical Space",
+      description = paste(
+        "Based on data retrieved from Reaxys®, Dimensions, and OpenAlex for 1996-2022,",
+        "this figure shows that China now covers 41% of the chemical space,",
+        "dwarfing the US share of 11%. China’s exponential growth led it to become",
+        "the leading contributor from 2013 onward."
       )
-
-    p %>%
-      plotly::partial_bundle() %>%
-      plotly::toWebGL()
+    ),
+    "figure1e.gif" = list(
+      caption = "Research Workforce Trends",
+      description = paste(
+        "Since 2005, China has boasted a considerably larger number of researchers than the US,",
+        "a trend that has fueled its rapid expansion in the chemical space."
+      )
+    ),
+    "figure1c.gif" = list(
+      caption = "Solo vs Collaborative Contributions",
+      description = paste(
+        "Over 90% of China’s chemical space contributions come from domestic teams,",
+        "while the US experienced a marked decline in solo contributions—from over 95% to less than 80%—",
+        "offset by a rise in international collaborations, notably with China."
+      )
+    ),
+    "figure1d.gif" = list(
+      caption = "Economic Growth and Financial Dynamics",
+      description = paste(
+        "This figure highlights China’s thriving economy in contrast to the US,",
+        "where a larger national debt and slower economic growth underscore the differences",
+        "in financial dynamics between the two nations."
+      )
+    )
+  )
+  
+  # Render the selected image
+  output$figureDisplay <- renderUI({
+    tags$img(
+      src = input$selected_figure,
+      width = "100%",
+      style = "display:block; margin:0 auto;"
+    )
   })
-  # %>% bindCache(input$article_source)
-
-  observe({
-    if (input$article_source %in% c("China-US collaboration")) {
-      showNotification("Explore the Original Paper Figures. More information in this link: https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6", type = "warning")
-    }
+  
+  # Render the caption text for the selected figure
+  output$figureCaption <- renderUI({
+    tags$p(
+      figure_info[[input$selected_figure]]$caption,
+      style = "text-align:center; font-weight:bold;"
+    )
+  })
+  
+  # Render the detailed description for the selected figure
+  output$figureDescription <- renderText({
+    figure_info[[input$selected_figure]]$description
   })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
