@@ -446,7 +446,7 @@ ui <- page_navbar(
                       "Annual growth rate of the GDP" = "figure1d.gif",
                       "Number of researchers in research" = "figure1e.gif"),
           selected = "figure1a.gif",
-          width = "85%"
+          width = "40%"
         )
       )
     ),
@@ -1095,7 +1095,7 @@ output$trendPlot <- renderPlotly({
   output$figureDisplay <- renderUI({
     tags$img(
       src = input$selected_figure,
-      width = "100%",
+      width = "40%",
       style = "display:block; margin:0 auto;"
     )
   })
