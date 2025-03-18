@@ -7,7 +7,7 @@ library(tidytable)
 library(countrycode)
 library(leaflet)
 library(highcharter)
-library(viridisLite)
+# library(viridisLite)
 library(glue)
 library(ggplot2)
 theme_set(theme_light())
@@ -21,9 +21,10 @@ ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
   as_tidytable()
 
 # Pre-filter at the Arrow level before collecting
+
+
 ds_filtered <- ds %>%
   filter(!is.na(percentage)) %>%
-  filter(!country %in% (country %in% c("IN-IQ", "US-UY"))) %>%
   select(
     iso2c, year, percentage, chemical,
     iso3c, country, lat, lng,
@@ -41,6 +42,7 @@ data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, 
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
+
 df_global_collab <- df_global[is_collab == TRUE]
 
 # top20_groups <- df_global_collab %>%
@@ -109,24 +111,48 @@ initial_top_countries_df <- df_global_ind %>%
 
 initial_top_countries <- initial_top_countries_df$country
 # -----------------------------------------------------------
-
 # Color mappings (in-memory)
 all_ctry <- sort(unique(df_global$country))
-color_map_all <- setNames(viridisLite::viridis(length(all_ctry)), all_ctry)
+# More efficient color mapping function
+create_country_colors <- function(countries, default_color = "#cccccc") {
+  # Start with a default color for all countries
+  color_map <- rep(default_color, length(countries))
+  names(color_map) <- countries
+  
+  # Define override countries and their specific colors
+  override_countries <- c(
+    "China", "United States of America", "India", "Germany",
+    "Japan", "United Kingdom", "France", "Russia", "Mexico",
+    "Colombia", "Brazil", "Ecuador", "Argentina"
+  )
+  
+  override_colors <- c(
+    "#c5051b", "#0a3161", "#ff671f", "#000000",
+    "#995162", "#3b5091", "#000091", "#d51e9b",
+    "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
+  )
+  
+  # Only override colors for countries that actually exist in our dataset
+  for (i in seq_along(override_countries)) {
+    if (override_countries[i] %in% countries) {
+      color_map[override_countries[i]] <- override_colors[i]
+    }
+  }
+  
+  # For remaining countries, use a gradient of grays/blues
+  # This is more efficient than using viridis for hundreds of countries
+  remaining <- setdiff(countries, override_countries)
+  if (length(remaining) > 0) {
+    num_remaining <- length(remaining)
+    remaining_colors <- colorRampPalette(c("#d0d0d0", "#a0a0a0"))(num_remaining)
+    color_map[remaining] <- remaining_colors
+  }
+  
+  return(color_map)
+}
 
-override_countries <- c(
-  "China", "United States of America", "India", "Germany",
-  "Japan", "United Kingdom", "France", "Russia", "Mexico",
-  "Colombia", "Brazil", "Ecuador", "Argentina"
-)
-
-override_colors <- c(
-  "#c5051b", "#0a3161", "#ff671f", "#000000",
-  "#995162", "#3b5091", "#000091", "#d51e9b",
-  "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
-)
-
-color_map_all[override_countries] <- override_colors
+# Use this function to generate colors only when needed
+color_map_all <- create_country_colors(all_ctry)
 
 # Precompute country metadata for flags
 country_metadata <- df_global_ind %>% # Use df_global_ind as it contains individual countries
@@ -154,12 +180,11 @@ names(precomputed_flags) <- country_metadata$iso2c
 
 
 # Collaboration expansion
-collab_expansion <- df_global_collab %>%
-  select(iso2c, year, percentage) %>%
-  mutate(isoSplit = strsplit(iso2c, "-")) %>%
-  tidytable::unnest(isoSplit) %>%
-  group_by(isoSplit) %>%
-  arrange(desc(percentage))
+# Replace tidyr::unnest with data.table equivalent
+collab_expansion <- df_global_collab[
+  , .(isoSplit = tstrsplit(iso2c, "-")), 
+  by = .(iso2c, year, percentage)
+]
 
 
 # Pre-compute the Highchart map data at startup instead of in reactive context
@@ -476,8 +501,8 @@ ui <- page_navbar(
           fluidRow(
             column(
               width = 12,
-              h3("China's rise in the chemical space and the decline of US influence"),
-              p("This dashboard is based on the study ‘China's rise in the chemical space and the decline of US influence’. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
+              h3("Chinas rise in the chemical space and the decline of US influence"),
+              p("This dashboard is based on the study China's rise in the chemical space and the decline of US influence. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
               p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
               p("Useful links for more information:"),
               tags$ul(
@@ -528,7 +553,7 @@ ui <- page_navbar(
           )
         )
       )
-    )
+)
 
 
 
@@ -586,9 +611,9 @@ server <- function(input, output, session) {
         year >= input$years[1] & year <= input$years[2] &
           country %in% input$countries
       )
-  })
-  # %>% bindCache(active_tab(), input$years, input$countries, input$region) %>%
-  # debounce(300)
+  }) %>% 
+  bindCache(active_tab(), input$years, input$countries, input$region) %>%
+  debounce(300)
 
 
   # Observe event for "Top 10 Countries" button
@@ -597,9 +622,9 @@ server <- function(input, output, session) {
       group_by(country) %>%
       summarise(val = sum(percentage, na.rm = TRUE)) %>%
       arrange(desc(val)) %>%
-      head(20)
-    top_20_countries <- top_20_countries_df$country
-    updateCheckboxGroupInput(session, "countries", selected = top_10_countries_df)
+      head(10)
+    top_10_countries <- top_10_countries_df$country
+    updateSelectizeInput(session, "countries", selected = top_10_countries_df)
   })
 
   # Observe event for "Deselect All" button
@@ -618,43 +643,59 @@ server <- function(input, output, session) {
   #########
 
   # National Trends Plot
-  output$trendPlot <- renderPlotly({
-    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
-    data <- filtered_data() %>% filter(chemical == "All")
-
-    p <- ggplot(
-      data,
-      aes(
-        x = year,
-        y = percentage,
-        color = country,
-        group = country,
-        text = paste0(
-          "<b>Country:</b> ", country,
-          "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
-          "<br><b>Year:</b> ", year,
-          "<br><b>Region:</b> ", region
-        )
+# National Trends Plot with optimized rendering
+output$trendPlot <- renderPlotly({
+  req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
+  
+  # Filter data first to reduce processing
+  data <- filtered_data()[filtered_data()$chemical == "All",]
+  
+  # Get only the countries in the current filtered dataset
+  current_countries <- unique(data$country)
+  
+  # Generate colors only for countries we need
+  current_colors <- create_country_colors(current_countries)
+  
+  # Compute max year once
+  max_year_val <- max(data$year)
+  
+  # Reduce dataframe size for end labels
+  end_labels_data <- data[data$year == max_year_val,]
+  
+  p <- ggplot(
+    data,
+    aes(
+      x = year,
+      y = percentage,
+      color = country,
+      group = country,
+      text = paste0(
+        "<b>Country:</b> ", country,
+        "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
+        "<br><b>Year:</b> ", year,
+        "<br><b>Region:</b> ", region
       )
+    )
+  ) +
+    geom_line() +
+    geom_point(aes(size = percentage / 100), alpha = 0.4, show.legend = FALSE) +
+    geom_text(
+      data = end_labels_data,
+      aes(y = percentage, label = iso3c),
+      hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
+      size = 4, check_overlap = TRUE, show.legend = FALSE
     ) +
-      geom_line() +
-      geom_point(aes(size = percentage / 100), alpha = 0.4, show.legend = FALSE) +
-      geom_text(
-        data = data %>% filter(year == max(year)),
-        aes(y = percentage, label = iso3c, color = country),
-        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
-        size = 4, check_overlap = TRUE, show.legend = FALSE
-      ) +
-      scale_color_manual(values = color_map_all) +
-      scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-      theme(
-        legend.position = "bottom",
-        legend.text = element_text(size = 8, face = "bold"),
-        legend.title = element_blank(),
-        axis.title.x = element_blank()
-      ) +
-      labs(title = "National Contributions to Chemical Space", y = "% of New Substances")
-
+    scale_color_manual(values = current_colors) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    theme(
+      legend.position = "bottom",
+      legend.text = element_text(size = 8, face = "bold"),
+      legend.title = element_blank(),
+      axis.title.x = element_blank()
+    ) +
+    labs(title = "National Contributions to Chemical Space", y = "% of New Substances")
+  
+  # Use partial_bundle to reduce JavaScript size
     ggplotly(p, tooltip = "text") %>%
       plotly::layout(
         legend = list(
@@ -666,7 +707,7 @@ server <- function(input, output, session) {
         margin = list(b = 50)
       ) %>%
       plotly::toWebGL()
-  })
+})
   # %>% bindCache(active_tab(), filtered_data())
 
   # Collaboration Trends Plot
@@ -797,8 +838,8 @@ server <- function(input, output, session) {
     filtered_data() %>%
       group_by(country, lat, lng) %>%
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-  })
-  # %>% bindCache(active_tab(), filtered_data())
+  }) %>% 
+  bindCache(active_tab(), filtered_data())
 
   # Initialize map
   # Initialize map only once and use proxy more effectively
@@ -822,8 +863,8 @@ server <- function(input, output, session) {
     filtered_data() %>%
       group_by(country, lat, lng) %>%
       summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-  })
-  # %>% bindCache(active_tab(), filtered_data())
+  }) %>% 
+  bindCache(active_tab(), filtered_data())
 
   observe({
     data <- carto_data()
@@ -1095,8 +1136,8 @@ server <- function(input, output, session) {
       mutate(
         present = symbol %in% unique(df_figures$symbol)
       )
-  })
-  # %>% bindCache("periodic_data")
+  }) %>% 
+  bindCache("periodic_data")
 
   # Handle periodic table clicks
   observeEvent(input$plot_click, {
@@ -1266,3 +1307,4 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
