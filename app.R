@@ -16,6 +16,7 @@ library(shinycssloaders)
 library(RColorBrewer)
 
 # Efficient data preparation using Arrow and dplyr
+# Efficient data preparation using Arrow and dplyr
 ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
   as_tidytable()
 
@@ -43,11 +44,11 @@ df_global_ind <- df_global[is_collab == FALSE]
 df_global_collab <- df_global[is_collab == TRUE]
 
 # top20_groups <- df_global_collab %>%
-#   group_by(iso2c) %>%
-#   summarise(val = sum(percentage, na.rm = TRUE)) %>%
-#   arrange(desc(val)) %>%
-#   head(25) %>%
-#   pull(iso2c)
+#  group_by(iso2c) %>%
+#  summarise(val = sum(percentage, na.rm = TRUE)) %>%
+#  arrange(desc(val)) %>%
+#  head(25) %>%
+#  pull(iso2c)
 
 # print(top20_groups)
 
@@ -128,10 +129,14 @@ override_colors <- c(
 color_map_all[override_countries] <- override_colors
 
 # Precompute country metadata for flags
-country_metadata <- df_global %>%
-  distinct(iso2c, country)
+country_metadata <- df_global_ind %>% # Use df_global_ind as it contains individual countries
+  distinct(iso2c, country) %>%
+  arrange(country) # Sort here to ensure consistent order
 
-precomputed_flags <- lapply(country_metadata$iso2c, function(iso) {
+# Precompute the flag buttons in the global scope
+precomputed_flags <- lapply(seq_len(nrow(country_metadata)), function(i) {
+  iso <- country_metadata$iso2c[i]
+  country_name <- country_metadata$country[i]
   tags$button(
     class = "btn btn-outline-secondary btn-sm",
     `data-iso` = iso,
@@ -140,10 +145,13 @@ precomputed_flags <- lapply(country_metadata$iso2c, function(iso) {
       width = 16,
       height = 12
     ),
-    paste0(" ", iso)
+    paste0(" ", country_name),
+    onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
   )
 })
 names(precomputed_flags) <- country_metadata$iso2c
+
+
 
 # Collaboration expansion
 collab_expansion <- df_global_collab %>%
@@ -163,11 +171,11 @@ map_data_cache$individual <- df_global_ind %>%
   summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
   group_by(iso3c) %>%
   summarise(
-    value      = mean(yearly_avg, na.rm = TRUE),
+    value     = mean(yearly_avg, na.rm = TRUE),
     best_year  = year[which.max(yearly_avg)],
     worst_year = year[which.min(yearly_avg)],
     region     = first(region),
-    .groups    = "drop"
+    .groups   = "drop"
   )
 
 # Initialize the cache for collaborations with split iso3c renamed,
@@ -935,34 +943,14 @@ server <- function(input, output, session) {
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Flag buttons
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # -------------------------------
-  # Sort the flags by country name
+  # Render the pre-calculated flag buttons
   output$collabFlagButtons <- renderUI({
     req(active_tab() == "Collaboration Trends 🤝")
-
-    # Collect all unique iso2c-country pairs, then sort by country name
-    sorted_countries <- df_global_ind %>%
-      distinct(iso2c, country) %>%
-      arrange(country)
-
-    # Create flag buttons for every sorted country
-    flags <- lapply(seq_len(nrow(sorted_countries)), function(i) {
-      iso <- sorted_countries$iso2c[i]
-      country_name <- sorted_countries$country[i]
-      tags$button(
-        class = "btn btn-outline-secondary btn-sm",
-        `data-iso` = iso,
-        tags$img(
-          src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
-          width = 16,
-          height = 12
-        ),
-        paste0(" ", country_name),
-        onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
-      )
-    })
-
-    div(class = "d-flex flex-wrap gap-2", flags)
+    div(class = "d-flex flex-wrap gap-2", precomputed_flags)
   })
 
   # -------------------------------
@@ -982,7 +970,7 @@ server <- function(input, output, session) {
     # This assumes iso2c is formatted as "XX-YY" (a two-country code)
     relevant_data <- relevant_data %>%
       mutate(
-        partner = sapply(strsplit(country, "-"), function(x) {
+        partner = sapply(strsplit(iso2c, "-"), function(x) { # Use iso2c here as it contains the collaboration pair
           # Remove the selected country's code and take the first remaining value
           setdiff(x, sel_iso)[1]
         })
@@ -1012,8 +1000,8 @@ server <- function(input, output, session) {
 
     # Update the dedicated Plotly output with the new plot
     output$collabPartnersPlot <- renderPlotly({
-    ggplotly(p, tooltip = "text") %>%
-      plotly::toWebGL()
+      ggplotly(p, tooltip = "text") %>%
+        plotly::toWebGL()
     })
   })
   #################
