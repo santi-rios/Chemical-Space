@@ -15,21 +15,23 @@ library(data.table)
 library(shinycssloaders)
 library(RColorBrewer)
 
+
 # Efficient data preparation using Arrow and dplyr
 # Efficient data preparation using Arrow and dplyr
-ds <- arrow::open_dataset("./data6/df.parquet", format = "parquet") %>%
+ds <- arrow::open_dataset("./data6/df_cc.parquet", format = "parquet") %>%
   as_tidytable()
 
 # Pre-filter at the Arrow level before collecting
 
 
 ds_filtered <- ds %>%
-  filter(!is.na(percentage)) %>%
   select(
     iso2c, year, percentage, chemical,
     iso3c, country, lat, lng,
-    region, is_collab
-  )
+    region, is_collab, cc
+  ) %>%
+  filter(!is.na(percentage)) %>%
+  filter(!country %in% c("Fiji"))
 
 # Full dataset with only needed columns - collect once
 df_global <- ds_filtered %>% dplyr::collect()
@@ -38,10 +40,12 @@ df_global <- ds_filtered %>% dplyr::collect()
 setDT(df_global)
 
 # Create indices on frequently filtered columns for faster subsetting
-data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, chemical) # nolint
+data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, cc) # nolint
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
+
+
 
 df_global_collab <- df_global[is_collab == TRUE]
 
@@ -77,18 +81,6 @@ collab_color_map <- c(
 )
 
 
-
-# Articles: only load columns needed
-figure_article <- ds %>%
-  filter(!is.na(percentage_x)) %>%
-  select(
-    percentage = percentage_x,
-    country = country_x,
-    year = year_x,
-    source
-  ) %>%
-  dplyr::collect()
-
 # Element figures: only load columns needed
 df_figures <- ds %>%
   filter(!is.na(percentage_y)) %>%
@@ -111,48 +103,9 @@ initial_top_countries_df <- df_global_ind %>%
 
 initial_top_countries <- initial_top_countries_df$country
 # -----------------------------------------------------------
-# Color mappings (in-memory)
-all_ctry <- sort(unique(df_global$country))
-# More efficient color mapping function
-create_country_colors <- function(countries, default_color = "#cccccc") {
-  # Start with a default color for all countries
-  color_map <- rep(default_color, length(countries))
-  names(color_map) <- countries
-  
-  # Define override countries and their specific colors
-  override_countries <- c(
-    "China", "United States of America", "India", "Germany",
-    "Japan", "United Kingdom", "France", "Russia", "Mexico",
-    "Colombia", "Brazil", "Ecuador", "Argentina"
-  )
-  
-  override_colors <- c(
-    "#c5051b", "#0a3161", "#ff671f", "#000000",
-    "#995162", "#3b5091", "#000091", "#d51e9b",
-    "#006341", "#fcd116", "#009b3a", "#ffdd00", "#74acdf"
-  )
-  
-  # Only override colors for countries that actually exist in our dataset
-  for (i in seq_along(override_countries)) {
-    if (override_countries[i] %in% countries) {
-      color_map[override_countries[i]] <- override_colors[i]
-    }
-  }
-  
-  # For remaining countries, use a gradient of grays/blues
-  # This is more efficient than using viridis for hundreds of countries
-  remaining <- setdiff(countries, override_countries)
-  if (length(remaining) > 0) {
-    num_remaining <- length(remaining)
-    remaining_colors <- colorRampPalette(c("#d0d0d0", "#a0a0a0"))(num_remaining)
-    color_map[remaining] <- remaining_colors
-  }
-  
-  return(color_map)
-}
-
-# Use this function to generate colors only when needed
-color_map_all <- create_country_colors(all_ctry)
+# Remove the existing color mapping code,
+# and in your ggplot calls simply map the color aesthetic to your new 'cc' column.
+# Then use scale_color_identity() so ggplot uses the hex color values directly:
 
 # Precompute country metadata for flags
 country_metadata <- df_global_ind %>% # Use df_global_ind as it contains individual countries
@@ -208,7 +161,8 @@ map_data_cache$individual <- df_global_ind %>%
 map_data_cache$collab_expanded <- df_global_collab %>%
   mutate(
     orig_iso = iso3c,
-    iso3c = strsplit(iso3c, "-")
+    iso3c = strsplit(iso3c, "-"),
+    country = strsplit(country, "-")
   ) %>%
   tidyr::unnest(cols = iso3c) %>%
   mutate(
@@ -301,10 +255,19 @@ ui <- page_navbar(
             "Trends📈",
             tooltip(
               bsicons::bs_icon("question-circle"),
-              "China's Chemical Revolution: From 1996 to 2022...",
+              "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.", # nolint: line_length_linter.
               placement = "left"
             ),
-            withSpinner(plotlyOutput("trendPlot", width = "100%", height = 800), color = "#024173")
+            withSpinner(plotlyOutput("trendPlot", width = "100%", height = 800), color = "#024173"),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
           ),
           nav_panel(
             "Map📌",
@@ -612,19 +575,19 @@ server <- function(input, output, session) {
           country %in% input$countries
       )
   }) %>% 
-  bindCache(active_tab(), input$years, input$countries, input$region) %>%
+  bindCache(active_tab(), input$years, input$countries) %>%
   debounce(300)
 
 
   # Observe event for "Top 10 Countries" button
   observeEvent(input$plotTopCountries, {
-    top_10_countries_df <- df() %>%
+    current_top <- df() %>%
       group_by(country) %>%
-      summarise(val = sum(percentage, na.rm = TRUE)) %>%
-      arrange(desc(val)) %>%
-      head(10)
-    top_10_countries <- top_10_countries_df$country
-    updateSelectizeInput(session, "countries", selected = top_10_countries_df)
+      summarise(total = sum(percentage, na.rm = TRUE)) %>%
+      arrange(desc(total)) %>%
+      slice_head(n = 10) %>%
+      pull(country)
+    updateCheckboxGroupInput(session, "countries", selected = current_top)
   })
 
   # Observe event for "Deselect All" button
@@ -645,67 +608,78 @@ server <- function(input, output, session) {
   # National Trends Plot
 # National Trends Plot with optimized rendering
 output$trendPlot <- renderPlotly({
-  req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
-  
-  # Filter data first to reduce processing
-  data <- filtered_data()[filtered_data()$chemical == "All",]
-  
-  # Get only the countries in the current filtered dataset
-  current_countries <- unique(data$country)
-  
-  # Generate colors only for countries we need
-  current_colors <- create_country_colors(current_countries)
-  
-  # Compute max year once
-  max_year_val <- max(data$year)
-  
-  # Reduce dataframe size for end labels
-  end_labels_data <- data[data$year == max_year_val,]
-  
-  p <- ggplot(
-    data,
-    aes(
-      x = year,
-      y = percentage,
-      color = country,
-      group = country,
-      text = paste0(
-        "<b>Country:</b> ", country,
-        "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
-        "<br><b>Year:</b> ", year,
-        "<br><b>Region:</b> ", region
-      )
-    )
-  ) +
-    geom_line() +
-    geom_point(aes(size = percentage / 100), alpha = 0.4, show.legend = FALSE) +
-    geom_text(
-      data = end_labels_data,
-      aes(y = percentage, label = iso3c),
-      hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
-      size = 4, check_overlap = TRUE, show.legend = FALSE
+    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
+    
+    # Filter data first
+    data <- filtered_data()[filtered_data()$chemical == "All", ]
+
+    # Find minimum and maximum years
+    min_year <- min(data$year, na.rm = TRUE)
+    max_year <- max(data$year, na.rm = TRUE)
+
+    # Only show labels for top countries to avoid clutter
+    # First, identify top countries by their max percentage
+    top_countries_data <- data %>%
+        dplyr::group_by(country) %>%
+        dplyr::summarise(max_pct = max(percentage, na.rm = TRUE)) %>%
+        dplyr::arrange(dplyr::desc(max_pct)) %>%
+        dplyr::slice_head(n = 10) # Adjust number as needed
+    
+    # Get the end year data for labeling
+    end_labels_data <- data %>%
+        dplyr::filter(country %in% top_countries_data$country) %>%
+        dplyr::group_by(country) %>%
+        dplyr::filter(year == max(year)) %>%
+        dplyr::ungroup()
+
+    # Create base plot
+    p <- ggplot(
+        data,
+        aes(
+            x = year,
+            y = percentage,
+            color = cc,
+            group = country,
+            text = paste0(
+                "<b>Country:</b> ", country,
+                "<br><b>Percentage:</b> ", 
+                scales::percent(percentage, accuracy = 0.01, scale = 1),
+                "<br><b>Year:</b> ", year,
+                "<br><b>Region:</b> ", region
+            )
+        )
     ) +
-    scale_color_manual(values = current_colors) +
-    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-    theme(
-      legend.position = "bottom",
-      legend.text = element_text(size = 8, face = "bold"),
-      legend.title = element_blank(),
-      axis.title.x = element_blank()
-    ) +
-    labs(title = "National Contributions to Chemical Space", y = "% of New Substances")
-  
+        geom_line() +
+        geom_jitter(
+            aes(size = percentage / 100), 
+            alpha = 0.4, 
+            show.legend = FALSE
+        ) +
+        # Only label top countries with position adjustment to minimize overlap
+        geom_text(
+            data = end_labels_data,
+            aes(label = country),
+            hjust = -0.1,  # Push labels to the right of the last point
+            nudge_x = 0.5, # Add additional horizontal push
+            size = 3,
+            show.legend = FALSE,
+            check_overlap = TRUE
+        ) +
+        scale_colour_identity() +
+        scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+        scale_x_continuous(limits = c(min_year, max_year + 6)) + # Extra space for labels
+        theme(
+            legend.position = "none",
+            legend.text = element_text(size = 8, face = "bold"),
+            legend.title = element_blank(),
+            axis.title.x = element_blank()
+        ) +
+        labs(
+            title = "National Contributions to Chemical Space", 
+            y = "% of New Substances"
+        )
   # Use partial_bundle to reduce JavaScript size
     ggplotly(p, tooltip = "text") %>%
-      plotly::layout(
-        legend = list(
-          orientation = "h",
-          x = 0.5,
-          xanchor = "center",
-          y = -0.3
-        ),
-        margin = list(b = 50)
-      ) %>%
       plotly::toWebGL()
 })
   # %>% bindCache(active_tab(), filtered_data())
@@ -739,7 +713,7 @@ output$trendPlot <- renderPlotly({
         hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
         size = 4, check_overlap = TRUE, show.legend = FALSE
       ) +
-      scale_color_manual(values = collab_color_map) +
+      # scale_color_manual(values = collab_color_map) +
       scale_y_continuous(labels = scales::percent_format(scale = 1)) +
       theme(
         legend.position = "bottom",
@@ -769,6 +743,7 @@ output$trendPlot <- renderPlotly({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
 
     map_data <- filtered_data() %>%
+      filter(chemical == "All") %>%
       group_by(iso3c, year, region) %>%
       summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
       group_by(iso3c) %>%
@@ -801,99 +776,9 @@ output$trendPlot <- renderPlotly({
         enabled = TRUE,
         enableMouseWheelZoom = TRUE,
         enableDoubleClickZoom = TRUE
-      ) %>%
-      hc_subtitle(
-        text = paste0(
-          "Mean value of Top Country in current selection = ",
-          scales::percent(max(map_data$value, na.rm = TRUE),
-            accuracy = 0.01,
-            scale = 1
-          )
-        ),
-        style = list(color = "black")
-      ) %>%
-      hc_title(
-        text  = paste0("Top Country (Total Value) = ", map_data$iso3c[which.max(map_data$value)]),
-        style = list(color = "black")
       )
   })
   # %>% bindCache(input$data_mode, input$region, input$countries, input$years)
-
-
-  # collab_data <- reactive({
-  #   req(filtered_data(), active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
-  #   dt <- as.data.table(filtered_data())
-  #   dt[, Value := percentage]
-  #   dt[, Year := year]
-  #   dt
-  # })
-
-
-  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  # Cartogram
-
-  # Cartogram (National only)
-  carto_data <- reactive({
-    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
-    filtered_data() %>%
-      group_by(country, lat, lng) %>%
-      summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-  }) %>% 
-  bindCache(active_tab(), filtered_data())
-
-  # Initialize map
-  # Initialize map only once and use proxy more effectively
-  output$geoPlot2 <- renderLeaflet({
-    leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
-      addProviderTiles("NASAGIBS.ViirsEarthAtNight2012", group = "NASA") %>%
-      addProviderTiles("CartoDB.Positron", group = "Continents") %>%
-      addLayersControl(
-        baseGroups = c("NASA", "Continents"),
-        overlayGroups = c("Markers"),
-        position = "topright"
-      ) %>%
-      setView(lng = 0, lat = 30, zoom = 2)
-  })
-
-  # Update markers and legend whenever carto_data changes
-  # Cartogram (National only)
-  # Cartogram (National only)
-  carto_data <- reactive({
-    req(active_tab() == "National Trends 📈")
-    filtered_data() %>%
-      group_by(country, lat, lng) %>%
-      summarise(value = mean(percentage, na.rm = TRUE), .groups = "drop")
-  }) %>% 
-  bindCache(active_tab(), filtered_data())
-
-  observe({
-    data <- carto_data()
-    pal <- colorNumeric("Reds", domain = data$value)
-
-    leafletProxy("geoPlot2", data = data) %>%
-      clearMarkers() %>%
-      addCircleMarkers(
-        lng = ~lng, lat = ~lat,
-        radius = ~ scales::rescale(value, c(5, 30)),
-        color = ~ pal(value),
-        fillOpacity = 0.7,
-        group = "Markers",
-        popup = ~ glue("<b>{country}</b><br>Average: {round(value, 2)}%")
-      ) %>%
-      clearControls() %>%
-      addLayersControl(
-        baseGroups = c("NASA", "Continents"),
-        overlayGroups = c("Markers"),
-        position = "topright"
-      ) %>%
-      addLegend(
-        "bottomright",
-        pal = pal,
-        values = ~value,
-        title = "Avg %",
-        opacity = 0.5
-      )
-  })
 
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -933,7 +818,6 @@ output$trendPlot <- renderPlotly({
       theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
-    p <- p + scale_color_manual(values = color_map_all)
 
     ggplotly(p, tooltip = "text") %>%
       plotly::partial_bundle() %>%
@@ -974,7 +858,7 @@ output$trendPlot <- renderPlotly({
       theme(legend.position = "none") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
 
-    p <- p + scale_color_manual(values = collab_color_map)
+    # p <- p + scale_color_manual(values = collab_color_map)
 
     ggplotly(p, tooltip = "text") %>%
       plotly::partial_bundle() %>%
@@ -1000,7 +884,7 @@ output$trendPlot <- renderPlotly({
     sel_iso <- input$selectedCountry
 
     # Filter the collaboration data from the complete collab dataset (do not apply any region or main trends filters)
-    relevant_data <- df_global_collab[grepl(sel_iso, iso2c)]
+    relevant_data <- df_global_collab[grepl(sel_iso, iso2c, country)]
 
     if (nrow(relevant_data) == 0) {
       showNotification(paste("No collaboration data found for country code:", sel_iso), type = "warning")
@@ -1011,7 +895,7 @@ output$trendPlot <- renderPlotly({
     # This assumes iso2c is formatted as "XX-YY" (a two-country code)
     relevant_data <- relevant_data %>%
       mutate(
-        partner = sapply(strsplit(iso2c, "-"), function(x) { # Use iso2c here as it contains the collaboration pair
+        partner = sapply(strsplit(country, "-"), function(x) { # Use iso2c here as it contains the collaboration pair
           # Remove the selected country's code and take the first remaining value
           setdiff(x, sel_iso)[1]
         })
