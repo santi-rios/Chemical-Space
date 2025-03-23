@@ -15,6 +15,7 @@ library(data.table)
 library(shinycssloaders)
 library(RColorBrewer)
 
+source("R/plot_function.R")
 
 # Efficient data preparation using Arrow and dplyr
 # Efficient data preparation using Arrow and dplyr
@@ -44,8 +45,6 @@ data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, 
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
-
-
 
 df_global_collab <- df_global[is_collab == TRUE]
 
@@ -80,28 +79,14 @@ collab_color_map <- c(
   setNames(other_colors, other_codes)
 )
 
-
-# Element figures: only load columns needed
-df_figures <- ds %>%
-  filter(!is.na(percentage_y)) %>%
-  select(
-    16:40
-  ) %>%
-  rename(
-    percentage = percentage_y,
-    year = year_y,
-    chemical = chemical_y
-  ) %>%
-  dplyr::collect()
-
 # --- Pre-calculate Initial Top 10 Countries (GLOBAL SCOPE) ---
-initial_top_countries_df <- df_global_ind %>%
-  group_by(country) %>%
-  summarise(val = sum(percentage, na.rm = TRUE)) %>%
-  arrange(desc(val)) %>%
-  head(10)
+# initial_top_countries_df <- df_global_ind %>%
+#   group_by(country) %>%
+#   summarise(val = sum(percentage, na.rm = TRUE)) %>%
+#   arrange(desc(val)) %>%
+#   head(10)
 
-initial_top_countries <- initial_top_countries_df$country
+# initial_top_countries <- initial_top_countries_df$country
 # -----------------------------------------------------------
 # Remove the existing color mapping code,
 # and in your ggplot calls simply map the color aesthetic to your new 'cc' column.
@@ -171,6 +156,11 @@ map_data_cache$collab_expanded <- df_global_collab %>%
     year = year
   ) %>%
   select(-orig_iso)
+
+
+  # Get world map data, excluding Antarctica
+world_data <- map_data("world") %>%
+  dplyr::filter(region != "Antarctica")
 
 
 ui <- page_navbar(
@@ -276,7 +266,7 @@ ui <- page_navbar(
               "Interactive map showing country contributions...",
               placement = "left"
             ),
-            highchartOutput("mapPlot")
+            plotlyOutput("mapPlot")
           ),
           nav_panel(
             "Cartogram🗺️",
@@ -285,7 +275,16 @@ ui <- page_navbar(
               "Cartogram showing geographic distribution...",
               placement = "left"
             ),
-            leafletOutput("geoPlot2", height = 750)
+            leafletOutput("geoPlot2", height = 750),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
           ),
           nav_panel(
             "Substance Types🧪",
@@ -306,7 +305,16 @@ ui <- page_navbar(
                 )
               )
             ),
-            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173")
+            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173"),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
           )
         )
       )
@@ -335,7 +343,16 @@ ui <- page_navbar(
               "China's Chemical Revolution: From 1996 to 2022...",
               placement = "left"
             ),
-            withSpinner(plotlyOutput("collabTrendPlot", width = "100%", height = 800), color = "#024173")
+            withSpinner(plotlyOutput("collabTrendPlot", width = "100%", height = 800), color = "#024173"),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
           ),
           nav_panel(
             "Substance Types🧪",
@@ -356,7 +373,16 @@ ui <- page_navbar(
                 )
               )
             ),
-            withSpinner(plotlyOutput("collabSubstancePlot", width = "100%"), color = "#024173")
+            withSpinner(plotlyOutput("collabSubstancePlot", width = "100%"), color = "#024173"),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
           ),
           nav_panel(
             "Collaborative contribution visualization 🌍",
@@ -422,38 +448,17 @@ ui <- page_navbar(
       )
     ),
     # Display the GIF image using uiOutput wrapped in a spinner
-    withSpinner(uiOutput("figureDisplay"), color = "#024173")
+    withSpinner(uiOutput("figureDisplay"), color = "#024173"),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
   ),
-
-      # ------------------------------
-      # 4) ELEMENT FIGURES
-      # ------------------------------
-      nav_panel(
-        "Element Figures 🧪",
-        fluidPage(
-          fluidRow(
-            tooltip(
-              bsicons::bs_icon("question-circle"),
-              "Elemental and compositional spans of the regions of the chemical space. A few other organogenic elements, mainly H followed by N and O, constitute most of the organic compounds. In terms of compositions, most of the organic CS is concentrated on CHNO compounds.", # nolint: line_length_linter.
-              placement = "left"
-            ),
-            column(
-              width = 12,
-              plotOutput("compositionPlot", height = "600px")
-            )
-          ),
-          fluidRow(
-            column(
-              width = 8,
-              plotOutput("periodicTablePlot", click = "plot_click", height = "600px")
-            ),
-            column(
-              width = 4,
-              uiOutput("elementInfo")
-            )
-          )
-        )
-      ),
 
       # ------------------------------
       # 5) KNOW MORE
@@ -537,7 +542,6 @@ server <- function(input, output, session) {
     region_choices <- unique(df_global_ind$region[!is.na(df_global_ind$region)])
     updateSelectizeInput(session, "region", choices = c("All", sort(region_choices)), selected = "All")
   })
-  # %>% bindCache(active_tab())
 
   # Base data reactive with caching
   df <- reactive({
@@ -550,8 +554,7 @@ server <- function(input, output, session) {
       res <- df_global_collab
     }
     res
-  })
-  # %>% bindCache(active_tab(), input$region)
+  }) %>% bindCache(active_tab(), input$region)
 
   # Country selection updates
   observe({
@@ -563,8 +566,7 @@ server <- function(input, output, session) {
       arrange(desc(val)) %>%
       head(10)
     updateCheckboxGroupInput(session, "countries", choices = valid_countries, selected = top_countries$country)
-  })
-  # %>% bindCache(df())
+  }) 
 
   # Filtered data with caching
   filtered_data <- reactive({
@@ -578,6 +580,9 @@ server <- function(input, output, session) {
   bindCache(active_tab(), input$years, input$countries) %>%
   debounce(300)
 
+  #########
+  # Observers #
+  #########
 
   # Observe event for "Top 10 Countries" button
   observeEvent(input$plotTopCountries, {
@@ -620,69 +625,27 @@ output$trendPlot <- renderPlotly({
     # Only show labels for top countries to avoid clutter
     # First, identify top countries by their max percentage
     top_countries_data <- data %>%
-        dplyr::group_by(country) %>%
-        dplyr::summarise(max_pct = max(percentage, na.rm = TRUE)) %>%
-        dplyr::arrange(dplyr::desc(max_pct)) %>%
-        dplyr::slice_head(n = 10) # Adjust number as needed
+        group_by(country) %>%
+        summarise(max_pct = max(percentage, na.rm = TRUE)) %>%
+        arrange(dplyr::desc(max_pct)) %>%
+        slice_head(n = 10) # Adjust number as needed
     
     # Get the end year data for labeling
     end_labels_data <- data %>%
-        dplyr::filter(country %in% top_countries_data$country) %>%
-        dplyr::group_by(country) %>%
-        dplyr::filter(year == max(year)) %>%
-        dplyr::ungroup()
+        filter(country %in% top_countries_data$country) %>%
+        group_by(country) %>%
+        filter(year == max(year)) %>%
+        ungroup()
 
     # Create base plot
-    p <- ggplot(
-        data,
-        aes(
-            x = year,
-            y = percentage,
-            color = cc,
-            group = country,
-            text = paste0(
-                "<b>Country:</b> ", country,
-                "<br><b>Percentage:</b> ", 
-                scales::percent(percentage, accuracy = 0.01, scale = 1),
-                "<br><b>Year:</b> ", year,
-                "<br><b>Region:</b> ", region
-            )
-        )
-    ) +
-        geom_line() +
-        geom_jitter(
-            aes(size = percentage / 100), 
-            alpha = 0.4, 
-            show.legend = FALSE
-        ) +
-        # Only label top countries with position adjustment to minimize overlap
-        geom_text(
-            data = end_labels_data,
-            aes(label = country),
-            hjust = -0.1,  # Push labels to the right of the last point
-            nudge_x = 0.5, # Add additional horizontal push
-            size = 3,
-            show.legend = FALSE,
-            check_overlap = TRUE
-        ) +
-        scale_colour_identity() +
-        scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-        scale_x_continuous(limits = c(min_year, max_year + 6)) + # Extra space for labels
-        theme(
-            legend.position = "none",
-            legend.text = element_text(size = 8, face = "bold"),
-            legend.title = element_blank(),
-            axis.title.x = element_blank()
-        ) +
-        labs(
-            title = "National Contributions to Chemical Space", 
-            y = "% of New Substances"
-        )
-  # Use partial_bundle to reduce JavaScript size
-    ggplotly(p, tooltip = "text") %>%
-      plotly::toWebGL()
-})
-  # %>% bindCache(active_tab(), filtered_data())
+    createChemicalSpacePlot(
+        data = data,
+        min_year = min_year,
+        max_year = max_year,
+        end_labels_data = end_labels_data
+    )
+}) %>% 
+  bindCache(active_tab(), filtered_data())
 
   # Collaboration Trends Plot
   output$collabTrendPlot <- renderPlotly({
@@ -738,49 +701,34 @@ output$trendPlot <- renderPlotly({
   # %>% bindCache(active_tab(), filtered_data())
 
   # Highchart map - Individual Countries
-  # National Map
-  output$mapPlot <- renderHighchart({
-    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
+output$mapPlot <- renderPlotly({
+  # req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
+  req(active_tab() == "National Trends 📈")
 
-    map_data <- filtered_data() %>%
-      filter(chemical == "All") %>%
-      group_by(iso3c, year, region) %>%
-      summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
-      group_by(iso3c) %>%
-      summarise(
-        value      = mean(yearly_avg, na.rm = TRUE),
-        best_year  = year[which.max(yearly_avg)],
-        worst_year = year[which.min(yearly_avg)],
-        region     = first(region),
-        .groups    = "drop"
-      )
+  # Process data for mapping
+  # Prepare your filtered data
+  map_data <- df_global_ind %>%
+    filter(chemical == "All") %>%
+    group_by(iso3c, year, region, country) %>%
+    summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop")
 
-    hcmap("custom/world-robinson-lowres.js",
-      data   = map_data,
-      joinBy = c("iso-a3", "iso3c"),
-      value  = "value",
-      name   = "Average Contribution"
-    ) %>%
-      hc_colorAxis(
-        minColor = "#071f33",
-        maxColor = "#e8041e",
-        labels   = list(format = "{value}%"),
-        title    = list(text = "Contribution (%)", style = list(color = "white"))
-      ) %>%
-      hc_tooltip(pointFormat = paste0(
-        "{point.name}: {point.value:.2f}%, <br> Region: {point.region}, <br>",
-        "<br> Best Year: {point.best_year}, <br>",
-        "Worst Year: {point.worst_year}"
-      )) %>%
-      hc_mapNavigation(
-        enabled = TRUE,
-        enableMouseWheelZoom = TRUE,
-        enableDoubleClickZoom = TRUE
-      )
-  })
-  # %>% bindCache(input$data_mode, input$region, input$countries, input$years)
+  # Join by region name if it matches your data
+  joined_data <- world_data %>%
+    right_join(map_data, by = c("region" = "country"))
 
+  # Plotly-ready ggplot
+  mapa_plot <- ggplot(joined_data, aes(long, lat, 
+                                       group = group, 
+                                       fill = yearly_avg)) +
+    geom_polygon(aes(frame = year), color = "white", size = 0.1) +
+    theme_void() +
+    viridis::scale_fill_viridis(option = "B", name = "Average (%)") +
+    labs(title = "Average Contribution") +
+    coord_fixed(ratio = 1.3)
 
+  ggplotly(mapa_plot) %>%
+    animation_slider(currentvalue = list(prefix = "Year: ", font = list(color = "orange")))
+})
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Substance Types
   # Substance Plots
@@ -997,197 +945,7 @@ output$trendPlot <- renderPlotly({
     figure_info[[input$selected_figure]]$description
   })
 
-  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  # Element Figures
-  selected_element <- reactiveVal(NULL)
 
-  # Create periodic table data
-  periodic_data <- reactive({
-    df_figures %>%
-      group_by(symbol) %>%
-      summarise(
-        display_row = first(display_row),
-        display_column = first(display_column),
-        atomic_number = first(atomic_number),
-        element = first(element),
-        group = first(group),
-        period = first(period),
-        discoverer = first(discoverer),
-        year_of_discovery = first(year_of_discovery),
-        type = first(type),
-        .groups = "drop"
-      ) %>%
-      mutate(
-        present = symbol %in% unique(df_figures$symbol)
-      )
-  }) %>% 
-  bindCache("periodic_data")
-
-  # Handle periodic table clicks
-  observeEvent(input$plot_click, {
-    click <- input$plot_click
-    if (!is.null(click)) {
-      clicked_element <- periodic_data() %>%
-        filter(
-          display_column == round(click$x),
-          display_row == round(click$y)
-        ) %>%
-        slice(1)
-
-      if (nrow(clicked_element) > 0) {
-        selected_element(clicked_element$symbol)
-      }
-    }
-  })
-
-  # Element information display
-  output$elementInfo <- renderUI({
-    if (!is.null(selected_element())) {
-      element_data <- df_figures %>%
-        filter(symbol == selected_element()) %>%
-        slice(1) # Get first occurrence for static properties
-
-      tagList( # nolint
-        h3(class = "bold-text", element_data$element),
-        span(
-          class = "chem-badge",
-          style = "background:#4d908e; color: white;",
-          paste0(element_data$type)
-        ),
-        hr(),
-        h4("Basic Properties"),
-        p(span(class = "bold-text", "Symbol: "), element_data$symbol),
-        p(span(class = "bold-text", "Atomic Number: "), element_data$atomic_number),
-        p(span(class = "bold-text", "Weight: "), round(element_data$atomic_weight, 4)),
-        h4("Physical Properties"),
-        p(
-          span(class = "bold-text", "Density: "),
-          ifelse(is.na(element_data$density), "N/A",
-            format(element_data$density, scientific = FALSE)
-          )
-        ),
-        p(
-          span(class = "bold-text", "Melting Point: "),
-          paste(round(element_data$melting_point_k, 1), "K")
-        ),
-        h4("Chemical Properties"),
-        p(
-          span(class = "bold-text", "Electronegativity: "),
-          round(element_data$electronegativity, 2)
-        ),
-        p(
-          span(class = "bold-text", "Ionization Potential: "),
-          round(element_data$first_ionization_potential, 2)
-        ),
-        hr(),
-        h3("Discovered by:"),
-        p(element_data$discoverer),
-        h3("Year of Discovery:"),
-        p(element_data$year_of_discovery)
-      )
-    } else {
-      h4("Click an element in the periodic table to view details")
-    }
-  })
-  # %>% bindCache(selected_element())
-
-  # Composition timeline plot
-  output$compositionPlot <- renderPlot({
-    # Prepare data for plotting
-    plot_data <- df_figures %>%
-      group_by(year, chemical) %>%
-      summarise(
-        total_percentage = mean(percentage, na.rm = TRUE),
-        symbol = first(symbol),
-        .groups = "drop"
-      )
-
-    # Base plot with lines
-    base_plot <- ggplot(plot_data, aes(x = year, y = total_percentage)) +
-      geom_line(aes(color = chemical), linewidth = 1.2) +
-      geom_point(aes(color = symbol), size = 3) +
-      scale_color_manual(values = c(
-        "Organometallic" = "#4d908e",
-        "Rare-Earths" = "#f94144"
-      )) +
-      labs(
-        title = "Elemental Composition Over Time",
-        caption = "Line represents total percentage of chemical space",
-        x = "Year", y = "Percentage of Chemical Space"
-      ) +
-      theme(
-        legend.position = "bottom",
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 12),
-        axis.title = element_text(size = 14)
-      ) +
-      scale_y_continuous(labels = scales::percent_format(accuracy = 0.1, scale = 1))
-
-    # Add element-specific points if an element is selected
-    if (!is.null(selected_element())) {
-      element_data <- df_figures %>%
-        filter(symbol == selected_element())
-
-      base_plot <- base_plot +
-        facet_wrap(~chemical) +
-        geom_point(
-          data = element_data,
-          aes(y = percentage),
-          color = "#f8961e", size = 4, shape = 18
-        ) +
-        geom_text(
-          data = element_data,
-          aes(
-            y = percentage,
-            label = paste0(symbol),
-            vjust = -1, hjust = 0.5, color = "#f8961e", size = 2
-          )
-        )
-    }
-
-    base_plot
-  })
-  # %>% bindCache(selected_element())
-
-  # Periodic table plot
-  output$periodicTablePlot <- renderPlot({
-    plot_data <- periodic_data()
-    highlight_element <- selected_element()
-
-    p <- ggplot(plot_data, aes(x = display_column, y = display_row)) +
-      # Tiles with no data (blank spaces)
-      geom_tile(
-        data = subset(plot_data, !present),
-        fill = "#f8f9fa", color = "white",
-        width = 0.95, height = 0.95
-      ) +
-      # Tiles coloured by "type" for cells with data
-      geom_tile(
-        data = subset(plot_data, present),
-        aes(fill = type),
-        color = "white", width = 0.95, height = 0.95
-      )
-
-    # Highlight the clicked element with orange color
-    if (!is.null(highlight_element)) {
-      p <- p + geom_tile(
-        data = subset(plot_data, symbol == highlight_element),
-        fill = "#f8961e", color = "white",
-        width = 0.95, height = 0.95
-      )
-    }
-
-    p +
-      geom_text(aes(label = symbol), size = 5, fontface = "bold") +
-      scale_fill_brewer(palette = "Set2", na.value = "#f8f9fa") +
-      scale_y_reverse() + # For proper periodic table orientation
-      theme_void() +
-      theme(
-        plot.background = element_rect(fill = "white", color = NA),
-        legend.position = "none"
-      ) +
-      labs(title = "Click elements to explore composition trends")
-  })
 }
 
 shinyApp(ui, server)
