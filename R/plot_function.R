@@ -262,3 +262,96 @@ createTrendPlot <- function(data,
       )
     )
 }
+
+
+# functions.R
+# functions.R
+createArticlePlot <- function(data, 
+               source_title,
+               y_title = "Percentage of new substances",
+               flag_size_range = c(10, 30)) {
+  # Prepare data
+  plot_data <- data %>%
+  mutate(
+    iso2c = countrycode::countrycode(country, "country.name", "iso2c"),
+    # Use a larger flag to reduce pixelation
+    flag_url = paste0("https://flagcdn.com/80x60/", tolower(iso2c), ".png")
+  )
+  
+  # Plotly scatter (each row becomes a frame)
+  p <- plot_ly(
+  plot_data,
+  x = ~year,
+  y = ~percentage,
+  color = ~country,
+  colors = "Set1",
+  type = "scatter",
+  mode = "markers",
+  marker = list(
+    sizemode = "diameter",
+    # Keep marker size modest
+    size = ~percentage,
+    opacity = 0.4,
+    sizeref = 0.15 * max(plot_data$percentage) / max(flag_size_range)
+  ),
+  text = ~paste(
+    "<b>Country:</b> ", country,
+    "<br><b>Year:</b> ", year,
+    "<br><b>Value:</b> ", scales::percent(percentage / 100)
+  ),
+  hoverinfo = "text",
+  frame = ~year
+  )
+  
+  # Show flags only for the last year of each country (appear at final frame)
+  last_data <- plot_data %>%
+  group_by(country) %>%
+  filter(year == max(year))
+  
+  p <- p %>% layout(
+  images = lapply(seq_len(nrow(last_data)), function(i) {
+    list(
+    source = last_data$flag_url[i],
+    xref = "x", yref = "y",
+    x = last_data$year[i],
+    y = last_data$percentage[i],
+    # Keep a fixed smaller size to avoid extreme scaling
+    sizex = 1,
+    sizey = 1,
+    xanchor = "center", 
+    yanchor = "middle",
+    sizing = "contain",
+    layer = "above"
+    )
+  }),
+  title = list(
+    text = paste("Article Figures - Source:", source_title),
+    font = list(size = 18)
+  ),
+  xaxis = list(title = "Year", gridcolor = "#eeeeee"),
+  yaxis = list(
+    title = y_title, 
+    gridcolor = "#eeeeee",
+    tickformat = ".1%"
+  ),
+  plot_bgcolor = "rgb(250, 250, 250)",
+  paper_bgcolor = "rgb(250, 250, 250)"
+  ) %>%
+  animation_opts(
+    frame = 300,
+    transition = 0,
+    redraw = FALSE
+  ) %>%
+  plotly::partial_bundle() %>%
+  plotly::toWebGL() %>%
+  layout(
+    hoverlabel = list(
+    bgcolor = "white",
+    bordercolor = "black",
+    font = list(size = 12)
+    )
+  )
+  
+  p
+}
+

@@ -162,6 +162,17 @@ world_data <- map_data("world") %>%
     )
   )
 
+# Articles: only load columns needed
+figure_article <- ds %>%
+  filter(!is.na(percentage_x)) %>%
+  select(
+    percentage = percentage_x, 
+    country = country_x, 
+    year = year_x,
+    source
+    ) %>%
+  dplyr::collect()
+
 # Create a Shiny app object
 ui <- page_navbar(
   id = "selected",
@@ -429,42 +440,38 @@ ui <- page_navbar(
       # ------------------------------
       # 3) ARTICLE FIGURES
       # ------------------------------
-  nav_panel(
-    "Article Figures 📰",
-    fluidRow(
-      column(
-        width = 12,
-        selectInput(
-          "selected_figure", "Select Figure",
-          choices = c("Country participation in the CS" = "figure1a.gif",
-                      "China-US in the CS" = "figure1c.gif",
-                      "Annual growth rate of the GDP" = "figure1d.gif",
-                      "Number of researchers in research" = "figure1e.gif"),
-          selected = "figure1a.gif",
-          width = "40%"
-        )
+# ------------------------------
+# 3) ARTICLE FIGURES
+# ------------------------------
+nav_panel(
+  "Article Figures 📰",
+  fluidRow(
+    column(
+      width = 12,
+      selectInput(
+        "article_source",
+        "Select Figure",
+        choices = c(
+          "Country participation in the CS" = "CS Growth",
+          "China-US in the CS" = "China-US collaboration",
+          "Annual growth rate of the GDP" = "Growth rate of GDP",
+          "Number of researchers in research" = "Number of Researchers",
+          "Expansion of the CS" = "Expansion of the CS"
+        ),
+        selected = "CS Growth",
+        width = "40%"
       )
-    ),
-    # Display a caption and a popover with additional text
-    card_footer(
-      uiOutput("figureCaption"),
-      popover(
-        a("Learn more", href = "#"),
-        markdown(uiOutput("figureDescription"))
-      )
-    ),
-    # Display the GIF image using uiOutput wrapped in a spinner
-    withSpinner(uiOutput("figureDisplay"), color = "#024173"),
-            card_footer(
-              "Source: China's rise in the chemical space and the decline of US influence.",
-              popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-                )
-              )
-            )
+    )
   ),
+  # Mostrar gráfico interactivo
+  card(
+    card_header("Interactive Visualization"),
+    withSpinner(
+      plotlyOutput("articlePlot", height = "700px"),
+      color = "#024173"
+    )
+  )
+),
 
       # ------------------------------
       # 5) KNOW MORE
@@ -871,65 +878,24 @@ output$substancePlot <- renderPlotly({
   #################
   # Article Figures
   ##################
-
-  # Define the texts and captions for each figure
-  figure_info <- list(
-    "figure1a.gif" = list(
-      caption = "Country Contribution to the Chemical Space",
-      description = paste(
-        "Based on data retrieved from Reaxys®, Dimensions, and OpenAlex for 1996-2022,",
-        "this figure shows that China now covers 41% of the chemical space,",
-        "dwarfing the US share of 11%. China’s exponential growth led it to become",
-        "the leading contributor from 2013 onward."
-      )
-    ),
-    "figure1e.gif" = list(
-      caption = "Research Workforce Trends",
-      description = paste(
-        "Since 2005, China has boasted a considerably larger number of researchers than the US,",
-        "a trend that has fueled its rapid expansion in the chemical space."
-      )
-    ),
-    "figure1c.gif" = list(
-      caption = "Solo vs Collaborative Contributions",
-      description = paste(
-        "Over 90% of China’s chemical space contributions come from domestic teams,",
-        "while the US experienced a marked decline in solo contributions—from over 95% to less than 80%—",
-        "offset by a rise in international collaborations, notably with China."
-      )
-    ),
-    "figure1d.gif" = list(
-      caption = "Economic Growth and Financial Dynamics",
-      description = paste(
-        "This figure highlights China’s thriving economy in contrast to the US,",
-        "where a larger national debt and slower economic growth underscore the differences",
-        "in financial dynamics between the two nations."
-      )
-    )
+# app.R (server)
+output$articlePlot <- renderPlotly({
+  req(input$article_source)
+  
+  y_title <- switch(input$article_source,
+    "CS Growth" = "Percentage of new substances",
+    "China-US collaboration" = "Percentage of national contribution",
+    "Growth rate of GDP" = "GDP per capita growth (annual %)",
+    "Number of Researchers" = "Researchers (millions)",
+    "Expansion of the CS" = "Number of new substances",
+    "Value"
   )
   
-  # Render the selected image
-  output$figureDisplay <- renderUI({
-    tags$img(
-      src = input$selected_figure,
-      width = "40%",
-      style = "display:block; margin:0 auto;"
-    )
-  })
+  article_data <- subset(figure_article, source == input$article_source) %>%
+    mutate(percentage = ifelse(source == "Number of Researchers", percentage/1e6, percentage))
   
-  # Render the caption text for the selected figure
-  output$figureCaption <- renderUI({
-    tags$p(
-      figure_info[[input$selected_figure]]$caption,
-      style = "text-align:center; font-weight:bold;"
-    )
-  })
-  
-  # Render the detailed description for the selected figure
-  output$figureDescription <- renderText({
-    figure_info[[input$selected_figure]]$description
-  })
-
+  createArticlePlot(article_data, input$article_source, y_title)
+}) %>% bindCache(input$article_source)
 
 }
 
