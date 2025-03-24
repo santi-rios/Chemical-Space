@@ -391,6 +391,21 @@ ui <- page_navbar(
             )
           )
         )
+      )
+    )
+      ),
+  # ------------------------------
+  # 2) COLLABORATION TRENDS
+  # ------------------------------
+
+  nav_panel(
+    "Collaboration Trends B 🤝",
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+          # Removed value_box here
+        )
       ),
       fluidPage(
         fluidRow(
@@ -792,7 +807,7 @@ output$substancePlot <- renderPlotly({
   # -------------------------------
   # Render the pre-calculated flag buttons
   output$collabFlagButtons <- renderUI({
-    req(active_tab() == "Collaboration Trends 🤝")
+    req(active_tab() == "Collaboration Trends B 🤝")
     div(class = "d-flex flex-wrap gap-2", precomputed_flags)
   })
 
