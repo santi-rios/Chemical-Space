@@ -19,7 +19,7 @@ source("R/plot_function.R")
 
 # Efficient data preparation using Arrow and dplyr
 # Efficient data preparation using Arrow and dplyr
-ds <- arrow::open_dataset("./data6/df_cc.parquet", format = "parquet") %>%
+ds <- arrow::open_dataset("./data6/df_cc_2.parquet", format = "parquet") %>%
   as_tidytable()
 
 # Pre-filter at the Arrow level before collecting
@@ -59,38 +59,30 @@ df_global_collab <- df_global[is_collab == TRUE]
 
 df_global_collab_top20 <- df_global_collab %>%
   filter(iso2c %in% c(
-    "CN-US", "DE-US", "GB-US", "IN-US", "CN-JP", "DE-RU", "CA-US", "JP-US", "DE-FR",
-    "FR-US", "ES-GB", "IT-US", "DE-ES", "ES-FR", "CN-DE", "KR-US",
-    "FR-GB", "DE-GB", "ES-IT", "DE-IN", "ES-US"
+                       "CN-US", "DE-US", "GB-US", "IN-US", "CN-JP", "CA-US", 
+                       "DE-RU", "JP-US", "DE-FR", "FR-US", "ES-GB", "IT-US", 
+                       "CN-DE", "DE-ES", "ES-FR", "KR-US", "DE-GB", "FR-GB", 
+                       "ES-IT", "DE-IN", "CN-HK", "ES-US", "CH-FR", "CN-GB", 
+                       "FR-RU"
   ))
 
 # Define the 20 country codes for collaborations
 us_codes <- c("DE-US", "GB-US", "IN-US", "CA-US", "JP-US", "FR-US", "IT-US", "KR-US", "ES-US")
-other_codes <- c("CN-US", "CN-JP", "CN-DE", "DE-RU", "DE-FR", "ES-GB", "DE-ES", "ES-FR", "FR-GB", "DE-GB", "ES-IT", "DE-IN")
+other_codes <- c("CN-US", "CN-JP", "CN-DE", "DE-RU", 
+          "DE-FR", "ES-GB", "DE-ES", "ES-FR", 
+          "FR-GB", "DE-GB", "ES-IT", "DE-IN", 
+          "CN-HK", "CH-FR", "CN-GB", "FR-RU")
 
 # Generate 10 distinct blue shades (avoid very light hues) for codes containing "US"
 us_colors <- colorRampPalette(brewer.pal(9, "Blues"))(length(us_codes))
-# For the remaining countries, use a contrasting palette (e.g., "Paired" has 9 distinct colours)
-other_colors <- colorRampPalette(brewer.pal(9, "Set1"))(length(other_codes))
+# For the remaining countries, use a contrasting palette (e.g., "Set3" has 12 distinct colours)
+other_colors <- colorRampPalette(brewer.pal(12, "Set3"))(length(other_codes))
 
 # Create a named vector for mapping
 collab_color_map <- c(
   setNames(us_colors, us_codes),
   setNames(other_colors, other_codes)
 )
-
-# --- Pre-calculate Initial Top 10 Countries (GLOBAL SCOPE) ---
-# initial_top_countries_df <- df_global_ind %>%
-#   group_by(country) %>%
-#   summarise(val = sum(percentage, na.rm = TRUE)) %>%
-#   arrange(desc(val)) %>%
-#   head(10)
-
-# initial_top_countries <- initial_top_countries_df$country
-# -----------------------------------------------------------
-# Remove the existing color mapping code,
-# and in your ggplot calls simply map the color aesthetic to your new 'cc' column.
-# Then use scale_color_identity() so ggplot uses the hex color values directly:
 
 # Precompute country metadata for flags
 country_metadata <- df_global_ind %>% # Use df_global_ind as it contains individual countries
@@ -274,16 +266,7 @@ ui <- page_navbar(
               "Interactive map showing country contributions...",
               placement = "left"
             ),
-            plotlyOutput("mapPlot")
-          ),
-          nav_panel(
-            "Cartogram🗺️",
-            tooltip(
-              bsicons::bs_icon("question-circle"),
-              "Cartogram showing geographic distribution...",
-              placement = "left"
-            ),
-            leafletOutput("geoPlot2", height = 750),
+            withSpinner(plotlyOutput("mapPlot"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
@@ -715,29 +698,25 @@ output$mapPlot <- renderPlotly({
   data <- filtered_data()[filtered_data()$chemical == "All", ]
   if (nrow(data) == 0) return(NULL)
   
-  # Compute yearly_avg and join with country names
-  yearly_avg_data <- data %>%
-    group_by(country, year) %>%
+  # Compute aggregated values including best/worst years and region
+  map_data <- data %>%
+    group_by(country, year, region) %>%
     summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
-    group_by(country) %>%
+    group_by(country, region) %>%
     summarise(
-      yearly_avg = mean(yearly_avg, na.rm = TRUE),  # Or appropriate aggregation
+      value = mean(yearly_avg, na.rm = TRUE),
+      best_year = year[which.max(yearly_avg)],
+      worst_year = year[which.min(yearly_avg)],
       .groups = "drop"
     )
   
-  # Merge with the original data to include coordinates
-  plot_data <- data %>%
-    select(country) %>%
-    distinct() %>%
-    left_join(yearly_avg_data, by = "country")
-  
   # Generate the map plot
   createStaticMapPlot(
-    df = plot_data,
+    df = map_data,
     world_df = world_data,
-    fill_var = "yearly_avg",
-    fill_label = "Yearly Average",
-    main_title = "Life Expectancy"
+    fill_var = "value",
+    fill_label = "Average Contribution (%)",
+    main_title = "Country Contributions"
   )
 })
 
@@ -746,44 +725,23 @@ output$mapPlot <- renderPlotly({
   # Substance Plots
 
 
-  output$substancePlot <- renderPlotly({
-    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
-    data <- filtered_data() %>%
-      filter(chemical == input$chemicalSelector)
-
-    p <- ggplot(data, aes(
-      x = year, y = percentage, color = country, group = country,
-      text = paste0(
-        "<b>Country:</b> ", country,
-        "<br><b>Percentage:</b> ", scales::percent(percentage, accuracy = 0.01, scale = 1),
-        "<br><b>Year:</b> ", year,
-        "<br><b>Region:</b> ", region
-      )
-    )) +
-      geom_line() +
-      geom_point(aes(size = percentage / 100),
-        alpha = 0.4, show.legend = FALSE
-      ) +
-      labs(
-        title = "Percentage of new compounds reported by each country in journals",
-        x = "Year",
-        y = "Percentage of new substances"
-      ) +
-      geom_text(
-        data = data %>% filter(year == max(year)),
-        aes(y = percentage, label = iso3c, color = country),
-        hjust = -0.2, nudge_x = 0.3, nudge_y = 0.4,
-        size = 4, check_overlap = TRUE, show.legend = FALSE
-      ) +
-      theme(legend.position = "none") +
-      scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1))
-
-
-    ggplotly(p, tooltip = "text") %>%
-      plotly::partial_bundle() %>%
-      plotly::toWebGL()
-  })
-  # %>% bindCache(input$chemicalSelector, input$countries, input$years)
+output$substancePlot <- renderPlotly({
+  req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
+  
+  plot_data <- filtered_data() %>%
+    filter(chemical == input$chemicalSelector)
+  
+  createTrendPlot(
+    data = plot_data,
+    label_var = "iso3c",  # Use ISO codes for labels
+    color_var = "cc",
+    group_var = "country",
+    label_size = 2.7,
+    title = paste("Contribution to", input$chemicalSelector),
+    top_n = 15  # Show labels for top 15 countries only
+  )
+}) 
+# %>% bindCache(active_tab(), input$chemicalSelector, filtered_data())
 
   output$collabSubstancePlot <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)

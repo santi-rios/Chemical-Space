@@ -68,7 +68,7 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       axis.title.x = if (is.null(x_label)) element_blank() else element_text()
     ) +
     labs(
-      title = title, 
+      title = title,
       y = y_label,
       x = if (!is.null(x_label)) x_label else NULL
     )
@@ -103,37 +103,162 @@ createChemicalSpacePlot <- function(data, end_labels_data,
 createStaticMapPlot <- function(df,
                                 world_df,
                                 map_key = "country",
-                                fill_var = "yearly_avg",
-                                fill_label = "Years",
-                                main_title = "Life Expectancy") {
+                                fill_var = "value",
+                                fill_label = "Average Contribution",
+                                main_title = "Country Contributions") {
   # Merge data with world map
   plot_data <- world_df %>%
-    left_join(df, by = c("country"))
+    left_join(df, by = "country") %>%
+    mutate(
+      formatted_value = sprintf("%.2f%%", .data[[fill_var]]),
+      tooltip_text = paste(
+        "<b>", country, "</b><br>",
+        "Value: ", formatted_value, "<br>",
+        "Region: ", coalesce(region, "N/A"), "<br>",
+        "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
+        "Worst Year: ", coalesce(as.character(worst_year), "N/A")
+      )
+    )
   
   # Create plot
-  p <- ggplot(plot_data, aes(lng, lat, group = group, fill = .data[[fill_var]])) +
+  p <- ggplot(plot_data, aes(
+    lng, lat, 
+    group = group, 
+    fill = .data[[fill_var]],
+    text = tooltip_text
+  )) +
     geom_polygon(color = "white", size = 0.01) +
-    scale_fill_distiller(palette = "Spectral") +
-    labs(
-      title = main_title
+    scale_fill_distiller(
+      palette = "Spectral",
+      labels = function(x) paste0(round(x, 2), "%"),
+      name = fill_label
     ) +
-    theme(
-      plot.title = element_text(size = 12, hjust = 0.5),
-      plot.caption = element_text(size = 8, hjust = 1)
-    ) +
+    labs(title = main_title) +
+    theme_void() +
     coord_fixed(ratio = 1.3) +
-    theme_void()
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14),
+      legend.position = "bottom"
+    )
   
-  plotly::ggplotly(p) %>% 
-  config(
-    displayModeBar = TRUE,
-    displaylogo = FALSE,
-    toImageButtonOptions = list(
-      format= 'svg', # one of png, svg, jpeg, webp
-      filename= 'bermudez-montana_etal_2025',
-      height= 500,
-      width= 700,
-      scale= 1
+  # Convert to plotly with custom tooltip
+  plotly::ggplotly(p, tooltip = "text") %>%
+    config(
+      displayModeBar = TRUE,
+      displaylogo = FALSE,
+      toImageButtonOptions = list(
+        format = 'svg',
+        filename = 'bermudez-montana_etal_2025',
+        height = 500,
+        width = 700,
+        scale = 1
       )
-  )
+    ) %>%
+    layout(
+      hoverlabel = list(
+        bgcolor = "white",
+        bordercolor = "black",
+        font = list(size = 12)
+      )
+    )
+}
+
+
+
+createTrendPlot <- function(data,
+                            label_var = "country",
+                            color_var = "cc",
+                            group_var = "country",
+                            region_var = "region",
+                            y_var = "percentage",
+                            x_var = "year",
+                            title = "Percentage of new compounds reported by each country in journals",
+                            y_label = "Percentage of new substances",
+                            x_label = "Year",
+                            label_nudge_x = 0.3,
+                            label_nudge_y = 0.4,
+                            label_size = 4,
+                            top_n = NULL) {
+  
+  # Prepare label data
+  label_data <- if (!is.null(top_n)) {
+    data %>%
+      group_by(.data[[group_var]]) %>%
+      summarise(max_value = max(.data[[y_var]], na.rm = TRUE)) %>%
+      arrange(desc(max_value)) %>%
+      slice_head(n = top_n) %>%
+      left_join(
+        data %>% 
+          group_by(.data[[group_var]]) %>% 
+          filter(.data[[x_var]] == max(.data[[x_var]])),
+        by = group_var
+      )
+  } else {
+    data %>% 
+      group_by(.data[[group_var]]) %>% 
+      filter(.data[[x_var]] == max(.data[[x_var]]))
+  }
+  
+  # Create base plot
+  p <- ggplot(
+    data,
+    aes(
+      x = .data[[x_var]],
+      y = .data[[y_var]],
+      color = .data[[color_var]],
+      group = .data[[group_var]],
+      text = paste0(
+        "<b>Country:</b> ", .data[[group_var]],
+        "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.01, scale = 1),
+        "<br><b>Year:</b> ", .data[[x_var]],
+        "<br><b>Region:</b> ", .data[[region_var]]
+      )
+    )
+  ) +
+    geom_line(alpha = 0.8) +
+    geom_point(
+      aes(size = .data[[y_var]] / 100),
+      alpha = 0.4,
+      show.legend = FALSE
+    ) +
+    geom_text(
+      data = label_data,
+      aes(
+        label = .data[[label_var]],
+        x = .data[[x_var]] + label_nudge_x,
+        y = .data[[y_var]] + label_nudge_y
+      ),
+      hjust = 0,
+      size = label_size,
+      check_overlap = TRUE,
+      show.legend = FALSE
+    ) +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 1, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15))
+    ) +
+    scale_color_identity() +
+    labs(
+      title = title,
+      x = x_label,
+      y = y_label
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.title = element_text(size = 12)
+    )
+  
+  # Convert to interactive plotly with performance optimizations
+  plotly::ggplotly(p, tooltip = "text") %>%
+    plotly::partial_bundle() %>%
+    plotly::toWebGL() %>%
+    plotly::layout(
+      hoverlabel = list(
+        bgcolor = "white",
+        bordercolor = "black",
+        font = list(size = 12)
+      )
+    )
 }
