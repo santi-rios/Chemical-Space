@@ -160,9 +160,17 @@ map_data_cache$collab_expanded <- df_global_collab %>%
 
   # Get world map data, excluding Antarctica
 world_data <- map_data("world") %>%
-  dplyr::filter(region != "Antarctica")
+  filter(region != "Antarctica") %>%
+  rename(country = region, lng = long) %>%
+  mutate(
+    country = case_when(
+      country == "USA" ~ "United States",
+      country == "UK" ~ "United Kingdom",
+      TRUE ~ country
+    )
+  )
 
-
+# Create a Shiny app object
 ui <- page_navbar(
   id = "selected",
   selected = "National Trends 📈",
@@ -700,35 +708,39 @@ output$trendPlot <- renderPlotly({
   })
   # %>% bindCache(active_tab(), filtered_data())
 
-  # Highchart map - Individual Countries
 output$mapPlot <- renderPlotly({
-  # req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
   req(active_tab() == "National Trends 📈")
-
-  # Process data for mapping
-  # Prepare your filtered data
-  map_data <- df_global_ind %>%
-    filter(chemical == "All") %>%
-    group_by(iso3c, year, region, country) %>%
-    summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop")
-
-  # Join by region name if it matches your data
-  joined_data <- world_data %>%
-    right_join(map_data, by = c("region" = "country"))
-
-  # Plotly-ready ggplot
-  mapa_plot <- ggplot(joined_data, aes(long, lat, 
-                                       group = group, 
-                                       fill = yearly_avg)) +
-    geom_polygon(aes(frame = year), color = "white", size = 0.1) +
-    theme_void() +
-    viridis::scale_fill_viridis(option = "B", name = "Average (%)") +
-    labs(title = "Average Contribution") +
-    coord_fixed(ratio = 1.3)
-
-  ggplotly(mapa_plot) %>%
-    animation_slider(currentvalue = list(prefix = "Year: ", font = list(color = "orange")))
+  
+  # Filter data
+  data <- filtered_data()[filtered_data()$chemical == "All", ]
+  if (nrow(data) == 0) return(NULL)
+  
+  # Compute yearly_avg and join with country names
+  yearly_avg_data <- data %>%
+    group_by(country, year) %>%
+    summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
+    group_by(country) %>%
+    summarise(
+      yearly_avg = mean(yearly_avg, na.rm = TRUE),  # Or appropriate aggregation
+      .groups = "drop"
+    )
+  
+  # Merge with the original data to include coordinates
+  plot_data <- data %>%
+    select(country) %>%
+    distinct() %>%
+    left_join(yearly_avg_data, by = "country")
+  
+  # Generate the map plot
+  createStaticMapPlot(
+    df = plot_data,
+    world_df = world_data,
+    fill_var = "yearly_avg",
+    fill_label = "Yearly Average",
+    main_title = "Life Expectancy"
+  )
 })
+
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Substance Types
   # Substance Plots

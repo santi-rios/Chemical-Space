@@ -21,14 +21,14 @@
 #' @return An interactive plotly object with WebGL rendering.
 #' @import ggplot2 plotly scales
 #' @export
-createChemicalSpacePlot <- function(data, end_labels_data, 
-                                    min_year, max_year, 
-                                    x_var = "year", 
-                                    y_var = "percentage", 
-                                    color_var = "cc", 
+createChemicalSpacePlot <- function(data, end_labels_data,
+                                    min_year, max_year,
+                                    x_var = "year",
+                                    y_var = "percentage",
+                                    color_var = "cc",
                                     group_var = "country",
                                     region_var = "region",
-                                    title = "National Contributions to Chemical Space", 
+                                    title = "National Contributions to Chemical Space",
                                     y_label = "% of New Substances",
                                     x_label = NULL,
                                     x_continuous_limits_extra = 6) {
@@ -47,7 +47,7 @@ createChemicalSpacePlot <- function(data, end_labels_data,
         ))
   ) +
     geom_line() +
-    geom_jitter(aes(size = .data[[y_var]]/100), alpha = 0.4, show.legend = FALSE) +
+    geom_point(aes(size = .data[[y_var]]/100), alpha = 0.4, show.legend = FALSE) +
     # Only label top countries with position adjustment to minimize overlap
     geom_text(
       data = end_labels_data,
@@ -100,32 +100,40 @@ createChemicalSpacePlot <- function(data, end_labels_data,
 #' @return A plotly object showing the static world map plot.
 #' @import ggplot2 dplyr plotly viridis
 #' @export
-createStaticMapPlot <- function(df, 
-                                world_df, 
-                                year = 2007, 
-                                map_key = "region", 
-                                fill_var = "lifeExp", 
-                                fill_label = "Years", 
-                                main_title = "Life Expectancy", 
-                                sub_title = paste("year:", year)) {
-  plot_data <- df %>%
-    filter(.data[["year"]] == year) %>%
-    right_join(world_df, by = c("mapname" = map_key))
+createStaticMapPlot <- function(df,
+                                world_df,
+                                map_key = "country",
+                                fill_var = "yearly_avg",
+                                fill_label = "Years",
+                                main_title = "Life Expectancy") {
+  # Merge data with world map
+  plot_data <- world_df %>%
+    left_join(df, by = c("country"))
   
-  p <- ggplot(plot_data, aes(long, lat, group = group, fill = .data[[fill_var]])) +
+  # Create plot
+  p <- ggplot(plot_data, aes(lng, lat, group = group, fill = .data[[fill_var]])) +
     geom_polygon(color = "white", size = 0.01) +
-    theme_void() +
-    viridis::scale_fill_viridis(option = "B", name = fill_label) +
+    scale_fill_distiller(palette = "Spectral") +
     labs(
-      title = main_title,
-      subtitle = sub_title
+      title = main_title
     ) +
     theme(
       plot.title = element_text(size = 12, hjust = 0.5),
-      plot.subtitle = element_text(size = 10, hjust = 0.5),
       plot.caption = element_text(size = 8, hjust = 1)
     ) +
-    coord_fixed(ratio = 1.3)
+    coord_fixed(ratio = 1.3) +
+    theme_void()
   
-  plotly::ggplotly(p)
+  plotly::ggplotly(p) %>% 
+  config(
+    displayModeBar = TRUE,
+    displaylogo = FALSE,
+    toImageButtonOptions = list(
+      format= 'svg', # one of png, svg, jpeg, webp
+      filename= 'bermudez-montana_etal_2025',
+      height= 500,
+      width= 700,
+      scale= 1
+      )
+  )
 }
