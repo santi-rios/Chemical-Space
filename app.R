@@ -45,8 +45,28 @@ data.table::setindex(df_global, is_collab, country, year, iso2c, iso3c, region, 
 
 # Create views instead of copies - much more memory efficient
 df_global_ind <- df_global[is_collab == FALSE]
-
 df_global_collab <- df_global[is_collab == TRUE]
+
+# Check complete cases per year (by country) for df_global_ind
+library(dplyr)
+df_global_ind_summary <- df_global_ind %>%
+  group_by(year) %>%
+  summarise(
+    total_countries = n_distinct(country),
+    complete = n_distinct(country[!is.na(percentage)]),
+    missing = total_countries - complete
+  )
+tail(df_global_ind_summary)
+
+# Check complete cases per year (by country) for df_global_collab
+df_global_collab_summary <- df_global_collab %>%
+  group_by(year) %>%
+  summarise(
+    total_countries = n_distinct(country),
+    complete = n_distinct(country[!is.na(percentage)]),
+    missing = total_countries - complete
+  )
+tail(df_global_collab_summary)
 
 # top20_groups <- df_global_collab %>%
 #  group_by(iso2c) %>%
@@ -710,8 +730,8 @@ output$trendPlot <- renderPlotly({
         margin = list(b = 50)
       ) %>%
       plotly::toWebGL()
-  })
-  # %>% bindCache(active_tab(), filtered_data())
+  }) %>% 
+  bindCache(active_tab(), filtered_data())
 
 output$mapPlot <- renderPlotly({
   req(active_tab() == "National Trends 📈")
@@ -762,8 +782,8 @@ output$substancePlot <- renderPlotly({
     title = paste("Contribution to", input$chemicalSelector),
     top_n = 15  # Show labels for top 15 countries only
   )
-}) 
-# %>% bindCache(active_tab(), input$chemicalSelector, filtered_data())
+})  %>% 
+  bindCache(active_tab(), input$chemicalSelector, filtered_data())
 
   output$collabSubstancePlot <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
