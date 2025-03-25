@@ -322,18 +322,102 @@ read.csv("./data5/merged3.csv") |>
 ```
 
 ```{r}
+library(tidyverse)
 
-read.csv("./data6/df_cc_2.csv") |>
+read.csv("./data6/df_cc_3.csv") |>
   dplyr::mutate(
     year = as.numeric(year),
     percentage = as.numeric(percentage),
     country = case_when(
       country == "United States of America" ~ "United States",
       TRUE ~ country
+    ),
+    # Mark membership in each group
+    blue_group = iso2c %in% c(
+        "DE-US", "GB-US", "IN-US", 
+        "CA-US", "JP-US", "FR-US", 
+        "IT-US", "KR-US", "ES-US"
+      ),
+    red_group = iso2c %in% c(
+        "CN-US", "CN-JP", "CN-DE", "DE-RU",
+        "DE-FR", "ES-GB", "DE-ES", "ES-FR",
+        "FR-GB", "DE-GB", "ES-IT", "DE-IN",
+        "CN-HK", "CH-FR", "CN-GB", "FR-RU"
+      )
+  ) |>
+  # Group by the color group so we can assign a rank for variations
+  dplyr::mutate(
+    color_group = case_when(
+      blue_group ~ "blue",
+      red_group ~ "red",
+      TRUE ~ "other"
     )
   ) |>
-  arrow::write_parquet("./data6/df_cc_2.parquet")
+  dplyr::group_by(color_group) |>
+  dplyr::mutate(
+    iso_rank = dplyr::dense_rank(iso2c),
+    max_rank = max(iso_rank)
+  ) |>
+  dplyr::ungroup() |>
+  # Now assign colours using a numeric scale for blue and red groups
+  dplyr::mutate(
+    cc = case_when(
+      color_group == "blue" ~ scales::col_numeric(
+        palette = c("#60b1ff", "#00264c"), # lighter to darker blues
+        domain = c(1, max_rank)
+      )(iso_rank),
+      color_group == "red" ~ scales::col_numeric(
+        palette = c("#ff1d1d", "#330000"), # lighter to darker reds
+        domain = c(1, max_rank)
+      )(iso_rank),
+      TRUE ~ cc
+    )
+  ) |>
+  arrow::write_parquet("./data6/df_cc_3.parquet")
 
 ```
 
 
+```{r}
+# library(ggplot2)
+
+# world_data <- map_data("world") %>%
+#   filter(region != "Antarctica") %>%
+#   rename(country = region, lng = long) %>%
+#   mutate(
+#     country = case_when(
+#       country == "USA" ~ "United States",
+#       country == "UK" ~ "United Kingdom",
+#       TRUE ~ country
+#     )
+#   )
+
+# Run this once during development:
+if (!file.exists("data/world_data.parquet")) {
+  library(ggplot2)
+  library(dplyr)
+  library(arrow)
+  
+  world_data <- map_data("world") %>%
+    filter(region != "Antarctica") %>%
+    rename(country = region, lng = long) %>%
+    mutate(
+      country = case_when(
+        country == "USA" ~ "United States",
+        country == "UK" ~ "United Kingdom",
+        # Add more mappings as needed
+        TRUE ~ country
+      )
+    )
+  
+  # Create directory if it doesn't exist
+  if (!dir.exists("data")) dir.create("data")
+  
+  # Save the processed data
+  write_parquet(world_data, "data/world_data.parquet")
+}
+
+# # Then in your app.R, replace the world_data computation with:
+# world_data <- readRDS("data/world_data.rds")
+
+```

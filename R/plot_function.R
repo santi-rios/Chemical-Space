@@ -38,6 +38,7 @@ createChemicalSpacePlot <- function(data, end_labels_data,
     aes(x = .data[[x_var]],
         y = .data[[y_var]],
         color = .data[[color_var]],
+        # shape = .data[[region_var]],
         group = .data[[group_var]],
         text = paste0(
           "<b>Country:</b> ", .data[[group_var]],
@@ -46,8 +47,8 @@ createChemicalSpacePlot <- function(data, end_labels_data,
           "<br><b>Region:</b> ", .data[[region_var]]
         ))
   ) +
-    geom_line() +
-    geom_point(aes(size = .data[[y_var]]/100), alpha = 0.4, show.legend = FALSE) +
+    geom_line(alpha = 0.8) +
+    geom_point(aes(shape = .data[[region_var]]), alpha = 0.8, show.legend = FALSE) +
     # Only label top countries with position adjustment to minimize overlap
     geom_text(
       data = end_labels_data,
@@ -59,12 +60,17 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       check_overlap = TRUE
     ) +
     scale_colour_identity() +
-    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 1, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15))
+    ) +
     scale_x_continuous(limits = c(min_year, max_year + x_continuous_limits_extra)) +
     theme(
-      legend.position = "none",
+      legend.position = "bottom",
       legend.text = element_text(size = 8, face = "bold"),
       legend.title = element_blank(),
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.title = element_text(size = 12),
       axis.title.x = if (is.null(x_label)) element_blank() else element_text()
     ) +
     labs(
@@ -106,11 +112,46 @@ createStaticMapPlot <- function(df,
                                 fill_var = "value",
                                 fill_label = "Average Contribution",
                                 main_title = "Country Contributions") {
+  
+  # Get max value for scaling (round up to nearest 5%)
+  max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
+  ceiling_val <- ceiling(max_val / 5) * 5
+  
+  # Create nice round breaks based on data range
+  if (ceiling_val <= 5) {
+    # For small ranges, use 1% steps
+    breaks <- seq(0, max(5, ceiling_val), by = 1)
+    label_fmt <- "%.1f-%.1f%%"
+  } else if (ceiling_val <= 20) {
+    # For medium ranges, use 2.5% steps
+    breaks <- seq(0, ceiling_val, by = 2.5)
+    label_fmt <- "%.1f-%.1f%%"
+  } else {
+    # For large ranges, use 5% steps
+    breaks <- seq(0, ceiling_val, by = 5)
+    label_fmt <- "%.0f-%.0f%%"
+  }
+  
+  # Create labels showing ranges instead of just endpoints
+  labels <- character(length(breaks) - 1)
+  for (i in 1:(length(breaks) - 1)) {
+    labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
+  }
+  
   # Merge data with world map
   plot_data <- world_df %>%
     left_join(df, by = "country") %>%
     mutate(
-      formatted_value = sprintf("%.2f%%", .data[[fill_var]]),
+      formatted_value = ifelse(!is.na(.data[[fill_var]]), 
+                              sprintf("%.2f%%", .data[[fill_var]]), 
+                              "No data for current selection"),
+      # Create discrete fill variable using our custom breaks
+      fill_discrete = cut(
+        .data[[fill_var]], 
+        breaks = breaks,
+        labels = labels,
+        include.lowest = TRUE
+      ),
       tooltip_text = paste(
         "<b>", country, "</b><br>",
         "Value: ", formatted_value, "<br>",
@@ -119,26 +160,35 @@ createStaticMapPlot <- function(df,
         "Worst Year: ", coalesce(as.character(worst_year), "N/A")
       )
     )
-  
-  # Create plot
+
+  # Create plot with discrete fill
   p <- ggplot(plot_data, aes(
     lng, lat, 
     group = group, 
-    fill = .data[[fill_var]],
+    fill = fill_discrete, # Use the discrete fill variable
     text = tooltip_text
   )) +
     geom_polygon(color = "white", size = 0.01) +
-    scale_fill_distiller(
+    # Use a discrete color scale with explicit NA handling
+    scale_fill_brewer(
       palette = "Spectral",
-      labels = function(x) paste0(round(x, 2), "%"),
-      name = fill_label
+      direction = -1,
+      name = fill_label,
+      na.value = "#EEEEEE", # Light gray
+      na.translate = TRUE,
+      labels = function(x) {
+        ifelse(is.na(x), "No data for current selection", as.character(x))
+      },
+      drop = FALSE
     ) +
     labs(title = main_title) +
     theme_void() +
     coord_fixed(ratio = 1.3) +
     theme(
       plot.title = element_text(hjust = 0.5, size = 14),
-      legend.position = "bottom"
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.title = element_text(size = 8)
     )
   
   # Convert to plotly with custom tooltip
@@ -155,15 +205,156 @@ createStaticMapPlot <- function(df,
       )
     ) %>%
     layout(
+      legend = list(
+        orientation = "h",
+        y = -0.15,
+        yanchor = "top",
+        x = 0.6,
+        xanchor = "center"
+      ),
       hoverlabel = list(
         bgcolor = "white",
         bordercolor = "black",
         font = list(size = 12)
-      )
+      ),
+      margin = list(b = 80, l = 40, r = 40, t = 40)
     )
 }
 
 
+##############
+
+# Create a custom variant of createStaticMapPlot for collaborations
+# Add this function to your R/plot_function.R file
+# Add this function to your R/plot_function.R file
+createCollabMapPlot <- function(df,
+                                world_df,
+                                map_key = "country",
+                                fill_var = "value",
+                                fill_label = "Collaboration Strength",
+                                main_title = "") {
+  
+  # Debug prints to identify data issues
+  message("Number of rows in input data: ", nrow(df))
+  message("Columns in input data: ", paste(names(df), collapse = ", "))
+  message("Range of fill variable: ", min(df[[fill_var]], na.rm = TRUE), " - ", 
+          max(df[[fill_var]], na.rm = TRUE))
+  
+  # Get max value for scaling (round up to nearest 5%)
+  max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
+  ceiling_val <- ceiling(max_val / 5) * 5
+  
+  # Create nice round breaks based on data range
+  if (ceiling_val <= 5) {
+    breaks <- seq(0, max(5, ceiling_val), by = 1)
+    label_fmt <- "%.1f-%.1f%%"
+  } else if (ceiling_val <= 20) {
+    breaks <- seq(0, ceiling_val, by = 2.5)
+    label_fmt <- "%.1f-%.1f%%"
+  } else {
+    breaks <- seq(0, ceiling_val, by = 5)
+    label_fmt <- "%.0f-%.0f%%"
+  }
+  
+  # Create labels showing ranges
+  labels <- character(length(breaks) - 1)
+  for (i in 1:(length(breaks) - 1)) {
+    labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
+  }
+  
+  # Merge data with world map
+  plot_data <- world_df %>%
+    left_join(df, by = "country") %>%
+    mutate(
+      formatted_value = ifelse(!is.na(.data[[fill_var]]), 
+                              sprintf("%.2f%%", .data[[fill_var]]), 
+                              "No data for current selection"),
+      # Create discrete fill variable using our custom breaks
+      fill_discrete = cut(
+        .data[[fill_var]], 
+        breaks = breaks,
+        labels = labels,
+        include.lowest = TRUE
+      ),
+      # Enhanced tooltip with collaboration information
+      tooltip_text = paste(
+        "<b>", country, "</b><br>",
+        "Collaboration Strength: ", formatted_value, "<br>",
+        "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
+        "Worst Year: ", coalesce(as.character(worst_year), "N/A"),
+        ifelse(!is.na(collab_list), 
+               paste0("<br><b>Main Collaborations:</b><br>", gsub("; ", "<br>• ", paste0("• ", collab_list))), 
+               "")
+      )
+    )
+  
+  # Debug: check merged data
+  message("Number of rows with non-NA fill values in plot_data: ", 
+          sum(!is.na(plot_data[[fill_var]])))
+  
+  # Create plot with discrete fill
+  p <- ggplot(plot_data, aes(
+    lng, lat, 
+    group = group, 
+    fill = fill_discrete, # Use the discrete fill variable
+    text = tooltip_text
+  )) +
+    geom_polygon(color = "white", size = 0.01) +
+    # Use a discrete color scale with explicit NA handling
+    scale_fill_brewer(
+      palette = "Spectral",
+      direction = -1,
+      name = fill_label,
+      na.value = "#EEEEEE", # Light gray
+      na.translate = TRUE,
+      labels = function(x) {
+        ifelse(is.na(x), "No data for current selection", as.character(x))
+      },
+      drop = FALSE
+    ) +
+    labs(title = main_title) +
+    theme_void() +
+    coord_fixed(ratio = 1.3) +
+    # UNCOMMENT THESE LINES - they're needed for proper display
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14),
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.title = element_text(size = 8)
+    )
+  
+  # Convert to plotly with custom tooltip
+  plotly::ggplotly(p, tooltip = "text") %>%
+    config(
+      displayModeBar = TRUE,
+      displaylogo = FALSE,
+      toImageButtonOptions = list(
+        format = 'svg',
+        filename = 'bermudez-montana_etal_2025_collab',
+        height = 500,
+        width = 700,
+        scale = 1
+      )
+    ) %>%
+    # UNCOMMENT THESE LINES - they're needed for proper layout
+    layout(
+      legend = list(
+        orientation = "h",
+        y = -0.15,
+        yanchor = "top",
+        x = 0.5,
+        xanchor = "center"
+      ),
+      hoverlabel = list(
+        bgcolor = "white",
+        bordercolor = "black",
+        font = list(size = 12)
+      ),
+      margin = list(b = 80, l = 40, r = 40, t = 40)
+    )
+}
+
+##########
 
 createTrendPlot <- function(data,
                             label_var = "country",
@@ -218,7 +409,7 @@ createTrendPlot <- function(data,
     geom_line(alpha = 0.8) +
     geom_point(
       aes(size = .data[[y_var]] / 100),
-      alpha = 0.4,
+      alpha = 0.8,
       show.legend = FALSE
     ) +
     geom_text(
