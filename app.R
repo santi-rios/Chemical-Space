@@ -19,7 +19,7 @@ theme_set(theme_light())
 source("R/plot_function.R")
 
 # Efficient data preparation using Arrow and dplyr
-ds <- arrow::open_dataset("./data6/df_cc_3.parquet", format = "parquet")
+ds <- arrow::open_dataset("./data6/df_cc_4.parquet", format = "parquet")
 
 # Then in your app.R, replace the world_data computation with:
 # In global scope (outside server function)
@@ -36,6 +36,13 @@ country_metadata <- ds %>%
   dplyr::collect() %>%
   dplyr::arrange(country)
 
+# Precompute country list from individual data (fast metadata operation)
+country_list <- ds %>%
+  dplyr::filter(is_collab == FALSE) %>%
+  dplyr::select(country, iso2c) %>%
+  dplyr::distinct() %>%
+  dplyr::collect() %>%
+  dplyr::arrange(country)
 
 # OPTIMIZATION: Get the list of countries that appear in collaborations
 # This creates a mapping from iso2c codes to the collaborations they're involved in
@@ -427,12 +434,41 @@ ui <- page_navbar(
   # 2.1) COLLABORATION TRENDS b,
   # ------------------------------,
   nav_panel(
-        "Collaboration Trends B 🤝",
-        tabsetPanel(
-          id = "flag_tabs",
-          tabPanel("All Countries", uiOutput("collabFlagButtons")),
-          tabPanel("Top Collaborators", uiOutput("topCollabFlagButtons"))
+    "Collaboration Trends B 🤝",
+    fluidPage(
+      fluidRow(
+        column(
+          width = 12,
+          selectizeInput(
+            "country_select", "Select Country:",
+            choices = setNames(country_list$iso2c, country_list$country),
+            options = list(placeholder = 'Search for a country...')
+          )
         )
+      ),
+      card(
+        navset_card_tab(
+          nav_panel(
+            "Explore All collaborations",
+            tooltip(
+              bsicons::bs_icon("question-circle"),
+              "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.",
+              placement = "left"
+            ),
+            withSpinner(plotlyOutput("collab_plot", width = "100%", height = "100%"), color = "#024173"),
+            card_footer(
+              "Source: China's rise in the chemical space and the decline of US influence.",
+              popover(
+                a("Learn more", href = "#"),
+                markdown(
+                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                )
+              )
+            )
+          )
+        )
+      )
+    )
   ),
   # ------------------------------,
   # 3) ARTICLE FIGURES,
@@ -749,6 +785,12 @@ server <- function(input, output, session) {
   #########
   # Plots #
   #########
+
+
+
+  #########
+  # Plots #
+  #########
   # National Trends Plot
   # National Trends Plot with optimized rendering
   output$trendPlot <- renderPlotly({
@@ -998,159 +1040,54 @@ output$mapPlotCollab <- renderPlotly({
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Add to UI section where your flags are displayed
-output$collabFlagButtons <- renderUI({
-  req(active_tab() == "Collaboration Trends B 🤝")
-  
-  # Pagination parameters
-  page_size <- 20
-  current_page <- input$flag_page %||% 1
-  search_term <- tolower(input$flag_search %||% "")
-  
-  # Filter countries based on search
-  filtered_countries <- country_metadata
-  if (nchar(search_term) > 0) {
-    filtered_countries <- filtered_countries[grepl(search_term, tolower(filtered_countries$country)), ]
-  }
-  
-  # Calculate pagination
-  total_items <- nrow(filtered_countries)
-  total_pages <- ceiling(total_items / page_size)
-  start_idx <- (current_page - 1) * page_size + 1
-  end_idx <- min(current_page * page_size, total_items)
-  
-  # Only process flags for the current page
-  page_countries <- filtered_countries[start_idx:end_idx, ]
-  
-  # Generate flags for current page only
-  flag_buttons <- lapply(1:nrow(page_countries), function(i) {
-    iso <- page_countries$iso2c[i]
-    country_name <- page_countries$country[i]
+
+# Reactive for filtered collaboration data
+  filtered_collab <- reactive({
+    req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
     
-    tags$button(
-      id = paste0("flag-", iso),
-      class = "btn btn-outline-secondary btn-sm m-1",
-      `data-iso` = iso,
-      tags$img(
-        src = sprintf("https://flagcdn.com/16x12/%s.png", tolower(iso)),
-        width = 16,
-        height = 12,
-        alt = country_name
-      ),
-      paste0(" ", country_name),
-      onclick = sprintf("Shiny.setInputValue('selectedCountry', '%s', {priority: 'event'})", iso)
-    )
-  })
-  
-  # Wrap in a div with pagination controls
-  tagList(
-    div(
-      class = "mb-3",
-      textInput("flag_search", "Search country:", ""),
-      span(class = "text-muted", 
-           paste("Showing", start_idx, "to", end_idx, "of", total_items, "countries"))
-    ),
-    div(class = "d-flex flex-wrap gap-2", flag_buttons),
-    div(
-      class = "d-flex justify-content-between mt-3",
-      actionButton("prev_page", "Previous", 
-                  class = if(current_page == 1) "btn btn-secondary disabled" else "btn btn-secondary"),
-      span(paste("Page", current_page, "of", total_pages)),
-      actionButton("next_page", "Next", 
-                  class = if(current_page == total_pages) "btn btn-secondary disabled" else "btn btn-secondary")
-    )
-  )
-})
-
-# Add these observers for pagination
-observeEvent(input$prev_page, {
-  updateNumericInput(session, "flag_page", 
-                     value = max(1, (input$flag_page %||% 1) - 1))
-})
-
-observeEvent(input$next_page, {
-  current_page <- input$flag_page %||% 1
-  search_term <- tolower(input$flag_search %||% "")
-  
-  filtered_countries <- country_metadata
-  if (nchar(search_term) > 0) {
-    filtered_countries <- filtered_countries[grepl(search_term, tolower(filtered_countries$country)), ]
-  }
-  
-  total_pages <- ceiling(nrow(filtered_countries) / 20)
-  updateNumericInput(session, "flag_page", 
-                     value = min(total_pages, current_page + 1))
-})
-
-observeEvent(input$flag_search, {
-  # Reset to first page when searching
-  updateNumericInput(session, "flag_page", value = 1)
-})
-
-# Update your observeEvent for selectedCountry
-# Replace your observeEvent for selectedCountry with this optimized version
-observeEvent(input$selectedCountry, {
-  sel_iso <- input$selectedCountry
-  
-  # Use the pre-computed data or filter on demand if not pre-computed
-if (!is.null(country_collab_summaries[[sel_iso]])) {
-  contributor_summary <- country_collab_summaries[[sel_iso]]
-    
-# Create the GT table
-  output$countryCollabTable <- render_gt({
-    contributor_summary %>%
-      select(
-        country_code = partner,
-        country_name,
-        total_contribution,
-        peak_year,
-        peak_value
+    # Efficient filtering using arrow
+    ds %>%
+      dplyr::filter(
+        is_collab == TRUE,
+        year >= input$years[1],
+        year <= input$years[2]
       ) %>%
-      gt() %>%
-      tab_header(
-        title = paste("Top Collaborators with", country_name),
-        subtitle = "Ranked by total contribution percentage"
-      ) %>%
-      fmt_percent(
-        columns = c(total_contribution, peak_value),
-        decimals = 2,
-        scale_values = TRUE
-      ) %>%
-      fmt_number(
-        columns = peak_year,
-        decimals = 0
-      ) %>%
-      fmt_flag(
-        columns = country_code
-      ) %>%
-      cols_merge(
-        columns = c(country_name, country_code),
-        pattern = "{2} {1}"
-      ) %>%
-      cols_label(
-        country_name = "Country",
-        total_contribution = "Total Contribution",
-        peak_year = "Peak Year",
-        peak_value = "Peak Value"
-      ) %>%
-      tab_style(
-        style = cell_fill(color = "#f8f9fa"),
-        locations = cells_body(rows = seq(1, nrow(contributor_summary), 2))
-      ) %>%
-      opt_row_striping() %>%
-      opt_interactive(
-        use_search = TRUE,
-        use_filters = TRUE,
-        use_resizers = TRUE,
-        use_highlight = TRUE,
-        use_compact_mode = FALSE
+      # Filter collaborations containing selected country
+      dplyr::filter(grepl(input$country_select, iso2c)) %>%
+      dplyr::collect() %>%
+      # Process partners
+      mutate(
+        partners = strsplit(iso2c, "-"),
+        partner = sapply(partners, function(x) setdiff(x, input$country_select)[1])
       )
-    })
-  } else {
-    showNotification(paste("No collaboration data found for country code:", sel_iso), 
-                    type = "warning")
-  }
-})
+  })
+
+# Collaboration plot
+  output$collab_plot <- renderPlotly({
+    req(active_tab() == "Collaboration Trends B 🤝")
+
+    data <- filtered_collab()
+    validate(need(nrow(data) > 0, "No collaborations found for selected country/years"))
+    
+    # Aggregate data
+    agg_data <- data %>%
+      group_by(partner, year) %>%
+      summarise(total_percentage = sum(percentage, na.rm = TRUE), .groups = "drop")
+    
+    # Create plot
+    ggplot(agg_data, aes(x = year, y = total_percentage, color = partner)) +
+      # geom_line() +
+      geom_jitter(
+        aes(
+          size = total_percentage
+        ),
+        alpha = 0.35,
+        width = 0.1
+      ) +
+      labs(title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
+           x = "Year", y = "Total Collaboration Percentage") +
+      theme_minimal()
+  }) %>% bindCache(input$country_select, input$years)
 
   #################
   # Article Figures
