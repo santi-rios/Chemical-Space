@@ -78,11 +78,11 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       y = y_label,
       x = if (!is.null(x_label)) x_label else NULL
     )
-  
+
   # Convert ggplot object to interactive plotly object with WebGL
-  plotly_obj <- ggplotly(p, tooltip = "text") %>% 
+  plotly_obj <- ggplotly(p, tooltip = "text") %>%
     plotly::toWebGL()
-  
+
   return(plotly_obj)
 }
 
@@ -90,8 +90,8 @@ createChemicalSpacePlot <- function(data, end_labels_data,
 
 #' Create Static Map Plot
 #'
-#' This function takes a data frame, filters by a given year, merges with 
-#' world polygon data, and returns a static map plot annotated by a chosen 
+#' This function takes a data frame, filters by a given year, merges with
+#' world polygon data, and returns a static map plot annotated by a chosen
 #' fill variable. The result is converted to a plotly object.
 #'
 #' @param df Data frame (e.g., gapminder_data) containing at least columns for year and the fill variable.
@@ -112,11 +112,11 @@ createStaticMapPlot <- function(df,
                                 fill_var = "value",
                                 fill_label = "Average Contribution",
                                 main_title = "Country Contributions") {
-  
+
   # Get max value for scaling (round up to nearest 5%)
   max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
   ceiling_val <- ceiling(max_val / 5) * 5
-  
+
   # Create nice round breaks based on data range
   if (ceiling_val <= 5) {
     # For small ranges, use 1% steps
@@ -131,23 +131,23 @@ createStaticMapPlot <- function(df,
     breaks <- seq(0, ceiling_val, by = 5)
     label_fmt <- "%.0f-%.0f%%"
   }
-  
+
   # Create labels showing ranges instead of just endpoints
   labels <- character(length(breaks) - 1)
   for (i in 1:(length(breaks) - 1)) {
     labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
   }
-  
+
   # Merge data with world map
   plot_data <- world_df %>%
     left_join(df, by = "country") %>%
     mutate(
-      formatted_value = ifelse(!is.na(.data[[fill_var]]), 
-                              sprintf("%.2f%%", .data[[fill_var]]), 
+      formatted_value = ifelse(!is.na(.data[[fill_var]]),
+                              sprintf("%.2f%%", .data[[fill_var]]),
                               "No data for current selection"),
       # Create discrete fill variable using our custom breaks
       fill_discrete = cut(
-        .data[[fill_var]], 
+        .data[[fill_var]],
         breaks = breaks,
         labels = labels,
         include.lowest = TRUE
@@ -163,8 +163,8 @@ createStaticMapPlot <- function(df,
 
   # Create plot with discrete fill
   p <- ggplot(plot_data, aes(
-    lng, lat, 
-    group = group, 
+    lng, lat,
+    group = group,
     fill = fill_discrete, # Use the discrete fill variable
     text = tooltip_text
   )) +
@@ -190,7 +190,7 @@ createStaticMapPlot <- function(df,
       legend.direction = "horizontal",
       legend.title = element_text(size = 8)
     )
-  
+
   # Convert to plotly with custom tooltip
   plotly::ggplotly(p, tooltip = "text") %>%
     config(
@@ -233,17 +233,17 @@ createCollabMapPlot <- function(df,
                                 fill_var = "value",
                                 fill_label = "Collaboration Strength",
                                 main_title = "") {
-  
+
   # Debug prints to identify data issues
   message("Number of rows in input data: ", nrow(df))
   message("Columns in input data: ", paste(names(df), collapse = ", "))
-  message("Range of fill variable: ", min(df[[fill_var]], na.rm = TRUE), " - ", 
+  message("Range of fill variable: ", min(df[[fill_var]], na.rm = TRUE), " - ",
           max(df[[fill_var]], na.rm = TRUE))
-  
+
   # Get max value for scaling (round up to nearest 5%)
   max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
   ceiling_val <- ceiling(max_val / 5) * 5
-  
+
   # Create nice round breaks based on data range
   if (ceiling_val <= 5) {
     breaks <- seq(0, max(5, ceiling_val), by = 1)
@@ -255,23 +255,23 @@ createCollabMapPlot <- function(df,
     breaks <- seq(0, ceiling_val, by = 5)
     label_fmt <- "%.0f-%.0f%%"
   }
-  
+
   # Create labels showing ranges
   labels <- character(length(breaks) - 1)
   for (i in 1:(length(breaks) - 1)) {
     labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
   }
-  
+
   # Merge data with world map
   plot_data <- world_df %>%
     left_join(df, by = "country") %>%
     mutate(
-      formatted_value = ifelse(!is.na(.data[[fill_var]]), 
-                              sprintf("%.2f%%", .data[[fill_var]]), 
+      formatted_value = ifelse(!is.na(.data[[fill_var]]),
+                              sprintf("%.2f%%", .data[[fill_var]]),
                               "No data for current selection"),
       # Create discrete fill variable using our custom breaks
       fill_discrete = cut(
-        .data[[fill_var]], 
+        .data[[fill_var]],
         breaks = breaks,
         labels = labels,
         include.lowest = TRUE
@@ -282,20 +282,20 @@ createCollabMapPlot <- function(df,
         "Collaboration Strength: ", formatted_value, "<br>",
         "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
         "Worst Year: ", coalesce(as.character(worst_year), "N/A"),
-        ifelse(!is.na(collab_list), 
-               paste0("<br><b>Main Collaborations:</b><br>", gsub("; ", "<br>• ", paste0("• ", collab_list))), 
+        ifelse(!is.na(collab_list),
+               paste0("<br><b>Main Collaborations:</b><br>", gsub("; ", "<br>• ", paste0("• ", collab_list))),
                "")
       )
     )
-  
+
   # Debug: check merged data
-  message("Number of rows with non-NA fill values in plot_data: ", 
+  message("Number of rows with non-NA fill values in plot_data: ",
           sum(!is.na(plot_data[[fill_var]])))
-  
+
   # Create plot with discrete fill
   p <- ggplot(plot_data, aes(
-    lng, lat, 
-    group = group, 
+    lng, lat,
+    group = group,
     fill = fill_discrete, # Use the discrete fill variable
     text = tooltip_text
   )) +
@@ -322,7 +322,7 @@ createCollabMapPlot <- function(df,
       legend.direction = "horizontal",
       legend.title = element_text(size = 8)
     )
-  
+
   # Convert to plotly with custom tooltip
   plotly::ggplotly(p, tooltip = "text") %>%
     config(
@@ -370,7 +370,7 @@ createTrendPlot <- function(data,
                             label_nudge_y = 0.4,
                             label_size = 4,
                             top_n = NULL) {
-  
+
   # Prepare label data
   label_data <- if (!is.null(top_n)) {
     data %>%
@@ -379,17 +379,17 @@ createTrendPlot <- function(data,
       arrange(desc(max_value)) %>%
       slice_head(n = top_n) %>%
       left_join(
-        data %>% 
-          group_by(.data[[group_var]]) %>% 
+        data %>%
+          group_by(.data[[group_var]]) %>%
           filter(.data[[x_var]] == max(.data[[x_var]])),
         by = group_var
       )
   } else {
-    data %>% 
-      group_by(.data[[group_var]]) %>% 
+    data %>%
+      group_by(.data[[group_var]]) %>%
       filter(.data[[x_var]] == max(.data[[x_var]]))
   }
-  
+
   # Create base plot
   p <- ggplot(
     data,
@@ -440,7 +440,7 @@ createTrendPlot <- function(data,
       plot.title = element_text(size = 14, face = "bold"),
       axis.title = element_text(size = 12)
     )
-  
+
   # Convert to interactive plotly with performance optimizations
   plotly::ggplotly(p, tooltip = "text") %>%
     plotly::partial_bundle() %>%
@@ -457,18 +457,19 @@ createTrendPlot <- function(data,
 
 # functions.R
 # functions.R
-createArticlePlot <- function(data, 
+createArticlePlot <- function(data,
                source_title,
-               y_title = "Percentage of new substances",
+               y_title,
                flag_size_range = c(10, 30)) {
   # Prepare data
   plot_data <- data %>%
-  mutate(
+  dplyr::mutate(
     iso2c = countrycode::countrycode(country, "country.name", "iso2c"),
     # Use a larger flag to reduce pixelation
     flag_url = paste0("https://flagcdn.com/80x60/", tolower(iso2c), ".png")
   )
-  
+  # filter(!country %in% c(""))
+
   # Plotly scatter (each row becomes a frame)
   p <- plot_ly(
   plot_data,
@@ -493,12 +494,12 @@ createArticlePlot <- function(data,
   hoverinfo = "text",
   frame = ~year
   )
-  
+
   # Show flags only for the last year of each country (appear at final frame)
   last_data <- plot_data %>%
-  group_by(country) %>%
-  filter(year == max(year))
-  
+  dplyr::group_by(country) %>%
+  dplyr::filter(year == max(year))
+
   p <- p %>% layout(
   images = lapply(seq_len(nrow(last_data)), function(i) {
     list(
@@ -509,7 +510,7 @@ createArticlePlot <- function(data,
     # Keep a fixed smaller size to avoid extreme scaling
     sizex = 1,
     sizey = 1,
-    xanchor = "center", 
+    xanchor = "center",
     yanchor = "middle",
     sizing = "contain",
     layer = "above"
@@ -521,7 +522,7 @@ createArticlePlot <- function(data,
   ),
   xaxis = list(title = "Year", gridcolor = "#eeeeee"),
   yaxis = list(
-    title = y_title, 
+    title = y_title,
     gridcolor = "#eeeeee",
     tickformat = ".1%"
   ),
@@ -533,16 +534,15 @@ createArticlePlot <- function(data,
     transition = 0,
     redraw = FALSE
   ) %>%
-  plotly::partial_bundle() %>%
-  plotly::toWebGL() %>%
-  layout(
-    hoverlabel = list(
-    bgcolor = "white",
-    bordercolor = "black",
-    font = list(size = 12)
-    )
-  )
-  
+  plotly::partial_bundle()
+  # plotly::toWebGL() %>%
+  # layout(
+  #   hoverlabel = list(
+  #   bgcolor = "white",
+  #   bordercolor = "black",
+  #   font = list(size = 12)
+  #   )
+  # )
+
   p
 }
-

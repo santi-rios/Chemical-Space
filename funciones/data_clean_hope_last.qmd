@@ -324,30 +324,39 @@ read.csv("./data5/merged3.csv") |>
 ```{r}
 library(tidyverse)
 
+# Helper function to convert ISO2 codes to flag emojis
+flag_emoji <- function(iso) {
+  sapply(iso, function(x) {
+    x <- toupper(x)
+    if (nchar(x) == 2) {
+      ints <- utf8ToInt(x) - utf8ToInt("A") + 127462
+      intToUtf8(ints)
+    } else {
+      NA_character_
+    }
+  })
+}
+
 read.csv("./data6/df_cc_3.csv") |>
   dplyr::mutate(
     year = as.numeric(year),
     percentage = as.numeric(percentage),
-    country = case_when(
+    country = dplyr::case_when(
       country == "United States of America" ~ "United States",
       TRUE ~ country
     ),
-    # Mark membership in each group
     blue_group = iso2c %in% c(
-        "DE-US", "GB-US", "IN-US", 
-        "CA-US", "JP-US", "FR-US", 
-        "IT-US", "KR-US", "ES-US"
-      ),
+      "DE-US", "GB-US", "IN-US",
+      "CA-US", "JP-US", "FR-US",
+      "IT-US", "KR-US", "ES-US"
+    ),
     red_group = iso2c %in% c(
-        "CN-US", "CN-JP", "CN-DE", "DE-RU",
-        "DE-FR", "ES-GB", "DE-ES", "ES-FR",
-        "FR-GB", "DE-GB", "ES-IT", "DE-IN",
-        "CN-HK", "CH-FR", "CN-GB", "FR-RU"
-      )
-  ) |>
-  # Group by the color group so we can assign a rank for variations
-  dplyr::mutate(
-    color_group = case_when(
+      "CN-US", "CN-JP", "CN-DE", "DE-RU",
+      "DE-FR", "ES-GB", "DE-ES", "ES-FR",
+      "FR-GB", "DE-GB", "ES-IT", "DE-IN",
+      "CN-HK", "CH-FR", "CN-GB", "FR-RU"
+    ),
+    color_group = dplyr::case_when(
       blue_group ~ "blue",
       red_group ~ "red",
       TRUE ~ "other"
@@ -359,19 +368,19 @@ read.csv("./data6/df_cc_3.csv") |>
     max_rank = max(iso_rank)
   ) |>
   dplyr::ungroup() |>
-  # Now assign colours using a numeric scale for blue and red groups
   dplyr::mutate(
-    cc = case_when(
+    cc = dplyr::case_when(
       color_group == "blue" ~ scales::col_numeric(
-        palette = c("#60b1ff", "#00264c"), # lighter to darker blues
+        palette = c("#00264c", "#2c2f32"),
         domain = c(1, max_rank)
       )(iso_rank),
       color_group == "red" ~ scales::col_numeric(
-        palette = c("#ff1d1d", "#330000"), # lighter to darker reds
+        palette = c("#cc0000", "#4c0000"),
         domain = c(1, max_rank)
       )(iso_rank),
       TRUE ~ cc
-    )
+    ),
+    emo = dplyr::if_else(!is_collab, flag_emoji(iso2c), NA_character_)
   ) |>
   arrow::write_parquet("./data6/df_cc_3.parquet")
 
