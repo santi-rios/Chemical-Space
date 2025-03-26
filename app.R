@@ -489,7 +489,29 @@ ui <- page_navbar(
             )
           )
         )
-      )
+      ),
+        card(
+          navset_card_tab(
+            nav_panel(
+              "Top Contributors 🏆",
+              tooltip(
+                bsicons::bs_icon("question-circle"),
+                "Top contributors by year...",
+                placement = "left"
+              ),
+              gt_output("top_contributors_tableB"),
+              card_footer(
+                "Source: China's rise in the chemical space and the decline of US influence.",
+                popover(
+                  a("Learn more", href = "#"),
+                  markdown(
+                    "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                  )
+                )
+              )
+            )
+          )
+        )
     )
   ),
   # ------------------------------,
@@ -1174,6 +1196,53 @@ ggplot(agg_data, aes(x = year, y = total_percentage)) +
 
 
   }) %>% bindCache(input$country_select, input$years)
+
+
+# Añade esto al server después del gráfico
+
+# Top contributors table (historical)
+top_contributors <- reactive({
+  req(filtered_collab())
+  
+  filtered_collab() %>%
+    group_by(partner, partner_country) %>%  # Asumiendo que ya tienes estas columnas
+    summarise(total_contribution = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+    arrange(desc(total_contribution)) %>%
+    slice_head(n = 3) %>%
+    select(partner, partner_country)  # Seleccionar solo las columnas necesarias
+})
+
+# Render the table with flags
+output$top_contributors_tableB <- render_gt({
+  req(top_contributors())
+  req(nrow(top_contributors()) > 0)
+  
+  top_contributors() %>%
+    gt() %>%
+    gt::tab_header(
+      title = "Top 3 Historical Contributors",
+      subtitle = "All selected years combined"
+    ) %>%
+    gt::fmt_flag(columns = partner) %>%  # Mostrar banderas desde códigos ISO2
+    gt::cols_label(
+      partner = "",  # Ocultar título de columna de banderas
+      partner_country = "Country"
+    ) %>%
+    gt::cols_width(
+      partner ~ px(50),  # Ancho fijo para columna de bandera
+      partner_country ~ px(200)
+    ) %>%
+    gt::opt_row_striping() %>%
+    gt::tab_options(
+      table.font.size = "14px",
+      heading.title.font.size = "18px"
+    )
+})
+
+
+
+
+
 
   #################
   # Article Figures
