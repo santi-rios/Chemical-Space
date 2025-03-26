@@ -394,186 +394,250 @@ createCollabMapPlot <- function(df,
 
 ##########
 
-createTrendPlot <- function(data, end_labels_data,
-                            min_year, max_year,
-                            color_var = "cc",
-                            group_var = "country",
-                            region_var = "region",
-                            y_var = "percentage",
-                            x_var = "year",
-                            title = "Percentage of new compounds reported in journals",
-                            y_label = "Percentage of new substances",
-                            x_label = "Year") {
-
-  # Create a named vector mapping each country to its hex color
-  country_colors <- unique(data[, c(group_var, color_var)])
-  color_map <- setNames(country_colors[[color_var]], country_colors[[group_var]])
-  
-  # Build the ggplot
-  p <- ggplot(
-    data,
-    aes(x = .data[[x_var]],
-        y = .data[[y_var]],
-        color = .data[[group_var]],  # now using country name
-        group = .data[[group_var]],
-        text = paste0(
-          "<b>Country:</b> ", .data[[group_var]],
-          "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.01, scale = 1),
-          "<br><b>Year:</b> ", .data[[x_var]],
-          "<br><b>Region:</b> ", .data[[region_var]]
-        ))
-  ) +
-    geom_line(alpha = 0.85) +
-    geom_point(
-      # aes(size = .data[[y_var]]),
-      shape = 21,
-      alpha = 0.3,
-      show.legend = FALSE
-    ) +
-    geom_text(
-      data = end_labels_data,
-      aes(
-        label = .data[[group_var]],
-        x = .data[[x_var]],
-        # y = .data[[y_var]] + 0.4
-      ),
-      # hjust = max_year + 3,
-      nudge_x = -1,
-      angle = 45,
-      size = 3.2,
-      check_overlap = TRUE,
-      show.legend = FALSE
-    ) +
-    scale_color_manual(values = color_map, name = "Country") +
-    scale_y_continuous(
-      labels = scales::percent_format(accuracy = 1, scale = 1),
-      expand = expansion(mult = c(0.05, 0.15))
-    ) +
-    theme(
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      legend.text = element_text(size = 7, face = "bold"),
-      legend.title = element_blank(),
-      plot.title = element_text(size = 11, face = "bold"),
-      axis.title = element_text(size = 9),
-      axis.title.x = if (is.null(x_label)) element_blank() else element_text()
-    ) +
-    labs(
-      title = title,
-      y = y_label,
-      x = x_label
-    )
-
-  # Convert ggplot object to an interactive plotly object with WebGL
-  plotly_obj <- plotly::ggplotly(p, tooltip = "text") %>%
-    config(
-      displayModeBar = TRUE,
-      displaylogo = FALSE
-    ) %>%
-    # UNCOMMENT THESE LINES - they're needed for proper layout
-    layout(
-      legend = list(
-        orientation = "h",
-        y = -0.15,
-        yanchor = "top",
-        x = 0.5,
-        xanchor = "center"
-      ),
-      margin = list(b = 80, l = 40, r = 40, t = 40)
-    )
-
-  return(plotly_obj)
-}
-
-
-# functions.R
-# functions.R
 createArticlePlot <- function(data,
-               source_title,
-               y_title,
-               flag_size_range = c(10, 30)) {
+                             source_title,
+                             y_title,
+                             flag_size_range = c(1, 30)) {
   # Prepare data
   plot_data <- data %>%
-  dplyr::mutate(
-    iso2c = countrycode::countrycode(country, "country.name", "iso2c"),
-    # Use a larger flag to reduce pixelation
-    flag_url = paste0("https://flagcdn.com/80x60/", tolower(iso2c), ".png")
-  )
-  # filter(!country %in% c(""))
-
-  # Plotly scatter (each row becomes a frame)
-  p <- plot_ly(
-  plot_data,
-  x = ~year,
-  y = ~percentage,
-  color = ~country,
-  colors = "Set1",
-  type = "scatter",
-  mode = "markers",
-  marker = list(
-    sizemode = "diameter",
-    # Keep marker size modest
-    size = ~percentage,
-    opacity = 0.4,
-    sizeref = 0.15 * max(plot_data$percentage) / max(flag_size_range)
-  ),
-  text = ~paste(
-    "<b>Country:</b> ", country,
-    "<br><b>Year:</b> ", year,
-    "<br><b>Value:</b> ", scales::percent(percentage / 100)
-  ),
-  hoverinfo = "text",
-  frame = ~year
-  )
-
-  # Show flags only for the last year of each country (appear at final frame)
-  last_data <- plot_data %>%
-  dplyr::group_by(country) %>%
-  dplyr::filter(year == max(year))
-
-  p <- p %>% layout(
-  images = lapply(seq_len(nrow(last_data)), function(i) {
-    list(
-    source = last_data$flag_url[i],
-    xref = "x", yref = "y",
-    x = last_data$year[i],
-    y = last_data$percentage[i],
-    # Keep a fixed smaller size to avoid extreme scaling
-    sizex = 1,
-    sizey = 1,
-    xanchor = "center",
-    yanchor = "middle",
-    sizing = "contain",
-    layer = "above"
+    dplyr::mutate(
+      iso2c = countrycode::countrycode(country, "country.name", "iso2c"),
+      flag_url = paste0("https://flagcdn.com/80x60/", tolower(iso2c), ".png")
     )
-  }),
-  title = list(
-    text = paste("Article Figures - Source:", source_title),
-    font = list(size = 18)
-  ),
-  xaxis = list(title = "Year", gridcolor = "#eeeeee"),
-  yaxis = list(
-    title = y_title,
-    gridcolor = "#eeeeee",
-    tickformat = ".1%"
-  ),
-  plot_bgcolor = "rgb(250, 250, 250)",
-  paper_bgcolor = "rgb(250, 250, 250)"
-  ) %>%
-  animation_opts(
-    frame = 300,
-    transition = 0,
-    redraw = FALSE
-  ) %>%
-  plotly::partial_bundle()
-  # plotly::toWebGL() %>%
-  # layout(
-  #   hoverlabel = list(
-  #   bgcolor = "white",
-  #   bordercolor = "black",
-  #   font = list(size = 12)
-  #   )
-  # )
-
-  p
+  
+  # Set source-specific parameters
+  size_adjustment <- 0.15  # Default size adjustment
+  marker_opacity <- 0.4   # Default opacity
+  y_tickformat <- ".1%"   # Default format (percentage)
+  
+  # Source-specific adjustments
+  if (source_title == "Expansion of the CS") {
+    # Handle logarithmic scale for large range (10^4 to 10^6)
+    size_adjustment <- 0.05
+    marker_opacity <- 0.6
+    y_tickformat <- ".2s"  # Use SI units formatting
+  } else if (source_title == "China-US in the CS") {
+    # We'll handle dual y-axis in special case below
+    use_dual_axis <- TRUE
+    # Split data into two groups based on value ranges
+    main_countries <- c("China", "United States")
+    plot_data <- plot_data %>%
+      dplyr::mutate(data_group = ifelse(country %in% main_countries, "main", "collab"))
+  } else if (source_title == "Annual growth rate of the GDP") {
+    # Regular values, not percentages
+    y_tickformat <- ".1f"
+  } else if (source_title == "Number of Researchers") {
+    # Values in millions
+    y_tickformat <- ".2f"
+    y_title <- paste0(y_title, " (millions)")
+  } else if (source_title == "Country participation in the CS") {
+    # Reduce dot size for better visualization
+    size_adjustment <- 0.05
+    marker_opacity <- 0.6
+  }
+  
+  # Special case for dual y-axis
+  if (source_title == "China-US in the CS") {
+    # Create two separate traces for main countries and collaboration metrics
+    main_data <- plot_data %>% filter(data_group == "main")
+    collab_data <- plot_data %>% filter(data_group == "collab")
+    
+    p <- plot_ly() %>%
+      # Main countries trace (left y-axis)
+      add_trace(
+        data = main_data,
+        x = ~year,
+        y = ~percentage,
+        color = ~country,
+        colors = "Set1",
+        type = "scatter",
+        mode = "markers",
+        marker = list(
+          sizemode = "diameter",
+          size = ~percentage/10,
+          opacity = marker_opacity,
+          sizeref = size_adjustment * max(main_data$percentage) / max(flag_size_range)
+        ),
+        text = ~paste(
+          "<b>Country:</b> ", country,
+          "<br><b>Year:</b> ", year,
+          "<br><b>Value:</b> ", scales::percent(percentage / 100)
+        ),
+        hoverinfo = "text",
+        frame = ~year,
+        name = ~country,
+        yaxis = "y"
+      ) %>%
+      # Collaboration metrics trace (right y-axis)
+      add_trace(
+        data = collab_data,
+        x = ~year,
+        y = ~percentage,
+        color = ~country,
+        colors = "Set2",
+        type = "scatter",
+        mode = "markers",
+        marker = list(
+          sizemode = "diameter",
+          size = ~percentage*20,
+          opacity = marker_opacity,
+          sizeref = size_adjustment * max(collab_data$percentage) / max(flag_size_range)
+        ),
+        text = ~paste(
+          "<b>Metric:</b> ", country,
+          "<br><b>Year:</b> ", year,
+          "<br><b>Value:</b> ", scales::percent(percentage / 100)
+        ),
+        hoverinfo = "text",
+        frame = ~year,
+        name = ~country,
+        yaxis = "y2"
+      )
+    
+    p <- p %>% layout(
+      yaxis = list(
+        title = "Main countries (%)",
+        side = "left",
+        tickformat = ".1%",
+        range = c(min(main_data$percentage) * 0.9/100, max(main_data$percentage) * 1.1/100)
+      ),
+      yaxis2 = list(
+        title = "Collaboration metrics (%)",
+        side = "right",
+        overlaying = "y",
+        tickformat = ".1%",
+        range = c(0, max(collab_data$percentage) * 1.2/100)
+      )
+    )
+    
+    # Add country flags (handle both data groups)
+    last_data <- rbind(
+      main_data %>% dplyr::group_by(country) %>% dplyr::filter(year == max(year)),
+      collab_data %>% dplyr::group_by(country) %>% dplyr::filter(year == max(year))
+    )
+  } else {
+    # Standard single-axis plot for other sources
+    p <- plot_ly(
+      plot_data,
+      x = ~year,
+      y = ~percentage,
+      color = ~country,
+      colors = "Set1",
+      type = "scatter",
+      mode = "markers",
+      marker = list(
+        sizemode = "diameter",
+        size = ~percentage,
+        opacity = marker_opacity,
+        sizeref = size_adjustment * max(plot_data$percentage) / max(flag_size_range)
+      ),
+      text = ~paste(
+        "<b>Country:</b> ", country,
+        "<br><b>Year:</b> ", year,
+        "<br><b>Value:</b> ", ifelse(
+          source_title %in% c("Annual growth rate of the GDP", "Number of Researchers"),
+          format(round(percentage, 2), nsmall = 2),
+          scales::percent(percentage / 100)
+        )
+      ),
+      hoverinfo = "text",
+      frame = ~year
+    )
+    
+    # Show flags only for the last year of each country
+    last_data <- plot_data %>%
+      dplyr::group_by(country) %>%
+      dplyr::filter(year == max(year))
+  }
+  
+  # Base layout settings
+  p <- p %>% layout(
+    images = lapply(seq_len(nrow(last_data)), function(i) {
+      list(
+        source = last_data$flag_url[i],
+        xref = "x", 
+        yref = ifelse(source_title == "China-US in the CS" && 
+                     last_data$data_group[i] == "collab", "y2", "y"),
+        x = last_data$year[i],
+        y = last_data$percentage[i],
+        sizex = 1,
+        sizey = 1,
+        xanchor = "center",
+        yanchor = "middle",
+        sizing = "contain",
+        layer = "above"
+      )
+    }),
+    title = list(
+      text = paste("Article Figures - Source:", source_title),
+      font = list(size = 18)
+    ),
+    xaxis = list(title = "Year", gridcolor = "#eeeeee"),
+    yaxis = list(
+      title = y_title,
+      gridcolor = "#eeeeee",
+      tickformat = y_tickformat
+    ),
+    plot_bgcolor = "rgb(250, 250, 250)",
+    paper_bgcolor = "rgb(250, 250, 250)"
+  )
+  
+  # Add annotations for GDP growth
+  if (source_title == "Annual growth rate of the GDP") {
+    p <- p %>% layout(
+      shapes = list(
+        # Vertical line for 2007 (Financial Crisis)
+        list(
+          type = "line",
+          x0 = 2007, x1 = 2007,
+          y0 = 0, y1 = 1,
+          yref = "paper",
+          line = list(color = "red", dash = "dash", width = 1.5)
+        ),
+        # Vertical line for 2020 (COVID)
+        list(
+          type = "line",
+          x0 = 2020, x1 = 2020,
+          y0 = 0, y1 = 1,
+          yref = "paper",
+          line = list(color = "red", dash = "dash", width = 1.5)
+        )
+      ),
+      annotations = list(
+        # Label for Financial Crisis
+        list(
+          x = 2007,
+          y = 1,
+          text = "Global Financial Crisis",
+          showarrow = TRUE,
+          arrowhead = 0,
+          ax = 0,
+          ay = -40,
+          font = list(size = 12, color = "red")
+        ),
+        # Label for COVID
+        list(
+          x = 2020,
+          y = 1,
+          text = "COVID-19",
+          showarrow = TRUE,
+          arrowhead = 0,
+          ax = 0,
+          ay = -40,
+          font = list(size = 12, color = "red")
+        )
+      )
+    )
+  }
+  
+  # Animation settings
+  p <- p %>%
+    animation_opts(
+      frame = 300,
+      transition = 0,
+      redraw = FALSE
+    ) %>%
+    plotly::partial_bundle()
+  
+  return(p)
 }
