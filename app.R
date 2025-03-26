@@ -1154,11 +1154,18 @@ output$mapPlotCollab <- renderPlotly({
           size = total_percentage
         ),
         alpha = 0.35,
-        width = 0.1
+        width = 0.8
+      ) +
+      scale_radius(range = c(0.8, 6)) +
+      scale_y_continuous(
+        labels = scales::percent_format(accuracy = 1, scale = 1),
+        expand = expansion(mult = c(0.05, 0.15))
       ) +
       labs(title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
            x = "Year", y = "Total Collaboration Percentage") +
       theme_minimal()
+
+
   }) %>% bindCache(input$country_select, input$years)
 
   #################
