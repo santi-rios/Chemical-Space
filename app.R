@@ -69,7 +69,7 @@ df_global_ind <- ds %>%
   dplyr::select(
     iso2c, year, percentage, chemical,
     iso3c, country, lat, lng,
-    region, is_collab, cc
+    region, is_collab, cc, emoji, emo, flags
   ) %>%
   dplyr::collect()
 
@@ -95,68 +95,6 @@ precomputed_flags <- lapply(seq_len(nrow(country_metadata)), function(i) {
   )
 })
 names(precomputed_flags) <- country_metadata$iso2c
-
-# View(precomputed_flags)
-
-# collab_data <-  ds %>% 
-#     dplyr::filter(is_collab == TRUE) %>%  # Use explicit namespace
-#     dplyr::select(iso2c, year, percentage, chemical, iso3c, country, 
-#            lat, lng, region, cc) 
-
-
-# # Collaboration expansion
-# # Replace tidyr::unnest with data.table equivalent
-# collab_expansion <- df_global_collab[
-#   , .(isoSplit = tstrsplit(iso2c, "-")),
-#   by = .(iso2c, year, percentage)
-# ]
-
-
-# # Pre-compute the Highchart map data at startup instead of in reactive context
-# map_data_cache <- list()
-
-# # Initialize the cache for individual countries
-# map_data_cache$individual <- df_global_ind %>%
-#   group_by(iso3c, year, region) %>%
-#   summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
-#   group_by(iso3c) %>%
-#   summarise(
-#     value     = mean(yearly_avg, na.rm = TRUE),
-#     best_year  = year[which.max(yearly_avg)],
-#     worst_year = year[which.min(yearly_avg)],
-#     region     = first(region),
-#     .groups   = "drop"
-#   )
-
-# # Initialize the cache for collaborations with split iso3c renamed,
-# # ensuring that the original iso3c value is captured separately.
-# map_data_cache$collab_expanded <- df_global_collab %>%
-#   mutate(
-#     orig_iso = iso3c,
-#     iso3c = strsplit(iso3c, "-"),
-#     country = strsplit(country, "-")
-#   ) %>%
-#   tidyr::unnest(cols = iso3c) %>%
-#   mutate(
-#     combo = orig_iso,
-#     value = percentage,
-#     year = year
-#   ) %>%
-#   select(-orig_iso)
-
-
-#   # Get world map data, excluding Antarctica
-# world_data <- map_data("world") %>%
-#   filter(region != "Antarctica") %>%
-#   rename(country = region, lng = long) %>%
-#   mutate(
-#     country = case_when(
-#       country == "USA" ~ "United States",
-#       country == "UK" ~ "United Kingdom",
-#       TRUE ~ country
-#     )
-#   )
-
 
 # Add this to global.R or at the top of app.R
 # Pre-compute collaboration data for each country
@@ -190,7 +128,7 @@ df_global_collab <- ds %>%
   dplyr::filter(is_collab == TRUE) %>%
   dplyr::select(
     iso2c, year, percentage, chemical, iso3c, country,
-    lat, lng, region, cc, flags
+    lat, lng, region, cc, flags, emoji, emo, flags
   ) %>%
   dplyr::collect()
 
@@ -297,7 +235,7 @@ ui <- page_navbar(
           style = "margin-bottom: 18rem;",
           accordion(
             id = "countryAccordion",
-            open = FALSE,
+            open = TRUE,
             accordion_panel(
               "Select Countries 🎌",
               checkboxGroupInput(
@@ -338,7 +276,7 @@ ui <- page_navbar(
                 "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.", # nolint: line_length_linter.
                 placement = "left"
               ),
-              withSpinner(plotlyOutput("trendPlot", width = "100%"), color = "#024173"),
+              withSpinner(plotlyOutput("trendPlot", width = "100%", height = "100%"), color = "#024173"),
               card_footer(
                 "Source: China's rise in the chemical space and the decline of US influence.",
                 popover(
@@ -610,7 +548,7 @@ server <- function(input, output, session) {
       dplyr::filter(is_collab == FALSE) %>%
       dplyr::select(
         iso2c, year, percentage, chemical, iso3c, country,
-        lat, lng, region, cc
+        lat, lng, region, cc, emoji, emo, flags
       )
   })
 
@@ -619,7 +557,7 @@ server <- function(input, output, session) {
       dplyr::filter(is_collab == TRUE) %>%
       dplyr::select(
         iso2c, year, percentage, chemical, iso3c, country,
-        lat, lng, region, cc
+        lat, lng, region, cc, emoji, emo, flags
       )
   })
 
@@ -655,7 +593,7 @@ server <- function(input, output, session) {
     } else if (active_tab() == "Article Figures 📰") {
       figure_article()
     }
-  }) 
+  })
   # %>%
   #   bindCache(active_tab())
 
@@ -785,7 +723,6 @@ server <- function(input, output, session) {
   }) %>%
     bindCache(filtered_data())
 
-
   # Only load collab_top20 data when viewing that specific tab
   # collab_top20_data <- reactive({
   #   req(active_tab() == "Collaboration Trends 🤝")
@@ -800,12 +737,18 @@ server <- function(input, output, session) {
   #     collect()
   # }) %>% bindCache(active_tab())
 
-
+  observe({
+    if (active_tab() %in% c("National Trends 📈", "Collaboration Trends 🤝")) {
+      showNotification("Double click on the legend to isolate a country or single click to hide it.", 
+      type = "message",
+      duration = 2
+      )
+    }
+  })
 
   #########
   # Plots #
   #########
-
   # National Trends Plot
   # National Trends Plot with optimized rendering
   output$trendPlot <- renderPlotly({
@@ -813,6 +756,7 @@ server <- function(input, output, session) {
 
     # Filter data first
     data <- filtered_data()[filtered_data()$chemical == "All", ]
+
 
     # Find minimum and maximum years
     min_year <- min(data$year, na.rm = TRUE)
@@ -999,17 +943,34 @@ output$mapPlotCollab <- renderPlotly({
   output$substancePlot <- renderPlotly({
     req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
 
-    plot_data <- filtered_data() %>%
-      filter(chemical == input$chemicalSelector)
+    data <- data <- filtered_data()[filtered_data()$chemical == input$chemicalSelector, ]
+
+    # Find minimum and maximum years
+    min_year <- min(data$year, na.rm = TRUE)
+    max_year <- max(data$year, na.rm = TRUE)
+
+    # Only show labels for top countries to avoid clutter
+    # First, identify top countries by their max percentage
+    top_countries_data <- data %>%
+      group_by(country) %>%
+      summarise(max_pct = max(percentage, na.rm = TRUE)) %>%
+      arrange(dplyr::desc(max_pct)) %>%
+      slice_head(n = 10) # Adjust number as needed
+
+    # Get the end year data for labeling
+    end_labels_data <- data %>%
+      filter(country %in% top_countries_data$country) %>%
+      group_by(country) %>%
+      filter(year == max(year)) %>%
+      ungroup()
+
 
     createTrendPlot(
-      data = plot_data,
-      label_var = "iso3c", # Use ISO codes for labels
-      color_var = "cc",
-      group_var = "country",
-      label_size = 2.7,
-      title = paste("Contribution to", input$chemicalSelector),
-      top_n = 15 # Show labels for top 15 countries only
+      data = data,
+      min_year = min_year,
+      max_year = max_year,
+      end_labels_data = end_labels_data,
+      title = paste("Contribution to", input$chemicalSelector)
     )
   }) %>%
     bindCache(active_tab(), input$chemicalSelector, filtered_data())

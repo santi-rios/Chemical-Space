@@ -28,17 +28,20 @@ createChemicalSpacePlot <- function(data, end_labels_data,
                                     color_var = "cc",
                                     group_var = "country",
                                     region_var = "region",
+                                    # flag_png_col = "flags",   # column with PNG flag URLs
                                     title = "National Contributions to Chemical Space",
                                     y_label = "% of New Substances",
-                                    x_label = NULL,
-                                    x_continuous_limits_extra = 6) {
-  # Create base ggplot
+                                    x_label = NULL) {
+  # Create a named vector mapping each country to its hex color
+  country_colors <- unique(data[, c(group_var, color_var)])
+  color_map <- setNames(country_colors[[color_var]], country_colors[[group_var]])
+  
+  # Build the ggplot
   p <- ggplot(
     data,
     aes(x = .data[[x_var]],
         y = .data[[y_var]],
-        color = .data[[color_var]],
-        # shape = .data[[region_var]],
+        color = .data[[group_var]],  # now using country name
         group = .data[[group_var]],
         text = paste0(
           "<b>Country:</b> ", .data[[group_var]],
@@ -47,30 +50,42 @@ createChemicalSpacePlot <- function(data, end_labels_data,
           "<br><b>Region:</b> ", .data[[region_var]]
         ))
   ) +
-    geom_line(alpha = 0.8) +
-    geom_point(aes(shape = .data[[region_var]]), alpha = 0.8, show.legend = FALSE) +
-    # Only label top countries with position adjustment to minimize overlap
+    geom_line(alpha = 0.85) +
+    geom_point(
+      aes(size = .data[[y_var]]),
+      shape = 16,
+      alpha = 0.3,
+      show.legend = FALSE
+    ) +
     geom_text(
       data = end_labels_data,
-      aes(label = .data[[group_var]]),
-      hjust = -0.1,  # Push labels to the right of the last point
-      nudge_x = 0.5, # Add additional horizontal push
+      aes(
+        label = .data[[group_var]],
+        x = .data[[x_var]]
+        # y = .data[[y_var]] + 0.4
+      ),
+      # hjust = max_year + 3,
+      nudge_x = -1.3,
+      vjust = 1,
+      angle = 45,
       size = 3,
-      show.legend = FALSE,
-      check_overlap = TRUE
+      alpha = 0.7,
+      check_overlap = TRUE,
+      show.legend = FALSE
     ) +
-    scale_colour_identity() +
+    scale_radius(range = c(0.5, 4)) +
+    scale_color_manual(values = color_map, name = "Country") +
     scale_y_continuous(
       labels = scales::percent_format(accuracy = 1, scale = 1),
       expand = expansion(mult = c(0.05, 0.15))
     ) +
-    scale_x_continuous(limits = c(min_year, max_year + x_continuous_limits_extra)) +
     theme(
       legend.position = "bottom",
-      legend.text = element_text(size = 8, face = "bold"),
+      legend.direction = "horizontal",
+      legend.text = element_text(size = 7, face = "bold"),
       legend.title = element_blank(),
-      plot.title = element_text(size = 14, face = "bold"),
-      axis.title = element_text(size = 12),
+      plot.title = element_text(size = 9, face = "bold"),
+      axis.title = element_text(size = 9),
       axis.title.x = if (is.null(x_label)) element_blank() else element_text()
     ) +
     labs(
@@ -79,12 +94,27 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       x = if (!is.null(x_label)) x_label else NULL
     )
 
-  # Convert ggplot object to interactive plotly object with WebGL
-  plotly_obj <- ggplotly(p, tooltip = "text") %>%
-    plotly::toWebGL()
+  # Convert ggplot object to an interactive plotly object with WebGL
+  plotly_obj <- plotly::ggplotly(p, tooltip = "text") %>%
+    config(
+      displayModeBar = TRUE,
+      displaylogo = FALSE
+    ) %>%
+    # UNCOMMENT THESE LINES - they're needed for proper layout
+    layout(
+      legend = list(
+        orientation = "h",
+        y = -0.15,
+        yanchor = "top",
+        x = 0.5,
+        xanchor = "center"
+      ),
+      margin = list(b = 80, l = 40, r = 40, t = 40)
+    )
 
   return(plotly_obj)
 }
+
 
 # ...existing code or additional functions if needed...
 
@@ -168,27 +198,35 @@ createStaticMapPlot <- function(df,
     fill = fill_discrete, # Use the discrete fill variable
     text = tooltip_text
   )) +
-    geom_polygon(color = "white", size = 0.01) +
+    geom_polygon(color = "#000000", size = 0.1) +
     # Use a discrete color scale with explicit NA handling
     scale_fill_brewer(
       palette = "Spectral",
       direction = -1,
       name = fill_label,
       na.value = "#EEEEEE", # Light gray
-      na.translate = TRUE,
+      # na.translate = TRUE,
       labels = function(x) {
         ifelse(is.na(x), "No data for current selection", as.character(x))
       },
       drop = FALSE
     ) +
     labs(title = main_title) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
     theme_void() +
-    coord_fixed(ratio = 1.3) +
+    # coord_fixed(ratio = 1.3) +
+    coord_map(projection = "mollweide", xlim = c(-180, 180), ylim = c(-90, 90)) +
     theme(
       plot.title = element_text(hjust = 0.5, size = 14),
       legend.position = "bottom",
       legend.direction = "horizontal",
-      legend.title = element_text(size = 8)
+      legend.title = element_text(size = 8),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank(),
+      panel.grid = element_blank(),
+      panel.background = element_blank()
     )
 
   # Convert to plotly with custom tooltip
@@ -197,7 +235,7 @@ createStaticMapPlot <- function(df,
       displayModeBar = TRUE,
       displaylogo = FALSE,
       toImageButtonOptions = list(
-        format = 'svg',
+        format = 'png',
         filename = 'bermudez-montana_etal_2025',
         height = 500,
         width = 700,
@@ -212,11 +250,11 @@ createStaticMapPlot <- function(df,
         x = 0.6,
         xanchor = "center"
       ),
-      hoverlabel = list(
-        bgcolor = "white",
-        bordercolor = "black",
-        font = list(size = 12)
-      ),
+      # hoverlabel = list(
+      #   bgcolor = "white",
+      #   bordercolor = "black",
+      #   font = list(size = 12)
+      # ),
       margin = list(b = 80, l = 40, r = 40, t = 40)
     )
 }
@@ -356,102 +394,95 @@ createCollabMapPlot <- function(df,
 
 ##########
 
-createTrendPlot <- function(data,
-                            label_var = "country",
+createTrendPlot <- function(data, end_labels_data,
+                            min_year, max_year,
                             color_var = "cc",
                             group_var = "country",
                             region_var = "region",
                             y_var = "percentage",
                             x_var = "year",
-                            title = "Percentage of new compounds reported by each country in journals",
+                            title = "Percentage of new compounds reported in journals",
                             y_label = "Percentage of new substances",
-                            x_label = "Year",
-                            label_nudge_x = 0.3,
-                            label_nudge_y = 0.4,
-                            label_size = 4,
-                            top_n = NULL) {
+                            x_label = "Year") {
 
-  # Prepare label data
-  label_data <- if (!is.null(top_n)) {
-    data %>%
-      group_by(.data[[group_var]]) %>%
-      summarise(max_value = max(.data[[y_var]], na.rm = TRUE)) %>%
-      arrange(desc(max_value)) %>%
-      slice_head(n = top_n) %>%
-      left_join(
-        data %>%
-          group_by(.data[[group_var]]) %>%
-          filter(.data[[x_var]] == max(.data[[x_var]])),
-        by = group_var
-      )
-  } else {
-    data %>%
-      group_by(.data[[group_var]]) %>%
-      filter(.data[[x_var]] == max(.data[[x_var]]))
-  }
-
-  # Create base plot
+  # Create a named vector mapping each country to its hex color
+  country_colors <- unique(data[, c(group_var, color_var)])
+  color_map <- setNames(country_colors[[color_var]], country_colors[[group_var]])
+  
+  # Build the ggplot
   p <- ggplot(
     data,
-    aes(
-      x = .data[[x_var]],
-      y = .data[[y_var]],
-      color = .data[[color_var]],
-      group = .data[[group_var]],
-      text = paste0(
-        "<b>Country:</b> ", .data[[group_var]],
-        "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.01, scale = 1),
-        "<br><b>Year:</b> ", .data[[x_var]],
-        "<br><b>Region:</b> ", .data[[region_var]]
-      )
-    )
+    aes(x = .data[[x_var]],
+        y = .data[[y_var]],
+        color = .data[[group_var]],  # now using country name
+        group = .data[[group_var]],
+        text = paste0(
+          "<b>Country:</b> ", .data[[group_var]],
+          "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.01, scale = 1),
+          "<br><b>Year:</b> ", .data[[x_var]],
+          "<br><b>Region:</b> ", .data[[region_var]]
+        ))
   ) +
-    geom_line(alpha = 0.8) +
+    geom_line(alpha = 0.85) +
     geom_point(
-      aes(size = .data[[y_var]] / 100),
-      alpha = 0.8,
+      # aes(size = .data[[y_var]]),
+      shape = 21,
+      alpha = 0.3,
       show.legend = FALSE
     ) +
     geom_text(
-      data = label_data,
+      data = end_labels_data,
       aes(
-        label = .data[[label_var]],
-        x = .data[[x_var]] + label_nudge_x,
-        y = .data[[y_var]] + label_nudge_y
+        label = .data[[group_var]],
+        x = .data[[x_var]],
+        # y = .data[[y_var]] + 0.4
       ),
-      hjust = 0,
-      size = label_size,
+      # hjust = max_year + 3,
+      nudge_x = -1,
+      angle = 45,
+      size = 3.2,
       check_overlap = TRUE,
       show.legend = FALSE
     ) +
+    scale_color_manual(values = color_map, name = "Country") +
     scale_y_continuous(
       labels = scales::percent_format(accuracy = 1, scale = 1),
       expand = expansion(mult = c(0.05, 0.15))
     ) +
-    scale_color_identity() +
+    theme(
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.text = element_text(size = 7, face = "bold"),
+      legend.title = element_blank(),
+      plot.title = element_text(size = 11, face = "bold"),
+      axis.title = element_text(size = 9),
+      axis.title.x = if (is.null(x_label)) element_blank() else element_text()
+    ) +
     labs(
       title = title,
-      x = x_label,
-      y = y_label
-    ) +
-    theme_minimal() +
-    theme(
-      legend.position = "none",
-      plot.title = element_text(size = 14, face = "bold"),
-      axis.title = element_text(size = 12)
+      y = y_label,
+      x = x_label
     )
 
-  # Convert to interactive plotly with performance optimizations
-  plotly::ggplotly(p, tooltip = "text") %>%
-    plotly::partial_bundle() %>%
-    plotly::toWebGL() %>%
-    plotly::layout(
-      hoverlabel = list(
-        bgcolor = "white",
-        bordercolor = "black",
-        font = list(size = 12)
-      )
+  # Convert ggplot object to an interactive plotly object with WebGL
+  plotly_obj <- plotly::ggplotly(p, tooltip = "text") %>%
+    config(
+      displayModeBar = TRUE,
+      displaylogo = FALSE
+    ) %>%
+    # UNCOMMENT THESE LINES - they're needed for proper layout
+    layout(
+      legend = list(
+        orientation = "h",
+        y = -0.15,
+        yanchor = "top",
+        x = 0.5,
+        xanchor = "center"
+      ),
+      margin = list(b = 80, l = 40, r = 40, t = 40)
     )
+
+  return(plotly_obj)
 }
 
 
