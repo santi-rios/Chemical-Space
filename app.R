@@ -343,6 +343,28 @@ ui <- page_navbar(
               )
             )
           )
+        ),
+        card(
+          navset_card_tab(
+            nav_panel(
+              "Top Contributors 🏆",
+              tooltip(
+                bsicons::bs_icon("question-circle"),
+                "Top contributors by year...",
+                placement = "left"
+              ),
+              gt_output("top_contributors_table"),
+              card_footer(
+                "Source: China's rise in the chemical space and the decline of US influence.",
+                popover(
+                  a("Learn more", href = "#"),
+                  markdown(
+                    "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+                  )
+                )
+              )
+            )
+          )
         )
       )
     ),
@@ -786,8 +808,58 @@ server <- function(input, output, session) {
   # Plots #
   #########
 
-
-
+  # Generate table data for top contributors by year
+  # Generate table data for top contributors by year
+  # Generate table data for top contributors by year
+  top_contributors_by_year <- reactive({
+    req(filtered_data())
+    req(active_tab() == "National Trends 📈")
+    
+    # Extract top 3 contributors by year from filtered data
+    filtered_data() %>%
+      dplyr::group_by(year, iso2c, country) %>%
+      # Using mean instead of sum since these are already percentages per entry
+      dplyr::summarise(contribution = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::group_by(year) %>%
+      dplyr::arrange(year, desc(contribution)) %>%
+      dplyr::slice_head(n = 3) %>%
+      dplyr::ungroup()
+  })
+  
+  # Render the top contributors table with flags
+  output$top_contributors_table <- render_gt({
+    req(top_contributors_by_year())
+    req(nrow(top_contributors_by_year()) > 0)
+    
+    top_contributors_by_year() %>%
+      dplyr::select(year, iso2c, country, contribution) %>%
+      gt::gt(groupname_col = "year") %>%
+      gt::tab_header(
+        title = "Top 3 Contributors by Year",
+        subtitle = "Based on selected filters"
+      ) %>%
+      gt::fmt_flag(columns = iso2c) %>%
+      # Display the number as is, with proper formatting
+      gt::fmt_number(
+        columns = contribution,
+        decimals = 2
+      ) %>%
+      gt::cols_label(
+        iso2c = "",
+        country = "Country",
+        contribution = "Contribution (%)"
+      ) %>%
+      gt::tab_style(
+        style = gt::cell_text(weight = "bold"),
+        locations = gt::cells_row_groups()
+      ) %>%
+      gt::cols_width(
+        iso2c ~ px(50),
+        country ~ px(150),
+        contribution ~ px(120)
+      ) %>%
+      gt::opt_row_striping()
+  })
   #########
   # Plots #
   #########
