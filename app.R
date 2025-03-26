@@ -1114,48 +1114,54 @@ output$mapPlotCollab <- renderPlotly({
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Reactive for filtered collaboration data
-  filtered_collab <- reactive({
-    req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
-    
-    # Efficient filtering using arrow
-    ds %>%
-      dplyr::filter(
-        is_collab == TRUE,
-        year >= input$years[1],
-        year <= input$years[2]
-      ) %>%
-      # Filter collaborations containing selected country
-      dplyr::filter(grepl(input$country_select, iso2c)) %>%
-      dplyr::collect() %>%
-      # Process partners
-      mutate(
-        partners = strsplit(iso2c, "-"),
-        partner = sapply(partners, function(x) setdiff(x, input$country_select)[1])
-      )
-  })
+filtered_collab <- reactive({
+  req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
+  
+  ds %>%
+    dplyr::filter(
+      is_collab == TRUE,
+      year >= input$years[1],
+      year <= input$years[2]
+    ) %>%
+    # Incluir todas las columnas necesarias
+    dplyr::select(iso2c, year, percentage, country, cc, region, chemical) %>% # <- ¡NUEVO!
+    dplyr::filter(grepl(input$country_select, iso2c)) %>%
+    dplyr::collect() %>%
+    mutate(
+      partners = strsplit(iso2c, "-"),
+      # Modificado para manejar múltiples partners
+      partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+    ) %>%
+    tidyr::unnest(partner) %>% # Convertir lista en filas
+    # Agregar nombre del país partner usando tu metadata
+    left_join(country_list, by = c("partner" = "iso2c")) %>%
+    rename(partner_country = country.y) # country.x es el original
+})
 
 # Collaboration plot
   output$collab_plot <- renderPlotly({
     req(active_tab() == "Collaboration Trends B 🤝")
 
-    data <- filtered_collab()
-    validate(need(nrow(data) > 0, "No collaborations found for selected country/years"))
-    
-    # Aggregate data
-    agg_data <- data %>%
-      group_by(partner, year) %>%
-      summarise(total_percentage = sum(percentage, na.rm = TRUE), .groups = "drop")
-    
+data <- filtered_collab()
+  validate(need(nrow(data) > 0, "No collaborations found..."))
+  
+  agg_data <- data %>%
+    group_by(partner_country, cc, year) %>% # Agrupar por nombre y color
+    summarise(
+      total_percentage = sum(percentage, na.rm = TRUE),
+      .groups = "drop"
+    )
+
     # Create plot
-    ggplot(agg_data, aes(x = year, y = total_percentage, color = partner)) +
-      # geom_line() +
-      geom_jitter(
-        aes(
-          size = total_percentage
-        ),
-        alpha = 0.35,
-        width = 0.8
-      ) +
+ggplot(agg_data, aes(x = year, y = total_percentage)) +
+    geom_jitter(
+      aes(
+        size = total_percentage,
+        color = partner_country, # Usar nombre del país
+        text = paste(
+          "Partner:", partner_country
+        )
+        )) +
       scale_radius(range = c(0.8, 6)) +
       scale_y_continuous(
         labels = scales::percent_format(accuracy = 1, scale = 1),
@@ -1164,6 +1170,7 @@ output$mapPlotCollab <- renderPlotly({
       labs(title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
            x = "Year", y = "Total Collaboration Percentage") +
       theme_minimal()
+    # scale_color_manual(values = setNames(agg_data$cc, agg_data$partner_country))
 
 
   }) %>% bindCache(input$country_select, input$years)
