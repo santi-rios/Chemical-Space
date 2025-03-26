@@ -507,7 +507,7 @@ ui <- page_navbar(
         selectInput(
           "article_source", "Select Article Source",
           choices = c("Expansion of the CS", "China-US in the CS", "Annual growth rate of the GDP", "Number of Researchers",  "Country participation in the CS"),
-          selected = "Expansion of the CS",
+          selected = "Number of Researchers",
           width = "40%"
         )
       )
