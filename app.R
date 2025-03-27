@@ -1251,20 +1251,22 @@ output$top_contributors_tableB <- render_gt({
 output$articlePlot <- renderPlotly({
   req(active_tab() == "Article Figures 📰", input$article_source)
 
-  # First define the y-axis title based on the source
   y_title <- switch(input$article_source,
-    "Expansion of the CS" = "Percentage of new substances",
+    "Expansion of the CS" = "Number of new substances",
     "China-US in the CS" = "Percentage of national contribution", 
     "Annual growth rate of the GDP" = "GDP per capita growth (annual %)",
-    "Number of Researchers" = "Researchers",
+    "Number of Researchers" = "Researchers (millions)",
     "Country participation in the CS" = "Number of new substances",
-    "Value" # default title if none match
+    "Value"
   )
 
-  # Call the reactive expression with () to get its value
   article_data <- figure_article() %>% 
     dplyr::filter(source == input$article_source) %>%
-    dplyr::mutate(percentage = ifelse(source == "Number of Researchers", percentage/1e6, percentage))
+    dplyr::mutate(percentage = ifelse(
+      source == "Number of Researchers", 
+      percentage/1e6, 
+      percentage
+    ))
 
   createArticlePlot(
     data = article_data,
@@ -1272,7 +1274,7 @@ output$articlePlot <- renderPlotly({
     y_title = y_title
   )
 })
-  # %>% bindCache(input$article_source)
+
 }
 
 shinyApp(ui, server)
