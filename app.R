@@ -1238,7 +1238,7 @@ output$collab_plot <- renderPlotly({
       data = article_data,
       source_title = input$article_source,
       y_title = y_title,
-      flag_size_range = c(2, 6) # Adjusted flag size range for better visualization
+      flag_size_range = c(1, 4) # Adjusted flag size range for better visualization
     )
   })
 }
