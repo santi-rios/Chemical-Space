@@ -526,7 +526,7 @@ createArticleFlagPlot <- function(data,
   p <- plot_ly() %>%
     layout(
       xaxis = list(
-        range = c(min(plot_data$year) - 0.5, max(plot_data$year) + 0.5),
+        range = c(min(plot_data$year) - 1, max(plot_data$year) +1),
         title = "Year"
       ),
       yaxis = list(

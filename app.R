@@ -370,35 +370,25 @@ ui <- page_navbar(
   # ------------------------------,
   # 3) ARTICLE FIGURES,
   # ------------------------------,
-  nav_panel(
-    "Article Figures 📰",
-    fluidRow(
-      column(
-        width = 12,
-        selectInput(
-          "article_source", "Select Article Source",
-          choices = c("Expansion of the CS", "China-US in the CS", "Annual growth rate of the GDP", "Number of Researchers", "Country participation in the CS"),
-          selected = "Number of Researchers",
-          width = "40%"
-        )
-      )
-    ),
-    withSpinner(plotlyOutput("articlePlot"), color = "#024173"),
-    card_footer(
-      "This plots show the chemichap space growth, enfatising China's rise in the chemical space (CS) and the decline of US influence.",
-      popover(
-        a("Learn more", href = "#"),
-        markdown(
-          "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-        )
-      )
-    ),
-    br(),
-    br(),
-    hr(),
-    tags$h3("Original country and collaborations contributions to the chemical space from the original article"),
-    tags$p("Here we show, by analysing the chemical space between 1996 and 2022, that the chemical space expansion has been dominated by China ever since 2013. Chinese dominance is mainly the product of the country’s own efforts, rather than the result of international collaboration. Alternatively, the US share of the chemical space is more dependent on international collaboration, which mainly occurs with China.")
+tabPanel("Article Figures 📰",
+  fluidRow(
+    column(12, h2("Economic and Research Indicators"), hr())
   ),
+  fluidRow(
+    column(6, plotlyOutput("gdpGrowthPlot", height = "400px")),
+    column(6, plotlyOutput("researchersPlot", height = "400px"))
+  ),
+  fluidRow(
+    column(12, h2("Chemical Space Contributions"), hr())
+  ),
+  fluidRow(
+    column(6, plotlyOutput("countryParticipationPlot", height = "400px")),
+    column(6, plotlyOutput("csExpansionPlot", height = "400px"))
+  ),
+  fluidRow(
+    column(12, plotlyOutput("chinaUSPlot", height = "400px"))
+  )
+),
   # # ------------------------------,
   # 5) KNOW MORE,
   # ------------------------------,
@@ -1214,33 +1204,86 @@ output$collab_plot <- renderPlotly({
   # Article Figures
   ##################
   # app.R (server)
-  # Updated server code for articlePlot
-  output$articlePlot <- renderPlotly({
-    req(active_tab() == "Article Figures 📰", input$article_source)
+# FLAG-BASED VISUALIZATIONS
+  
+# GDP Growth Rate Plot
+output$gdpGrowthPlot <- renderPlotly({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Annual growth rate of the GDP")
+  
+  createArticleFlagPlot(
+    data = article_data,
+    source_title = "Annual growth rate of the GDP",
+    y_title = "GDP per capita growth (annual %)",
+    flag_size_range = c(1, 4)
+  )
+})
 
-    # Define appropriate y-axis titles
-    y_title <- switch(input$article_source,
-      "Expansion of the CS" = "Number of new substances",
-      "China-US in the CS" = "Percentage of national contribution",
-      "Annual growth rate of the GDP" = "GDP per capita growth (annual %)",
-      "Number of Researchers" = "Researchers", # Remove "(millions)" as the function will add it
-      "Country participation in the CS" = "Number of new substances",
-      "Value"
-    )
+# Researchers Plot
+output$researchersPlot <- renderPlotly({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Number of Researchers")
+  
+  createArticleFlagPlot(
+    data = article_data,
+    source_title = "Number of Researchers",
+    y_title = "Researchers",
+    flag_size_range = c(1, 4)
+  )
+})
 
-    # Filter data based on selected source
-    article_data <- figure_article() %>%
-      dplyr::filter(source == input$article_source)
-    # Remove the division by 1e6, let the plotting function handle this
+# Country Participation Plot
+output$countryParticipationPlot <- renderPlotly({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Country participation in the CS")
+  
+  createArticleFlagPlot(
+    data = article_data,
+    source_title = "Country participation in the CS",
+    y_title = "Number of new substances",
+    flag_size_range = c(1, 4)
+  )
+})
 
-    # Create plot based on selected source using wrapper function
-    createArticlePlot(
-      data = article_data,
-      source_title = input$article_source,
-      y_title = y_title,
-      flag_size_range = c(1, 4) # Adjusted flag size range for better visualization
-    )
-  })
+# DOT-BASED VISUALIZATIONS
+
+# CS Expansion Plot
+output$csExpansionPlot <- renderPlotly({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Expansion of the CS")
+  
+  createArticleDotPlot(
+    data = article_data,
+    source_title = "Expansion of the CS",
+    y_title = "Number of new substances"
+  )
+})
+
+# China-US Plot
+output$chinaUSPlot <- renderPlotly({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "China-US in the CS")
+  
+  createArticleDotPlot(
+    data = article_data,
+    source_title = "China-US in the CS",
+    y_title = "Percentage of national contribution"
+  )
+})
+
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # End of server
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 }
 
 shinyApp(ui, server)
