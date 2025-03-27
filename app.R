@@ -469,6 +469,8 @@ server <- function(input, output, session) {
 
   # Flag to track if user manually cleared selections
   user_cleared <- FALSE
+  # Variable to track previous region selection
+  prev_region <- "All"
 
   # Base reactive datasets with filtering
   individual_data <- reactive({
@@ -570,27 +572,37 @@ server <- function(input, output, session) {
   }) %>% bindCache(active_tab(), input$years, input$region)
 
 
-  # Initial country choices setup - don't set selected if user cleared
+  # Initial country choices setup - properly respond to region changes
   observe({
     req(all_countries())
-
-    # Don't auto-select if user explicitly cleared
+    req(top_countries())  # Add explicit dependency on top_countries
+    
+    # Only auto-select countries when:
+    # 1. User hasn't explicitly cleared selections
+    # 2. Countries selection is empty
+    # 3. Region filter has changed
     selected_countries <- if (user_cleared) {
       character(0)
     } else if (is.null(input$countries) || length(input$countries) == 0) {
       top_countries()
+    } else if (length(input$countries) > 0 && input$region != prev_region) {
+      # If region changed, update with new top countries
+      top_countries()
     } else {
       input$countries
     }
-
+    
+    # Store current region for comparison
+    prev_region <<- input$region
+    
     updateCheckboxGroupInput(session, "countries",
       choices = all_countries(),
       selected = selected_countries
     )
-
+    
     # Reset the flag
     user_cleared <- FALSE
-  })
+  }) %>% bindEvent(all_countries(), top_countries(), input$region) 
 
   # Initialize region choices once when the app starts
   observe({
