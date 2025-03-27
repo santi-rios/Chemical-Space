@@ -385,6 +385,28 @@ tabPanel("Article Figures 📰",
     nav_panel(
       "Country Participation",
       plotlyOutput("countryParticipationPlot", height = "400px"),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      br(),
+      hr(),
       gt_output("countryParticipationTable")
     ),
     nav_panel(
@@ -1403,24 +1425,31 @@ output$countryParticipationTable <- render_gt({
   article_data <- figure_article() %>%
     dplyr::filter(source == "Country participation in the CS") %>%
     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Pivot to wide format
+    # Pivot to wide format and fill missing values with 0
     tidyr::pivot_wider(
       id_cols = c(iso2c, country),
       names_from = year,
-      values_from = percentage
+      values_from = percentage,
+      values_fill = list(percentage = 0)
     ) %>%
+    # Order alphabetically by country
     dplyr::arrange(country)
   
-  # Get list of year columns for formatting
+  # Identify year columns
   year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
   
   article_data %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
+    # Format all year columns in percent format
+    gt::fmt_percent(
+      columns = tidyselect::all_of(year_cols),
+      decimals = 0,
+      scale_values = FALSE
+    ) %>%
     gt::tab_header(
       title = "Country Participation in Chemical Space",
-      subtitle = "Number of new substances contributed by country"
+      subtitle = "Percentage of new substances contributed by country"
     ) %>%
     gt::cols_label(
       iso2c = "",
