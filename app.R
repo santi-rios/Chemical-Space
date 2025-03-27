@@ -1060,75 +1060,109 @@ output$conditionalCollabPlot <- renderUI({
 })
 
   # Reactive for filtered collaboration data
-  filtered_collab <- reactive({
-    req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
+filtered_collab <- reactive({
+  req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
+  
+  ds %>%
+    dplyr::filter(
+      is_collab == TRUE,
+      year >= input$years[1],
+      year <= input$years[2]
+    ) %>%
+    # Incluir todas las columnas necesarias
+    dplyr::select(iso2c, year, percentage, country) %>% # <- ¡NUEVO!
+    dplyr::filter(grepl(input$country_select, iso2c)) %>%
+    dplyr::collect() %>%
+    mutate(
+      partners = strsplit(iso2c, "-"),
+      # Modificado para manejar múltiples partners
+      partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+    ) %>%
+    tidyr::unnest(partner) %>% # Convertir lista en filas
+    # Agregar nombre del país partner usando tu metadata
+    left_join(country_list, by = c("partner" = "iso2c")) %>%
+    rename(partner_country = country.y) # country.x es el original
+})
 
-    ds %>%
-      dplyr::filter(
-        is_collab == TRUE,
-        year >= input$years[1],
-        year <= input$years[2]
-      ) %>%
-      # Incluir todas las columnas necesarias
-      dplyr::select(iso2c, year, percentage, country, cc) %>% # <- ¡NUEVO!
-      dplyr::filter(grepl(input$country_select, iso2c)) %>%
-      dplyr::collect() %>%
-      mutate(
-        partners = strsplit(iso2c, "-"),
-        # Modificado para manejar múltiples partners
-        partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
-      ) %>%
-      tidyr::unnest(partner) %>% # Convertir lista en filas
-      # Agregar nombre del país partner usando tu metadata
-      left_join(country_list, by = c("partner" = "iso2c")) %>%
-      rename(partner_country = country.y) # country.x es el original
-  })
-
-  # Collaboration plot
-  output$collab_plot <- renderPlotly({
-    req(active_tab() == "Collaboration Trends B 🤝")
-
-    data <- filtered_collab()
-    validate(need(nrow(data) > 0, "No collaborations found..."))
-
-    agg_data <- data %>%
-      group_by(partner_country, cc, year) %>% # Agrupar por nombre y color
-      summarise(
-        total_percentage = sum(percentage, na.rm = TRUE),
-        .groups = "drop"
-      )
-
-    # Create plot
-    ggplot(
-      agg_data,
+# Collaboration plot
+# Collaboration plot
+output$collab_plot <- renderPlotly({
+  data <- filtered_collab()
+  validate(need(nrow(data) > 0, "No collaborations found..."))
+  
+  agg_data <- data %>%
+    group_by(partner_country, year) %>% # Group by country and year
+    summarise(
+      total_percentage = sum(percentage, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Create proper country labels for tooltip
+  country_selected_name <- country_list$country[match(input$country_select, country_list$iso2c)]
+  
+  plot <- ggplot(agg_data, aes(x = year, y = total_percentage)) +
+    geom_jitter(
       aes(
-        x = year,
-        y = total_percentage,
-        color = cc,
-        text = paste(
-          "Country:", partner_country,
-          "<br>Year:", year,
-          "<br>Total Collaboration Percentage:", scales::percent(total_percentage)
+        size = total_percentage,
+        color = partner_country, # Map color to country name
+        # Improved tooltip formatting
+        text = paste0(
+          "<b>", partner_country, "</b><br>",
+          "<b>Year:</b> ", year, "<br>",
+          "<b>Collaboration with ", country_selected_name, ":</b> ", 
+          scales::percent(total_percentage, scale = 1, accuracy = 0.0001)
         )
+      ),
+      alpha = 0.35,
+      width = 1
+    ) +
+    # Use viridis "turbo" palette which has good range for many categories
+    scale_color_viridis_d(
+      option = "turbo", 
+      name = "Partner Country",
+      guide = guide_legend(
+        override.aes = list(size = 3),
+        ncol = 2
       )
     ) +
-      geom_jitter(
-        aes(size = total_percentage)
-      ) +
-      scale_radius(range = c(0.8, 6)) +
-      scale_y_continuous(
-        labels = scales::percent_format(accuracy = 1, scale = 1),
-        expand = expansion(mult = c(0.05, 0.15))
-      ) +
-      scale_color_identity() +
-      labs(
-        title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
-        x = "Year", y = "Total Collaboration Percentage"
-      ) +
-      theme_minimal()
-    # scale_color_manual(values = setNames(agg_data$cc, agg_data$partner_country))
-  }) %>% bindCache(input$country_select, input$years)
-
+    scale_radius(range = c(0.5, 8), name = "") +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 0.01, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15))
+    ) +
+    scale_x_continuous(
+      breaks = scales::pretty_breaks()
+    ) +
+    labs(
+      title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
+      x = "Year",
+      y = "% of substances contributed by each collaboration",
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(face = "bold", size = 10),
+      plot.title = element_text(face = "bold"),
+      # Adjust legend to handle many countries
+      legend.key.size = unit(0.5, "lines"),
+      legend.text = element_text(size = 7)
+    )
+  
+  # Convert to plotly with improved tooltip handling
+  ggplotly(plot, tooltip = "text") %>%
+    layout(
+      hoverlabel = list(
+        bgcolor = "white",
+        bordercolor = "black",
+        font = list(family = "Arial", size = 12)
+      ),
+      legend = list(
+        font = list(size = 9),
+        itemsizing = "constant"
+      )
+    ) %>%
+    config(displayModeBar = TRUE)
+}) %>% bindCache(input$country_select, input$years)
 
   # Añade esto al server después del gráfico
 
@@ -1152,8 +1186,8 @@ output$conditionalCollabPlot <- renderUI({
     top_contributors() %>%
       gt() %>%
       gt::tab_header(
-        title = "Top 3 Historical Contributors",
-        subtitle = "All selected years combined"
+        title = "Top 3 Historical Contributors of Country selected",
+        subtitle = "All selected years considered for the Historical top contributors"
       ) %>%
       gt::fmt_flag(columns = partner) %>% # Mostrar banderas desde códigos ISO2
       gt::cols_label(

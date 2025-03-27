@@ -375,15 +375,95 @@ read.csv("./data6/df_cc_3.csv") |>
         domain = c(1, max_rank)
       )(iso_rank),
       color_group == "red" ~ scales::col_numeric(
-        palette = c("#cc0000", "#4c0000"),
+        palette = c("#ff9797", "#4c0000"),
         domain = c(1, max_rank)
       )(iso_rank),
       TRUE ~ cc
     ),
     emo = dplyr::if_else(!is_collab, flag_emoji(iso2c), NA_character_)
   ) |>
+  dplyr::mutate(
+        emoji = countrycode::countrycode(
+            country,
+            origin = "country.name",
+            destination = "unicode.symbol"
+        )
+    ) |>
   arrow::write_parquet("./data6/df_cc_3.parquet")
 
+```
+
+```{r}
+library(dplyr)
+library(scales)
+library(countrycode)
+library(arrow)
+
+# Read in the data and assign groups
+df <- read.csv("./data6/df_cc_4.csv") %>%
+  mutate(
+    year = as.numeric(year),
+    percentage = as.numeric(percentage),
+    blue_group = iso2c %in% c(
+      "DE-US", "GB-US", "IN-US",
+      "CA-US", "JP-US", "FR-US",
+      "IT-US", "KR-US", "ES-US"
+    ),
+    red_group = iso2c %in% c(
+      "CN-US", "CN-JP", "CN-DE", "DE-RU",
+      "DE-FR", "ES-GB", "DE-ES", "ES-FR",
+      "FR-GB", "DE-GB", "ES-IT", "DE-IN",
+      "CN-HK", "CH-FR", "CN-GB", "FR-RU"
+    ),
+    color_group = case_when(
+      blue_group ~ "blue",
+      red_group ~ "red",
+      TRUE ~ "other"
+    )
+  )
+
+# Build lookup for blue_group
+blue_codes <- unique(df$iso2c[df$blue_group])
+blue_palette <- col_numeric(
+  palette = c("#76a4d2", "#002852"),
+  domain = c(1, length(blue_codes))
+)
+blue_color_map <- setNames(blue_palette(seq_along(blue_codes)), blue_codes)
+
+# Build lookup for red_group
+red_codes <- unique(df$iso2c[df$red_group])
+red_palette <- col_numeric(
+  palette = c("#fe0000", "#e79797"),
+  domain = c(1, length(red_codes))
+)
+red_color_map <- setNames(red_palette(seq_along(red_codes)), red_codes)
+
+# Map the colors back to the dataframe
+df <- df %>%
+  mutate(
+    cc = case_when(
+      blue_group ~ blue_color_map[iso2c],
+      red_group ~ red_color_map[iso2c],
+      TRUE ~ cc  # retain any pre-existing values for "other"
+    )
+    # emo = if_else(!is_collab, flag_emoji(iso2c), NA_character_),
+    # emoji = countrycode(
+    #   country,
+    #   origin = "country.name",
+    #   destination = "unicode.symbol"
+    # )
+  )
+
+df <- df %>%
+  mutate(
+    region = case_when(
+      country == "Bolivia" ~ "South America",
+      TRUE ~ region
+    )
+  )
+
+# Write out the final dataframe
+arrow::write_parquet(df, "./data6/df_cc_4.parquet")
 ```
 
 
