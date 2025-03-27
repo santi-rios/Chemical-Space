@@ -677,16 +677,6 @@ createArticleFlagPlot <- function(data,
 
 
 createArticleDotPlot <- function(data, source_title, y_title) {
-  # Define accumulate_by helper function for smooth animation
-  accumulate_by <- function(dat, var) {
-    var <- lazyeval::f_eval(var, dat)
-    lvls <- plotly:::getLevels(var)
-    dats <- lapply(seq_along(lvls), function(x) {
-      cbind(dat[var %in% lvls[seq(1, x)], ], frame = lvls[[x]])
-    })
-    dplyr::bind_rows(dats)
-  }
-  
   # Prepare data
   plot_data <- data %>%
     dplyr::mutate(
@@ -707,18 +697,14 @@ createArticleDotPlot <- function(data, source_title, y_title) {
     main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
     collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
     
-    # Prepare animated data
-    main_data_animated <- main_data %>% accumulate_by(~year)
-    collab_data_animated <- collab_data %>% accumulate_by(~year)
-    
     p <- plot_ly() %>%
       # Main countries on primary y-axis
       add_trace(
-        data = main_data_animated,
+        data = main_data,
         x = ~year,
         y = ~percentage,
         color = ~country,
-        frame = ~frame,
+        colors = "Set1",
         type = "scatter",
         mode = "lines+markers",
         marker = list(
@@ -728,7 +714,7 @@ createArticleDotPlot <- function(data, source_title, y_title) {
           opacity = 0.8,
           line = list(width = 1, color = '#FFFFFF')
         ),
-        line = list(width = 2, simplify = FALSE),
+        line = list(width = 2),
         text = ~paste(
           "<b>Country:</b> ", country,
           "<br><b>Year:</b> ", year,
@@ -739,11 +725,11 @@ createArticleDotPlot <- function(data, source_title, y_title) {
       ) %>%
       # Collaboration metrics on secondary y-axis
       add_trace(
-        data = collab_data_animated,
+        data = collab_data,
         x = ~year,
         y = ~percentage,
         color = ~country,
-        frame = ~frame,
+        colors = "Set2",
         type = "scatter",
         mode = "lines+markers",
         marker = list(
@@ -753,7 +739,7 @@ createArticleDotPlot <- function(data, source_title, y_title) {
           opacity = 0.8,
           line = list(width = 1, color = '#FFFFFF')
         ),
-        line = list(width = 2, simplify = FALSE),
+        line = list(width = 2),
         text = ~paste(
           "<b>Metric:</b> ", country,
           "<br><b>Year:</b> ", year,
@@ -763,17 +749,6 @@ createArticleDotPlot <- function(data, source_title, y_title) {
         name = ~country,
         yaxis = "y2"
       )
-    
-    # Add end labels for final frame
-    years <- sort(unique(plot_data$year))
-    final_year <- max(years)
-    
-    # Add text labels only to the last frame
-    p <- p %>% animation_slider(
-      currentvalue = list(prefix = "Year: ")
-    ) %>% animation_button(
-      x = 1, xanchor = "right", y = 0, yanchor = "bottom"
-    )
     
     # Layout with dual axes
     layout_args <- list(
@@ -811,18 +786,12 @@ createArticleDotPlot <- function(data, source_title, y_title) {
         showarrow = FALSE,
         xanchor = "left",
         xshift = 10,
-        font = list(color = end_labels$cc[i], size = 12)
+        font = list(size = 12)
       )
     }
     
-    # Apply animation settings
-    p <- p %>% layout(layout_args) %>%
-      animation_opts(
-        frame = 200,
-        transition = 100,
-        easing = "linear",
-        redraw = FALSE
-      )
+    # Apply layout
+    p <- p %>% layout(layout_args)
     
     return(p)
   }
@@ -839,27 +808,21 @@ createArticleDotPlot <- function(data, source_title, y_title) {
     y_format <- ".1%"
   }
   
-  # Prepare data for animation
-  plot_data_animated <- plot_data %>% accumulate_by(~year)
-  
-  # Build animated plot
+  # Build plot without animation
   p <- plot_ly(
-    data = plot_data_animated,
+    data = plot_data,
     x = ~year,
     y = ~percentage,
-    split = ~country,
-    frame = ~frame,
     color = ~country,
+    colors = colorRampPalette(RColorBrewer::brewer.pal(8, "Set1"))(length(unique(plot_data$country))),
     type = "scatter",
     mode = "lines+markers",
     marker = list(
-      size = ~percentage / 500,
-      sizemode = "diameter",
-      sizeref = 1,
+      size = 8,
       opacity = 0.8,
       line = list(width = 1, color = '#FFFFFF')
     ),
-    line = list(width = 2, simplify = FALSE),
+    line = list(width = 2),
     text = ~paste(
       "<b>Country:</b> ", country,
       "<br><b>Year:</b> ", year,
@@ -894,28 +857,15 @@ createArticleDotPlot <- function(data, source_title, y_title) {
       showarrow = FALSE,
       xanchor = "left",
       xshift = 10,
-      font = list(color = ifelse(is.null(end_labels$cc[i]), "black", end_labels$cc[i]), size = 12)
+      font = list(size = 12)
     )
   }
   
-  # Apply animation settings
-  p %>% 
-    layout(layout_args) %>%
-    animation_opts(
-      frame = 200,
-      transition = 100,
-      easing = "linear",
-      redraw = FALSE
-    ) %>%
-    animation_slider(
-      currentvalue = list(prefix = "Year: ")
-    ) %>%
-    animation_button(
-      x = 1, xanchor = "right", y = 0, yanchor = "bottom"
-    ) %>%
-    plotly::partial_bundle()
+  # Apply layout
+  p <- p %>% layout(layout_args)
+  
+  return(p)
 }
-
 
 # Main wrapper function that determines which plot type to use
 createArticlePlot <- function(data, source_title, y_title, flag_size_range = c(0.5, 3)) {
