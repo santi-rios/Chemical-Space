@@ -330,7 +330,7 @@ ui <- page_navbar(
               "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.",
               placement = "left"
             ),
-            withSpinner(plotlyOutput("collab_plot", width = "100%", height = "100%"), color = "#024173"),
+            uiOutput("conditionalCollabPlot"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
@@ -1004,7 +1004,7 @@ output$mapPlotCollab <- renderPlotly({
   output$collabSubstancePlot <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝", nrow(filtered_data()) > 0)
 
-    data <- data <- filtered_data()[filtered_data()$chemical == input$chemicalSelector, ]
+    data <- data <- filtered_data()[filtered_data()$chemical == input$chemicalSelectorcollab, ]
 
     # Find minimum and maximum years
     min_year <- min(data$year, na.rm = TRUE)
@@ -1031,15 +1031,33 @@ output$mapPlotCollab <- renderPlotly({
       min_year = min_year,
       max_year = max_year,
       end_labels_data = end_labels_data,
-      title = paste("Contribution to", input$chemicalSelector)
+      title = paste("Contribution to", input$chemicalSelectorcollab)
     )
   }) %>%
-    bindCache(active_tab(), input$chemicalSelector, filtered_data())
+    bindCache(active_tab(), input$chemicalSelectorcollab, filtered_data())
 
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Flag buttons
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Then add this to your server function:
+output$conditionalCollabPlot <- renderUI({
+  if (!is.null(input$country_select) && input$country_select != "") {
+    tagList(
+      withSpinner(
+        plotlyOutput("collab_plot", width = "100%", height = "100%"), 
+        color = "#024173"
+      )
+    )
+  } else {
+    div(
+      style = "text-align: center; margin-top: 100px; color: #666;",
+      h4("Please select a country to view collaboration data"),
+      icon("search")
+    )
+  }
+})
 
   # Reactive for filtered collaboration data
   filtered_collab <- reactive({
