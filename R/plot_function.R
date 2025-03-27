@@ -526,12 +526,12 @@ createArticleFlagPlot <- function(data,
   p <- plot_ly() %>%
     layout(
       xaxis = list(
-        range = c(min(plot_data$year) - 1, max(plot_data$year) +1),
+        range = c(min(plot_data$year) - 1, max(plot_data$year) +5),
         title = "Year"
       ),
       yaxis = list(
-        range = c(min(plot_data$percentage, na.rm = TRUE) * 0.9, 
-                 max(plot_data$percentage, na.rm = TRUE) * 1.1),
+        range = c(min(plot_data$percentage, na.rm = TRUE) * 0.3, 
+                 max(plot_data$percentage, na.rm = TRUE) * 1.5),
         title = y_title
       )
     )
@@ -655,8 +655,8 @@ createArticleFlagPlot <- function(data,
   p <- p %>%
     layout(layout_args) %>%
     animation_opts(
-      frame = 800,
-      transition = 300,
+      frame = 400,
+      transition = 100,
       redraw = FALSE
     ) %>%
     animation_slider(

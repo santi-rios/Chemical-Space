@@ -1242,7 +1242,7 @@ output$researchersPlot <- renderPlotly({
     data = article_data,
     source_title = "Number of Researchers",
     y_title = "Researchers",
-    flag_size_range = c(1, 4)
+    flag_size_range = c(0.4, 4)
   )
 })
 
@@ -1370,10 +1370,15 @@ output$researchersTable <- render_gt({
   article_data %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
+    gt::fmt_number(
+      columns = tidyselect::all_of(year_cols),
+      decimals = 1,
+      scale_by = 1 / 1000,
+      suffixing = c("k", "M", "B")
+    ) %>%
     gt::tab_header(
-      title = "Number of Researchers by Country and Year",
-      subtitle = "Total count of researchers"
+      title = "Number of researchers in research and development activities",
+      subtitle = "Number of Researchers by Country and Year"
     ) %>%
     gt::cols_label(
       iso2c = "",
