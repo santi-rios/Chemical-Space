@@ -676,51 +676,59 @@ createArticleFlagPlot <- function(data,
 }
 
 
-createArticleDotPlot <- function(data,
-                                source_title,
-                                y_title) {
+createArticleDotPlot <- function(data, source_title, y_title) {
+  # Define accumulate_by helper function for smooth animation
+  accumulate_by <- function(dat, var) {
+    var <- lazyeval::f_eval(var, dat)
+    lvls <- plotly:::getLevels(var)
+    dats <- lapply(seq_along(lvls), function(x) {
+      cbind(dat[var %in% lvls[seq(1, x)], ], frame = lvls[[x]])
+    })
+    dplyr::bind_rows(dats)
+  }
+  
   # Prepare data
   plot_data <- data %>%
     dplyr::mutate(
       iso2c = countrycode::countrycode(country, "country.name", "iso2c")
     )
   
-  # Precompute formatted value based on source
-  if (source_title == "Expansion of the CS") {
-    plot_data$formatted_value <- scales::comma(plot_data$percentage)
-    y_format <- ",.0f"
-    # Calculate marker size reference for large values
-    max_size <- 20
-    size_ref <- 0.05 * max(plot_data$percentage, na.rm = TRUE)
-  } else if (source_title == "China-US in the CS") {
+  # For labeling last x value
+  end_labels <- plot_data %>%
+    dplyr::group_by(country) %>%
+    dplyr::filter(year == max(year, na.rm = TRUE))
+
+  # Handle special case for "China-US in the CS"
+  if (source_title == "China-US in the CS") {
     plot_data$formatted_value <- scales::percent(plot_data$percentage / 100)
-    y_format <- ".0%"
-    max_size <- 30
     
-    # Split data for dual y-axis
+    # Split data (one axis for main countries, another for smaller collaborations)
     main_countries <- c("China", "United States")
     main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
     collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
     
-    # Create dual-axis plot
+    # Prepare animated data
+    main_data_animated <- main_data %>% accumulate_by(~year)
+    collab_data_animated <- collab_data %>% accumulate_by(~year)
+    
     p <- plot_ly() %>%
       # Main countries on primary y-axis
       add_trace(
-        data = main_data,
+        data = main_data_animated,
         x = ~year,
         y = ~percentage,
         color = ~country,
-        colors = "Set1",
+        frame = ~frame,
         type = "scatter",
         mode = "lines+markers",
         marker = list(
-          size = ~percentage/5,  # Scale down the size
+          size = ~percentage / 5,
           sizemode = "diameter",
           sizeref = 2,
           opacity = 0.8,
           line = list(width = 1, color = '#FFFFFF')
         ),
-        line = list(width = 2),
+        line = list(width = 2, simplify = FALSE),
         text = ~paste(
           "<b>Country:</b> ", country,
           "<br><b>Year:</b> ", year,
@@ -731,21 +739,21 @@ createArticleDotPlot <- function(data,
       ) %>%
       # Collaboration metrics on secondary y-axis
       add_trace(
-        data = collab_data,
+        data = collab_data_animated,
         x = ~year,
         y = ~percentage,
         color = ~country,
-        colors = "Set2",
+        frame = ~frame,
         type = "scatter",
         mode = "lines+markers",
         marker = list(
-          size = ~percentage*100,  # Scale up the small values
+          size = ~percentage * 100,
           sizemode = "diameter",
           sizeref = 2,
           opacity = 0.8,
           line = list(width = 1, color = '#FFFFFF')
         ),
-        line = list(width = 2),
+        line = list(width = 2, simplify = FALSE),
         text = ~paste(
           "<b>Metric:</b> ", country,
           "<br><b>Year:</b> ", year,
@@ -756,7 +764,18 @@ createArticleDotPlot <- function(data,
         yaxis = "y2"
       )
     
-    # Apply layout with dual axes
+    # Add end labels for final frame
+    years <- sort(unique(plot_data$year))
+    final_year <- max(years)
+    
+    # Add text labels only to the last frame
+    p <- p %>% animation_slider(
+      currentvalue = list(prefix = "Year: ")
+    ) %>% animation_button(
+      x = 1, xanchor = "right", y = 0, yanchor = "bottom"
+    )
+    
+    # Layout with dual axes
     layout_args <- list(
       title = list(
         text = paste("Article Figures - Source:", source_title),
@@ -767,7 +786,7 @@ createArticleDotPlot <- function(data,
         title = paste0(y_title, " (countries)"),
         side = "left",
         tickformat = ".0%",
-        range = c(0, 100),  # 0-100%
+        range = c(0, max(main_data$percentage, na.rm = TRUE) * 1.1),
         gridcolor = "#eeeeee"
       ),
       yaxis2 = list(
@@ -775,48 +794,81 @@ createArticleDotPlot <- function(data,
         overlaying = "y",
         side = "right",
         tickformat = ".0%",
-        range = c(0, 0.2),  # 0-20%
+        range = c(0, max(collab_data$percentage, na.rm = TRUE) * 1.1),
         gridcolor = "#eeeeee"
       ),
       plot_bgcolor = "rgb(250, 250, 250)",
-      paper_bgcolor = "rgb(250, 250, 250)"
+      paper_bgcolor = "rgb(250, 250, 250)",
+      annotations = list()
     )
     
-    p <- p %>% layout(layout_args)
+    # Add country name annotations for end labels
+    for (i in seq_len(nrow(end_labels))) {
+      layout_args$annotations[[i]] <- list(
+        x = end_labels$year[i],
+        y = end_labels$percentage[i],
+        text = end_labels$country[i],
+        showarrow = FALSE,
+        xanchor = "left",
+        xshift = 10,
+        font = list(color = end_labels$cc[i], size = 12)
+      )
+    }
+    
+    # Apply animation settings
+    p <- p %>% layout(layout_args) %>%
+      animation_opts(
+        frame = 200,
+        transition = 100,
+        easing = "linear",
+        redraw = FALSE
+      )
+    
     return(p)
+  }
+
+  # Otherwise handle other source_titles
+  if (source_title == "Expansion of the CS") {
+    plot_data$formatted_value <- scales::comma(plot_data$percentage)
+    y_format <- ",.0f"
+  } else if (source_title == "Country participation in the CS") {
+    plot_data$formatted_value <- scales::comma(plot_data$percentage)
+    y_format <- ",.0f"
   } else {
     plot_data$formatted_value <- scales::percent(plot_data$percentage / 100)
     y_format <- ".1%"
-    max_size <- 20
-    size_ref <- 0.15 * max(plot_data$percentage, na.rm = TRUE)
   }
   
-  # For non-dual axis plots (Expansion of the CS)
+  # Prepare data for animation
+  plot_data_animated <- plot_data %>% accumulate_by(~year)
+  
+  # Build animated plot
   p <- plot_ly(
-    plot_data,
+    data = plot_data_animated,
     x = ~year,
     y = ~percentage,
+    split = ~country,
+    frame = ~frame,
     color = ~country,
-    colors = "Set1",
     type = "scatter",
     mode = "lines+markers",
     marker = list(
-      size = ~percentage/500,  # Scale to reasonable size
+      size = ~percentage / 500,
       sizemode = "diameter",
       sizeref = 1,
       opacity = 0.8,
       line = list(width = 1, color = '#FFFFFF')
     ),
-    line = list(width = 2),
+    line = list(width = 2, simplify = FALSE),
     text = ~paste(
       "<b>Country:</b> ", country,
-      "<br><b>Year:</b> ", year, 
+      "<br><b>Year:</b> ", year,
       "<br><b>Value:</b> ", formatted_value
     ),
     hoverinfo = "text"
   )
   
-  # Base layout
+  # Layout
   layout_args <- list(
     title = list(
       text = paste("Article Figures - Source:", source_title),
@@ -829,14 +881,39 @@ createArticleDotPlot <- function(data,
       tickformat = y_format
     ),
     plot_bgcolor = "rgb(250, 250, 250)",
-    paper_bgcolor = "rgb(250, 250, 250)"
+    paper_bgcolor = "rgb(250, 250, 250)",
+    annotations = list()
   )
   
-  # Apply layout
-  p <- p %>% layout(layout_args)
+  # Add country name annotations for end labels
+  for (i in seq_len(nrow(end_labels))) {
+    layout_args$annotations[[i]] <- list(
+      x = end_labels$year[i],
+      y = end_labels$percentage[i],
+      text = end_labels$country[i],
+      showarrow = FALSE,
+      xanchor = "left",
+      xshift = 10,
+      font = list(color = ifelse(is.null(end_labels$cc[i]), "black", end_labels$cc[i]), size = 12)
+    )
+  }
   
-  # Partial bundle
-  p %>% plotly::partial_bundle()
+  # Apply animation settings
+  p %>% 
+    layout(layout_args) %>%
+    animation_opts(
+      frame = 200,
+      transition = 100,
+      easing = "linear",
+      redraw = FALSE
+    ) %>%
+    animation_slider(
+      currentvalue = list(prefix = "Year: ")
+    ) %>%
+    animation_button(
+      x = 1, xanchor = "right", y = 0, yanchor = "bottom"
+    ) %>%
+    plotly::partial_bundle()
 }
 
 
