@@ -12,7 +12,7 @@ library(shinycssloaders)
 library(RColorBrewer)
 library(gt)
 # library(leaflet)
-# library(highcharter)
+# library(highcharter)        
 # library(viridisLite)
 theme_set(theme_light())
 
@@ -201,6 +201,8 @@ ui <- page_navbar(
   sidebar = sidebar(
     title = "Country and Region Filters 🌍",
     width = "14rem",
+    id = "sidebar",
+    open = FALSE,
     tooltip(
           fontawesome::fa("info-circle", a11y = "sem", title = "Warnings"),
           "For more interactive visualizations, select the different tabs on the TOP panel.\n\n"
@@ -238,23 +240,24 @@ ui <- page_navbar(
           )
         ),
     hr(),
-    div(
-          style = "margin-bottom: 18rem;",
-          accordion(
-            id = "countryAccordion",
-            open = TRUE,
-            accordion_panel(
-              "Select Countries 🎌",
-              checkboxGroupInput(
-                inputId = "countries",
-                label = NULL,
-                choices = NULL,
-                selected = NULL,
-                width = "100%"
-              )
-            )
-          )
-        )
+div(
+  style = "margin-bottom: 18rem;",
+  accordion(
+    id = "countryAccordion",
+    open = FALSE,
+    accordion_panel(
+      title = "Select Countries 🎌",
+      value = "countriesPanel",  # added value identifier
+      checkboxGroupInput(
+        inputId = "countries",
+        label = NULL,
+        choices = NULL,
+        selected = NULL,
+        width = "100%"
+      )
+    )
+  )
+)
   ),
   # ------------------------------,
   # 1) NATIONAL TRENDS (INDIVIDUAL),
@@ -612,6 +615,7 @@ ui <- page_navbar(
 
 
 server <- function(input, output, session) {
+
   # Helper function for NA handling
 `%||%` <- function(x, y) {
   if (is.null(x) || (length(x) == 1 && is.na(x))) y else x
@@ -825,6 +829,37 @@ server <- function(input, output, session) {
       )
     }
   })
+
+observe({
+    if (active_tab() %in% c("National Trends 📈", "Collaboration Trends 🤝")) {
+      sidebar_toggle(
+        id = "sidebar",
+        open = TRUE
+      )
+    } else {
+      sidebar_toggle(
+        id = "sidebar",
+        open = FALSE
+      )
+    }
+  })
+
+observe({
+    if (active_tab() %in% c("Collaboration Trends B 🤝", "Article Figures 📰" , "Know more about the research 🥼")) {
+      accordion_panel_remove(
+        id = "countryAccordion",
+        "countriesPanel"  # Remove "panel =" - just pass the value directly
+      )
+      } 
+  })
+
+#   observe({
+#     sidebar_toggle(
+#       id = "sidebar",
+#       open = input$nav == "Page 2"
+#     )
+#   })
+# }
 
   #########
   # Plots #
