@@ -1329,7 +1329,12 @@ output$gdpGrowthTable <- render_gt({
     gt::tab_style(
       style = gt::cell_text(weight = "bold"),
       locations = gt::cells_column_labels()
-    ) 
+    ) %>%
+    # Add custom labels for specific years
+    gt::cols_label(
+      "2007" = gt::md("2007 **Global Financial Crisis**"),
+      "2020" = gt::md("2020 **COVID**")
+    )
   
   # Highlight negative growth rates in red
   for(year_col in year_cols) {
