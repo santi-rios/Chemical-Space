@@ -1248,30 +1248,31 @@ output$top_contributors_tableB <- render_gt({
   # Article Figures
   ##################
   # app.R (server)
+# Updated server code for articlePlot
 output$articlePlot <- renderPlotly({
   req(active_tab() == "Article Figures 📰", input$article_source)
 
+  # Define appropriate y-axis titles
   y_title <- switch(input$article_source,
     "Expansion of the CS" = "Number of new substances",
     "China-US in the CS" = "Percentage of national contribution", 
     "Annual growth rate of the GDP" = "GDP per capita growth (annual %)",
-    "Number of Researchers" = "Researchers (millions)",
+    "Number of Researchers" = "Researchers",  # Remove "(millions)" as the function will add it
     "Country participation in the CS" = "Number of new substances",
     "Value"
   )
 
+  # Filter data based on selected source
   article_data <- figure_article() %>% 
-    dplyr::filter(source == input$article_source) %>%
-    dplyr::mutate(percentage = ifelse(
-      source == "Number of Researchers", 
-      percentage/1e6, 
-      percentage
-    ))
-
+    dplyr::filter(source == input$article_source)
+    # Remove the division by 1e6, let the plotting function handle this
+  
+  # Create plot based on selected source using wrapper function
   createArticlePlot(
     data = article_data,
     source_title = input$article_source,
-    y_title = y_title
+    y_title = y_title,
+    flag_size_range = c(0.5, 3)  # Adjusted flag size range for better visualization
   )
 })
 
