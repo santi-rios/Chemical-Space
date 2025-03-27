@@ -371,22 +371,32 @@ ui <- page_navbar(
   # 3) ARTICLE FIGURES,
   # ------------------------------,
 tabPanel("Article Figures 📰",
-  fluidRow(
-    column(12, h2("Economic and Research Indicators"), hr())
-  ),
-  fluidRow(
-    column(6, plotlyOutput("gdpGrowthPlot", height = "400px")),
-    column(6, plotlyOutput("researchersPlot", height = "400px"))
-  ),
-  fluidRow(
-    column(12, h2("Chemical Space Contributions"), hr())
-  ),
-  fluidRow(
-    column(6, plotlyOutput("countryParticipationPlot", height = "400px")),
-    column(6, plotlyOutput("csExpansionPlot", height = "400px"))
-  ),
-  fluidRow(
-    column(12, plotlyOutput("chinaUSPlot", height = "400px"))
+  navset_card_tab(
+    nav_panel(
+      "GDP Growth",
+      plotlyOutput("gdpGrowthPlot", height = "400px"),
+      gt_output("gdpGrowthTable")
+    ),
+    nav_panel(
+      "Researchers",
+      plotlyOutput("researchersPlot", height = "400px"),
+      gt_output("researchersTable")
+    ),
+    nav_panel(
+      "Country Participation",
+      plotlyOutput("countryParticipationPlot", height = "400px"),
+      gt_output("countryParticipationTable")
+    ),
+    nav_panel(
+      "CS Expansion",
+      plotlyOutput("csExpansionPlot", height = "400px"),
+      gt_output("csExpansionTable")
+    ),
+    nav_panel(
+      "China-US Analysis",
+      plotlyOutput("chinaUSPlot", height = "400px"),
+      gt_output("chinaUSTable")
+    )
   )
 ),
   # # ------------------------------,
@@ -1279,6 +1289,165 @@ output$chinaUSPlot <- renderPlotly({
     source_title = "China-US in the CS",
     y_title = "Percentage of national contribution"
   )
+})
+
+# Add these after your existing plot renderers
+
+# GDP Growth Table
+output$gdpGrowthTable <- render_gt({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Annual growth rate of the GDP") %>%
+    # Add ISO2C codes for flags
+    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+    # Sort by year and country for better readability
+    dplyr::arrange(year, country)
+  
+  article_data %>%
+    dplyr::select(iso2c, country, year, percentage) %>%
+    gt() %>%
+    gt::fmt_flag(columns = iso2c) %>%
+    gt::fmt_number(columns = percentage, decimals = 2) %>%
+    gt::tab_header(
+      title = "GDP Growth Rates by Country and Year",
+      subtitle = "Annual percentage change in GDP per capita"
+    ) %>%
+    gt::cols_label(
+      iso2c = "",
+      country = "Country",
+      year = "Year",
+      percentage = "GDP Growth (%)"
+    ) %>%
+    gt::tab_style(
+      style = gt::cell_text(weight = "bold"),
+      locations = gt::cells_column_labels()
+    ) %>%
+    gt::opt_row_striping()
+})
+
+# Researchers Table
+output$researchersTable <- render_gt({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Number of Researchers") %>%
+    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+    dplyr::arrange(year, country)
+  
+  article_data %>%
+    dplyr::select(iso2c, country, year, percentage) %>%
+    gt() %>%
+    gt::fmt_flag(columns = iso2c) %>%
+    gt::fmt_number(columns = percentage, decimals = 0) %>%
+    gt::tab_header(
+      title = "Number of Researchers by Country and Year",
+      subtitle = "Total count of researchers"
+    ) %>%
+    gt::cols_label(
+      iso2c = "",
+      country = "Country",
+      year = "Year",
+      percentage = "Researchers"
+    ) %>%
+    gt::tab_style(
+      style = gt::cell_text(weight = "bold"),
+      locations = gt::cells_column_labels()
+    ) %>%
+    gt::opt_row_striping()
+})
+
+# Country Participation Table
+output$countryParticipationTable <- render_gt({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Country participation in the CS") %>%
+    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+    dplyr::arrange(year, country)
+  
+  article_data %>%
+    dplyr::select(iso2c, country, year, percentage) %>%
+    gt() %>%
+    gt::fmt_flag(columns = iso2c) %>%
+    gt::fmt_number(columns = percentage, decimals = 0) %>%
+    gt::tab_header(
+      title = "Country Participation in Chemical Space",
+      subtitle = "Number of new substances contributed by country"
+    ) %>%
+    gt::cols_label(
+      iso2c = "",
+      country = "Country",
+      year = "Year",
+      percentage = "New Substances"
+    ) %>%
+    gt::tab_style(
+      style = gt::cell_text(weight = "bold"),
+      locations = gt::cells_column_labels()
+    ) %>%
+    gt::opt_row_striping()
+})
+
+# CS Expansion Table
+output$csExpansionTable <- render_gt({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "Expansion of the CS") %>%
+    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+    dplyr::arrange(year, country)
+  
+  article_data %>%
+    dplyr::select(iso2c, country, year, percentage) %>%
+    gt() %>%
+    gt::fmt_flag(columns = iso2c) %>%
+    gt::fmt_number(columns = percentage, decimals = 0) %>%
+    gt::tab_header(
+      title = "Chemical Space Expansion Over Time",
+      subtitle = "Growth in number of substances"
+    ) %>%
+    gt::cols_label(
+      iso2c = "",
+      country = "Country",
+      year = "Year",
+      percentage = "Substances"
+    ) %>%
+    gt::tab_style(
+      style = gt::cell_text(weight = "bold"),
+      locations = gt::cells_column_labels()
+    ) %>%
+    gt::opt_row_striping()
+})
+
+# China-US Table
+output$chinaUSTable <- render_gt({
+  req(active_tab() == "Article Figures 📰")
+  
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "China-US in the CS") %>%
+    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+    dplyr::arrange(year, country)
+  
+  article_data %>%
+    dplyr::select(iso2c, country, year, percentage) %>%
+    gt() %>%
+    gt::fmt_flag(columns = iso2c) %>%
+    gt::fmt_percent(columns = percentage, decimals = 1, scale = 0.01) %>%
+    gt::tab_header(
+      title = "China-US Contributions and Collaborations",
+      subtitle = "Percentage of national contribution"
+    ) %>%
+    gt::cols_label(
+      iso2c = "",
+      country = "Country/Metric",
+      year = "Year",
+      percentage = "Contribution (%)"
+    ) %>%
+    gt::tab_style(
+      style = gt::cell_text(weight = "bold"),
+      locations = gt::cells_column_labels()
+    ) %>%
+    gt::opt_row_striping()
 })
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
