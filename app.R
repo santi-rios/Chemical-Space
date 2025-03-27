@@ -1253,11 +1253,11 @@ output$countryParticipationPlot <- renderPlotly({
   article_data <- figure_article() %>%
     dplyr::filter(source == "Country participation in the CS")
   
-  createArticleFlagPlot(
+  createArticleDotPlot(
     data = article_data,
     source_title = "Country participation in the CS",
-    y_title = "Number of new substances",
-    flag_size_range = c(1, 4)
+    y_title = "Number of new substances"
+    # flag_size_range = c(1, 4)
   )
 })
 
@@ -1294,61 +1294,90 @@ output$chinaUSPlot <- renderPlotly({
 # Add these after your existing plot renderers
 
 # GDP Growth Table
+# GDP Growth Table in wide format
 output$gdpGrowthTable <- render_gt({
   req(active_tab() == "Article Figures 📰")
   
   article_data <- figure_article() %>%
     dplyr::filter(source == "Annual growth rate of the GDP") %>%
-    # Add ISO2C codes for flags
     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Sort by year and country for better readability
-    dplyr::arrange(year, country)
+    # Pivot to wide format: countries as rows, years as columns
+    tidyr::pivot_wider(
+      id_cols = c(iso2c, country),
+      names_from = year,
+      values_from = percentage
+    ) %>%
+    dplyr::arrange(country)
   
-  article_data %>%
-    dplyr::select(iso2c, country, year, percentage) %>%
+  # Get list of year columns for formatting
+  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
+  
+  # Create GT table with wide format
+  tbl <- article_data %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = percentage, decimals = 2) %>%
+    # Format all year columns
+    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 2) %>%
     gt::tab_header(
       title = "GDP Growth Rates by Country and Year",
       subtitle = "Annual percentage change in GDP per capita"
     ) %>%
     gt::cols_label(
       iso2c = "",
-      country = "Country",
-      year = "Year",
-      percentage = "GDP Growth (%)"
+      country = "Country"
     ) %>%
     gt::tab_style(
       style = gt::cell_text(weight = "bold"),
       locations = gt::cells_column_labels()
-    ) %>%
-    gt::opt_row_striping()
+    ) 
+  
+  # Highlight negative growth rates in red
+  for(year_col in year_cols) {
+    tbl <- tbl %>%
+      gt::tab_style(
+        style = list(
+          gt::cell_fill(color = "#FFDDDD"),
+          gt::cell_text(color = "#AA0000")
+        ),
+        locations = gt::cells_body(
+          columns = tidyselect::all_of(year_col),
+          rows = article_data[[year_col]] < 0
+        )
+      )
+  }
+  
+  tbl %>% gt::opt_row_striping()
 })
 
-# Researchers Table
+# Researchers Table in wide format
 output$researchersTable <- render_gt({
   req(active_tab() == "Article Figures 📰")
   
   article_data <- figure_article() %>%
     dplyr::filter(source == "Number of Researchers") %>%
     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    dplyr::arrange(year, country)
+    # Pivot to wide format
+    tidyr::pivot_wider(
+      id_cols = c(iso2c, country),
+      names_from = year,
+      values_from = percentage
+    ) %>%
+    dplyr::arrange(country)
+  
+  # Get list of year columns for formatting
+  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
   
   article_data %>%
-    dplyr::select(iso2c, country, year, percentage) %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = percentage, decimals = 0) %>%
+    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
     gt::tab_header(
       title = "Number of Researchers by Country and Year",
       subtitle = "Total count of researchers"
     ) %>%
     gt::cols_label(
       iso2c = "",
-      country = "Country",
-      year = "Year",
-      percentage = "Researchers"
+      country = "Country"
     ) %>%
     gt::tab_style(
       style = gt::cell_text(weight = "bold"),
@@ -1357,29 +1386,35 @@ output$researchersTable <- render_gt({
     gt::opt_row_striping()
 })
 
-# Country Participation Table
+# Country Participation Table in wide format
 output$countryParticipationTable <- render_gt({
   req(active_tab() == "Article Figures 📰")
   
   article_data <- figure_article() %>%
     dplyr::filter(source == "Country participation in the CS") %>%
     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    dplyr::arrange(year, country)
+    # Pivot to wide format
+    tidyr::pivot_wider(
+      id_cols = c(iso2c, country),
+      names_from = year,
+      values_from = percentage
+    ) %>%
+    dplyr::arrange(country)
+  
+  # Get list of year columns for formatting
+  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
   
   article_data %>%
-    dplyr::select(iso2c, country, year, percentage) %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = percentage, decimals = 0) %>%
+    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
     gt::tab_header(
       title = "Country Participation in Chemical Space",
       subtitle = "Number of new substances contributed by country"
     ) %>%
     gt::cols_label(
       iso2c = "",
-      country = "Country",
-      year = "Year",
-      percentage = "New Substances"
+      country = "Country"
     ) %>%
     gt::tab_style(
       style = gt::cell_text(weight = "bold"),
@@ -1388,29 +1423,35 @@ output$countryParticipationTable <- render_gt({
     gt::opt_row_striping()
 })
 
-# CS Expansion Table
+# CS Expansion Table in wide format
 output$csExpansionTable <- render_gt({
   req(active_tab() == "Article Figures 📰")
   
   article_data <- figure_article() %>%
     dplyr::filter(source == "Expansion of the CS") %>%
     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    dplyr::arrange(year, country)
+    # Pivot to wide format
+    tidyr::pivot_wider(
+      id_cols = c(iso2c, country),
+      names_from = year,
+      values_from = percentage
+    ) %>%
+    dplyr::arrange(country)
+  
+  # Get list of year columns for formatting
+  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
   
   article_data %>%
-    dplyr::select(iso2c, country, year, percentage) %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = percentage, decimals = 0) %>%
+    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
     gt::tab_header(
       title = "Chemical Space Expansion Over Time",
       subtitle = "Growth in number of substances"
     ) %>%
     gt::cols_label(
       iso2c = "",
-      country = "Country",
-      year = "Year",
-      percentage = "Substances"
+      country = "Country"
     ) %>%
     gt::tab_style(
       style = gt::cell_text(weight = "bold"),
@@ -1419,29 +1460,36 @@ output$csExpansionTable <- render_gt({
     gt::opt_row_striping()
 })
 
-# China-US Table
+# China-US Table in wide format
 output$chinaUSTable <- render_gt({
   req(active_tab() == "Article Figures 📰")
   
   article_data <- figure_article() %>%
     dplyr::filter(source == "China-US in the CS") %>%
     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    dplyr::arrange(year, country)
+    # Pivot to wide format
+    tidyr::pivot_wider(
+      id_cols = c(iso2c, country),
+      names_from = year,
+      values_from = percentage
+    ) %>%
+    dplyr::arrange(country)
+  
+  # Get list of year columns for formatting
+  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
   
   article_data %>%
-    dplyr::select(iso2c, country, year, percentage) %>%
     gt() %>%
     gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_percent(columns = percentage, decimals = 1, scale = 0.01) %>%
+    # Use percentage formatting for this table
+    gt::fmt_percent(columns = tidyselect::all_of(year_cols), decimals = 1, scale = 0.01) %>%
     gt::tab_header(
       title = "China-US Contributions and Collaborations",
       subtitle = "Percentage of national contribution"
     ) %>%
     gt::cols_label(
       iso2c = "",
-      country = "Country/Metric",
-      year = "Year",
-      percentage = "Contribution (%)"
+      country = "Country/Metric"
     ) %>%
     gt::tab_style(
       style = gt::cell_text(weight = "bold"),
