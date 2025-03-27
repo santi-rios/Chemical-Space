@@ -184,7 +184,7 @@ createStaticMapPlot <- function(df,
       ),
       tooltip_text = paste(
         "<b>", country, "</b><br>",
-        "Value: ", formatted_value, "<br>",
+        "Avg Contribution: ", formatted_value, "<br>",
         "Region: ", coalesce(region, "N/A"), "<br>",
         "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
         "Worst Year: ", coalesce(as.character(worst_year), "N/A")
@@ -250,11 +250,6 @@ createStaticMapPlot <- function(df,
         x = 0.6,
         xanchor = "center"
       ),
-      # hoverlabel = list(
-      #   bgcolor = "white",
-      #   bordercolor = "black",
-      #   font = list(size = 12)
-      # ),
       margin = list(b = 80, l = 40, r = 40, t = 40)
     )
 }
@@ -271,12 +266,6 @@ createCollabMapPlot <- function(df,
                                 fill_var = "value",
                                 fill_label = "Collaboration Strength",
                                 main_title = "") {
-
-  # Debug prints to identify data issues
-  message("Number of rows in input data: ", nrow(df))
-  message("Columns in input data: ", paste(names(df), collapse = ", "))
-  message("Range of fill variable: ", min(df[[fill_var]], na.rm = TRUE), " - ",
-          max(df[[fill_var]], na.rm = TRUE))
 
   # Get max value for scaling (round up to nearest 5%)
   max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
@@ -314,21 +303,30 @@ createCollabMapPlot <- function(df,
         labels = labels,
         include.lowest = TRUE
       ),
-      # Enhanced tooltip with collaboration information
+      # Format collaboration list for better readability
+      formatted_collab_list = ifelse(!is.na(collab_list),
+                                    gsub(",", " & ", collab_list),
+                                    NA_character_),
+      # Enhanced tooltip with better explanation of collaboration information
       tooltip_text = paste(
         "<b>", country, "</b><br>",
-        "Collaboration Strength: ", formatted_value, "<br>",
-        "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
-        "Worst Year: ", coalesce(as.character(worst_year), "N/A"),
-        ifelse(!is.na(collab_list),
-               paste0("<br><b>Main Collaborations:</b><br>", gsub("; ", "<br>• ", paste0("• ", collab_list))),
+        "<b>Collaboration Strength:</b> ", formatted_value, "<br>",
+        "<i>This represents the country's average contribution to the chemical space<br>",
+        "through international collaborations over the selected time period.</i><br>",
+        ifelse(!is.na(best_year) & !is.na(worst_year),
+               paste0(
+                 "<b>Strongest Year:</b> ", best_year, " (", 
+                 sprintf("%.2f%%", best_year_value), ")<br>",
+                 "<b>Weakest Year:</b> ", worst_year, " (", 
+                 sprintf("%.2f%%", worst_year_value), ")"
+               ),
+               ""),
+        ifelse(!is.na(formatted_collab_list),
+               paste0("<br><b>Main Collaborations:</b><br>• ", 
+                      gsub("; ", "<br>• ", formatted_collab_list)),
                "")
       )
     )
-
-  # Debug: check merged data
-  message("Number of rows with non-NA fill values in plot_data: ",
-          sum(!is.na(plot_data[[fill_var]])))
 
   # Create plot with discrete fill
   p <- ggplot(plot_data, aes(
@@ -353,7 +351,6 @@ createCollabMapPlot <- function(df,
     labs(title = main_title) +
     theme_void() +
     coord_fixed(ratio = 1.3) +
-    # UNCOMMENT THESE LINES - they're needed for proper display
     theme(
       plot.title = element_text(hjust = 0.5, size = 14),
       legend.position = "bottom",
@@ -374,7 +371,6 @@ createCollabMapPlot <- function(df,
         scale = 1
       )
     ) %>%
-    # UNCOMMENT THESE LINES - they're needed for proper layout
     layout(
       legend = list(
         orientation = "h",
@@ -391,6 +387,107 @@ createCollabMapPlot <- function(df,
       margin = list(b = 80, l = 40, r = 40, t = 40)
     )
 }
+
+
+##########
+
+createTrendPlot <- function(data, end_labels_data,
+                            min_year, max_year,
+                            color_var = "cc",
+                            group_var = "country",
+                            region_var = "region",
+                            y_var = "percentage",
+                            x_var = "year",
+                            title = "Percentage of new compounds reported in journals",
+                            y_label = "Percentage of new substances",
+                            x_label = "Year") {
+
+  # Create a named vector mapping each country to its hex color
+  country_colors <- unique(data[, c(group_var, color_var)])
+  color_map <- setNames(country_colors[[color_var]], country_colors[[group_var]])
+  
+  # Build the ggplot
+  p <- ggplot(
+    data,
+    aes(x = .data[[x_var]],
+        y = .data[[y_var]],
+        color = .data[[group_var]],  # now using country name
+        group = .data[[group_var]],
+        text = paste0(
+          "<b>Country:</b> ", .data[[group_var]],
+          "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.01, scale = 1),
+          "<br><b>Year:</b> ", .data[[x_var]],
+          "<br><b>Region:</b> ", .data[[region_var]]
+        ))
+  ) +
+    geom_line(alpha = 0.85) +
+    geom_point(
+      aes(size = .data[[y_var]]),
+      shape = 16,
+      alpha = 0.3,
+      show.legend = FALSE
+    ) +
+    geom_text(
+      data = end_labels_data,
+      aes(
+        label = .data[[group_var]],
+        x = .data[[x_var]]
+        # y = .data[[y_var]] + 0.4
+      ),
+      # hjust = max_year + 3,
+      nudge_x = -1.3,
+      vjust = 1,
+      angle = 45,
+      size = 3,
+      alpha = 0.7,
+      check_overlap = TRUE,
+      show.legend = FALSE
+    ) +
+    scale_radius(range = c(0.5, 4)) +
+    scale_color_manual(values = color_map, name = "Country") +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 1, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15))
+    ) +
+    theme(
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.text = element_text(size = 7, face = "bold"),
+      legend.title = element_blank(),
+      plot.title = element_text(size = 9, face = "bold"),
+      axis.title = element_text(size = 9),
+      axis.title.x = if (is.null(x_label)) element_blank() else element_text()
+    ) +
+    labs(
+      title = title,
+      y = y_label,
+      x = if (!is.null(x_label)) x_label else NULL
+    )
+
+  # Convert ggplot object to an interactive plotly object with WebGL
+  plotly_obj <- plotly::ggplotly(p, tooltip = "text") %>%
+    config(
+      displayModeBar = TRUE,
+      displaylogo = FALSE
+    ) %>%
+    # UNCOMMENT THESE LINES - they're needed for proper layout
+    layout(
+      legend = list(
+        orientation = "h",
+        y = -0.15,
+        yanchor = "top",
+        x = 0.5,
+        xanchor = "center"
+      ),
+      margin = list(b = 80, l = 40, r = 40, t = 40)
+    )
+
+  return(plotly_obj)
+}
+
+
+
+
 
 ##########
 createArticleFlagPlot <- function(data,

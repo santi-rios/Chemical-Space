@@ -662,9 +662,24 @@ server <- function(input, output, session) {
   })
 
   observe({
-    if (active_tab() %in% c("National Trends 📈", "Collaboration Trends 🤝")) {
+    if (active_tab() == "National Trends 📈") {
       showNotification("Double click on the legend to isolate a country or single click to hide it.",
         type = "message",
+        duration = 3
+      )
+    } else if (active_tab() == "Collaboration Trends 🤝") {
+      showNotification("Please select Plot Top or Plot All from the sidebar to see the visualizations.",
+        type = "error",
+        duration = 4
+      )
+    } else if (active_tab() == "Collaboration Trends B 🤝") {
+      showNotification("Start searching for a country at the top to see its collaborations. Please be patient as we are loading the data.",
+        type = "warning",
+        duration = 5
+      )
+    } else if (active_tab() == "Article Figures 📰") {
+      showNotification("Toggle between the article sources to see the different figures.",
+        type = "default",
         duration = 2
       )
     }
@@ -872,7 +887,7 @@ server <- function(input, output, session) {
     bindCache(active_tab(), filtered_data())
 
 
-  output$mapPlotCollab <- renderPlotly({
+output$mapPlotCollab <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝")
 
     # Filter data for collaboration tab
@@ -882,19 +897,14 @@ server <- function(input, output, session) {
     # IMPORTANT: Check if there's data after filtering
     req(nrow(data) > 0)
 
-    # Debug prints
-    message("Number of rows in filtered collaboration data: ", nrow(data))
-
     # Process the collaboration data by splitting country pairs
     map_data <- data %>%
       # Step 1: Get yearly averages by collaboration pair
-      dplyr::group_by(country, year) %>% # Use country instead of iso2c
+      dplyr::group_by(country, year) %>%
       dplyr::summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
       # Step 2: Split the country codes and expand the data
       mutate(
-        # Create a list with the pair of countries - FIX: Remove quotes around column name
         country_parts = strsplit(as.character(country), ","),
-        # Extract individual countries with proper type handling
         country1 = sapply(country_parts, function(x) if (length(x) > 0) x[1] else NA_character_),
         country2 = sapply(country_parts, function(x) if (length(x) > 1) x[2] else NA_character_)
       ) %>%
@@ -906,20 +916,32 @@ server <- function(input, output, session) {
         names_to = "country_position",
         values_to = "individual_country"
       ) %>%
-      # Step 4: Group by individual country to get aggregated statistics
+      # Step 4: Group by individual country and year to get yearly stats
       dplyr::group_by(individual_country, year) %>%
       dplyr::summarise(
-        value = sum(yearly_avg, na.rm = TRUE), # Sum all collaboration percentages
+        value = sum(yearly_avg, na.rm = TRUE),
+        # Store the specific collaboration pairs for this country by year
         collab_pairs = paste(sort(unique(country)), collapse = "; "),
         .groups = "drop"
       ) %>%
-      # Step 5: Get best/worst years and overall average
+      # Step 5: Find best/worst years for each country with their values
       dplyr::group_by(individual_country) %>%
+      dplyr::mutate(
+        avg_value = mean(value, na.rm = TRUE),
+        max_idx = which.max(value),
+        min_idx = which.min(value),
+      ) %>%
       dplyr::summarise(
         value = mean(value, na.rm = TRUE),
-        best_year = year[which.max(value)],
-        worst_year = year[which.min(value)],
-        collab_list = first(collab_pairs), # This ensures collab_list exists
+        best_year = year[max_idx][1],  # Take first if multiple ties
+        worst_year = year[min_idx][1],
+        best_year_value = value[max_idx][1],
+        worst_year_value = value[min_idx][1],
+        # Create a formatted list of countries this country collaborates with
+        collab_list = paste(unique(unlist(strsplit(
+          paste(unique(collab_pairs), collapse = "; "), 
+          "; "
+        ))), collapse = "; "),
         .groups = "drop"
       ) %>%
       # Step 6: Rename to match the expected format for the plot function
@@ -927,16 +949,13 @@ server <- function(input, output, session) {
       # Add a placeholder for region as it might be needed
       mutate(region = NA_character_)
 
-    # Debug print before plotting
-    message("Number of countries after processing: ", nrow(map_data))
-
     # Generate the map plot
     createCollabMapPlot(
       df = map_data,
       world_df = world_data,
       fill_var = "value",
-      fill_label = "Collaboration Strength",
-      main_title = ""
+      fill_label = "Average Collaboration Strength (%)",
+      main_title = "International Research Collaboration Network"
     )
   }) %>%
     bindCache(active_tab(), filtered_data())
