@@ -30,7 +30,7 @@ createChemicalSpacePlot <- function(data, end_labels_data,
                                     region_var = "region",
                                     # flag_png_col = "flags",   # column with PNG flag URLs
                                     # title = "National Contributions to Chemical Space",
-                                    y_label = "% of New Substances contributed by each country",
+                                    y_label = "% of New Substances contributed by country",
                                     x_label = NULL) {
   # Create a named vector mapping each country to its hex color
   country_colors <- unique(data[, c(group_var, color_var)])
@@ -50,7 +50,7 @@ createChemicalSpacePlot <- function(data, end_labels_data,
           "<br><b>Region:</b> ", .data[[region_var]]
         ))
   ) +
-    geom_line(alpha = 0.85) +
+    geom_line(aes(linetype = country), alpha = 0.5) +
     geom_point(
       aes(size = .data[[y_var]]),
       shape = 16,
@@ -61,15 +61,16 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       data = end_labels_data,
       aes(
         label = .data[[group_var]],
-        x = .data[[x_var]]
-        # y = .data[[y_var]] + 0.4
+        x = .data[[x_var]] -1
+        # y = .data[[y_var]]
       ),
-      # hjust = max_year + 3,
-      nudge_x = -1.3,
-      vjust = 1,
-      angle = 45,
-      size = 3,
-      alpha = 0.7,
+      hjust = 5,
+      vjust = -2,
+      position = "jitter",
+      # nudge_x = -1.3,
+      # vjust = 1,
+      # angle = 45,
+      size = 2.5,
       check_overlap = TRUE,
       show.legend = FALSE
     ) +
@@ -80,16 +81,11 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       expand = expansion(mult = c(0.05, 0.15))
     ) +
     theme(
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      legend.text = element_text(size = 7, face = "bold"),
-      legend.title = element_blank(),
-      # plot.title = element_text(size = 9, face = "bold"),
-      axis.title = element_text(size = 9),
+      legend.position = "none",
+      axis.title = element_text(size = 8),
       axis.title.x = if (is.null(x_label)) element_blank() else element_text()
     ) +
     labs(
-      # title = title,
       y = y_label,
       x = if (!is.null(x_label)) x_label else NULL
     )
@@ -100,17 +96,7 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       displayModeBar = TRUE,
       displaylogo = FALSE
     ) %>%
-    # UNCOMMENT THESE LINES - they're needed for proper layout
-    layout(
-      legend = list(
-        orientation = "h",
-        y = -0.15,
-        yanchor = "top",
-        x = 0.5,
-        xanchor = "center"
-      ),
-      margin = list(b = 80, l = 40, r = 40, t = 40)
-    )
+    plotly::toWebGL()
 
   return(plotly_obj)
 }
