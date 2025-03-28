@@ -677,50 +677,72 @@ createArticleFlagPlot <- function(data,
 
 
 createArticleDotPlot <- function(data, source_title, y_title) {
-  # Prepare data
+  # Prepare data: fix scaling and countrycode warnings
   plot_data <- data %>%
     dplyr::mutate(
-      iso2c = countrycode::countrycode(country, "country.name", "iso2c")
+      percentage = dplyr::case_when(
+        country %in% c("CN-US-collab/CN", "CN-US-collab/US") ~ percentage,   # already decimal
+        TRUE ~ percentage / 100                                              # convert main countries to decimals
+      ),
+      formatted_value = scales::percent(percentage),
+      iso2c = dplyr::if_else(
+        country %in% c("CN-US-collab/CN", "CN-US-collab/US"),
+        NA_character_,
+        countrycode::countrycode(country, "country.name", "iso2c")
+      )
     )
   
-  # For labeling last x value
+  # Define consistent color mapping for countries and metrics - FIXED NAMES
+  country_colors <- c(
+    "China" = "#c5051b",
+    "China alone" = "#c56a75",
+    "China w/o US" = "#9b2610",
+    "France" = "#0a3161",
+    "Germany" = "#000000",
+    "India" = "#ff671f",
+    "Japan" = "#000091",
+    "Russia" = "#d51e9b",
+    "USA alone" = "#3b5091",
+    "USA w/o China" = "#006341",
+    "United Kingdom" = "#74acdf",
+    "United States" = "#002852",
+    "All substances" = "#4879a7",
+    "Organic Chemicals" = "#ff6d45",
+    "Organometallics" = "#55713e",
+    "Rare-Earths" = "#800525",
+    "CN-US collab/CN" = "#6d2f56",    # Fixed spacing
+    "CN-US collab/US" = "#ff8888"     # Fixed spacing
+  )
+  
+  # For labeling last x value - get the most recent data point for each country
   end_labels <- plot_data %>%
     dplyr::group_by(country) %>%
-    dplyr::filter(year == max(year, na.rm = TRUE))
+    dplyr::slice_max(year, n = 1) %>%
+    dplyr::ungroup()
 
   # Handle special case for "China-US in the CS"
+ # Handle special case for "China-US in the CS"
   if (source_title == "China-US in the CS") {
-    plot_data$formatted_value <- scales::percent(plot_data$percentage / 100)
-    
-    # Split data (one axis for main countries, another for smaller collaborations)
+    # Split data (one axis for main countries, another for collaborations)
     main_countries <- c("China", "United States")
     main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
     collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
     
+    # Build plot with animation frame to get a play button
     p <- plot_ly() %>%
-      # Main countries on primary y-axis
+      # Main countries (left axis)
       add_trace(
         data = main_data,
         x = ~year,
         y = ~percentage,
+        frame = ~year,  # add animation frame
         color = ~country,
-        colors = "Set1",
+        colors = country_colors[main_countries],
         type = "scatter",
         mode = "lines+markers",
-        marker = list(
-          size = ~percentage / 5,
-          sizemode = "diameter",
-          sizeref = 2,
-          opacity = 0.8,
-          line = list(width = 1, color = '#FFFFFF')
-        ),
-        line = list(width = 2),
-        text = ~paste(
-          "<b>Country:</b> ", country,
-          "<br><b>Year:</b> ", year,
-          "<br><b>Value:</b> ", formatted_value
-        ),
-        hoverinfo = "text",
+        marker = list(size = 12, opacity = 0.8),
+        line = list(width = 3),
+        yaxis = "y1",
         name = ~country
       ) %>%
       # Collaboration metrics on secondary y-axis
@@ -728,71 +750,33 @@ createArticleDotPlot <- function(data, source_title, y_title) {
         data = collab_data,
         x = ~year,
         y = ~percentage,
+        frame = ~year,  # add animation frame
         color = ~country,
-        colors = "Set2",
+        colors = country_colors[unique(collab_data$country)],
         type = "scatter",
         mode = "lines+markers",
-        marker = list(
-          size = ~percentage * 100,
-          sizemode = "diameter",
-          sizeref = 2,
-          opacity = 0.8,
-          line = list(width = 1, color = '#FFFFFF')
+        marker = list(size = 12, opacity = 0.8),
+        line = list(width = 3, dash = "dot"),
+        yaxis = "y2",
+        name = ~country
+      ) %>%
+      layout(
+        yaxis = list(
+          title = paste0(y_title, " (main countries)"),
+          tickformat = ".0%",
+          range = c(0.6, 1.0)
         ),
-        line = list(width = 2),
-        text = ~paste(
-          "<b>Metric:</b> ", country,
-          "<br><b>Year:</b> ", year,
-          "<br><b>Value:</b> ", formatted_value
-        ),
-        hoverinfo = "text",
-        name = ~country,
-        yaxis = "y2"
+        yaxis2 = list(
+          title = paste0(y_title, " (collaborations)"),
+          overlaying = "y",
+          side = "right",
+          tickformat = ".0%",
+          range = c(0, 0.2)
+        )
       )
     
-    # Layout with dual axes
-    layout_args <- list(
-      title = list(
-        text = paste("Article Figures - Source:", source_title),
-        font = list(size = 18)
-      ),
-      xaxis = list(title = "Year", gridcolor = "#eeeeee"),
-      yaxis = list(
-        title = paste0(y_title, " (countries)"),
-        side = "left",
-        tickformat = ".0%",
-        range = c(0, max(main_data$percentage, na.rm = TRUE) * 1.1),
-        gridcolor = "#eeeeee"
-      ),
-      yaxis2 = list(
-        title = paste0(y_title, " (collaborations)"),
-        overlaying = "y",
-        side = "right",
-        tickformat = ".0%",
-        range = c(0, max(collab_data$percentage, na.rm = TRUE) * 1.1),
-        gridcolor = "#eeeeee"
-      ),
-      plot_bgcolor = "rgb(250, 250, 250)",
-      paper_bgcolor = "rgb(250, 250, 250)",
-      annotations = list()
-    )
-    
-    # Add country name annotations for end labels
-    for (i in seq_len(nrow(end_labels))) {
-      layout_args$annotations[[i]] <- list(
-        x = end_labels$year[i],
-        y = end_labels$percentage[i],
-        text = end_labels$country[i],
-        showarrow = FALSE,
-        xanchor = "left",
-        xshift = 10,
-        font = list(size = 12)
-      )
-    }
-    
-    # Apply layout
-    p <- p %>% layout(layout_args)
-    
+    # (Continue with annotations and layout as needed)
+    # ...
     return(p)
   }
 
@@ -808,13 +792,25 @@ createArticleDotPlot <- function(data, source_title, y_title) {
     y_format <- ".1%"
   }
   
+  # Get available country colors and create mapping
+  available_countries <- unique(plot_data$country)
+  plot_colors <- country_colors[names(country_colors) %in% available_countries]
+  
+  # For any countries not in our predefined list, assign colors from a palette
+  missing_countries <- setdiff(available_countries, names(country_colors))
+  if (length(missing_countries) > 0) {
+    extra_colors <- colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(length(missing_countries))
+    names(extra_colors) <- missing_countries
+    plot_colors <- c(plot_colors, extra_colors)
+  }
+  
   # Build plot without animation
   p <- plot_ly(
     data = plot_data,
     x = ~year,
     y = ~percentage,
     color = ~country,
-    colors = colorRampPalette(RColorBrewer::brewer.pal(8, "Set1"))(length(unique(plot_data$country))),
+    colors = plot_colors, # Use our consistent color mapping
     type = "scatter",
     mode = "lines+markers",
     marker = list(
@@ -849,17 +845,25 @@ createArticleDotPlot <- function(data, source_title, y_title) {
   )
   
   # Add country name annotations for end labels
-  for (i in seq_len(nrow(end_labels))) {
-    layout_args$annotations[[i]] <- list(
-      x = end_labels$year[i],
-      y = end_labels$percentage[i],
-      text = end_labels$country[i],
-      showarrow = FALSE,
-      xanchor = "left",
-      xshift = 10,
-      font = list(size = 12)
-    )
+  end_annotations <- list()
+  for (i in 1:nrow(end_labels)) {
+    country_name <- end_labels$country[i]
+    if (country_name %in% names(plot_colors)) {
+      end_annotations[[i]] <- list(
+        x = end_labels$year[i],
+        y = end_labels$percentage[i],
+        text = country_name,
+        showarrow = FALSE,
+        xanchor = "left",
+        xshift = 10,
+        font = list(
+          size = 12,
+          color = plot_colors[country_name]
+        )
+      )
+    }
   }
+  layout_args$annotations <- end_annotations
   
   # Apply layout
   p <- p %>% layout(layout_args)

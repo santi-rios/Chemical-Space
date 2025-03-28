@@ -373,16 +373,6 @@ ui <- page_navbar(
 tabPanel("Article Figures 📰",
   navset_card_tab(
     nav_panel(
-      "GDP Growth",
-      plotlyOutput("gdpGrowthPlot", height = "400px"),
-      gt_output("gdpGrowthTable")
-    ),
-    nav_panel(
-      "Researchers",
-      plotlyOutput("researchersPlot", height = "400px"),
-      gt_output("researchersTable")
-    ),
-    nav_panel(
       "Country Participation",
       plotlyOutput("countryParticipationPlot", height = "400px"),
       br(),
@@ -410,14 +400,19 @@ tabPanel("Article Figures 📰",
       gt_output("countryParticipationTable")
     ),
     nav_panel(
+      "Researchers",
+      plotlyOutput("researchersPlot", height = "400px"),
+      gt_output("researchersTable")
+    ),
+    nav_panel(
+      "GDP Growth",
+      plotlyOutput("gdpGrowthPlot", height = "400px"),
+      gt_output("gdpGrowthTable")
+    ),
+    nav_panel(
       "CS Expansion",
       plotlyOutput("csExpansionPlot", height = "400px"),
       gt_output("csExpansionTable")
-    ),
-    nav_panel(
-      "China-US Analysis",
-      plotlyOutput("chinaUSPlot", height = "400px"),
-      gt_output("chinaUSTable")
     )
   )
 ),
@@ -547,6 +542,7 @@ server <- function(input, output, session) {
     }
   }) %>%
     bindCache(active_tab())
+
 
   # Initialize available countries (run once)
   all_countries <- reactive({
@@ -1299,19 +1295,7 @@ output$csExpansionPlot <- renderPlotly({
   )
 })
 
-# China-US Plot
-output$chinaUSPlot <- renderPlotly({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "China-US in the CS")
-  
-  createArticleDotPlot(
-    data = article_data,
-    source_title = "China-US in the CS",
-    y_title = "Percentage of national contribution"
-  )
-})
+
 
 # Add these after your existing plot renderers
 
@@ -1499,43 +1483,6 @@ output$csExpansionTable <- render_gt({
     gt::opt_row_striping()
 })
 
-# China-US Table in wide format
-output$chinaUSTable <- render_gt({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "China-US in the CS") %>%
-    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Pivot to wide format
-    tidyr::pivot_wider(
-      id_cols = c(iso2c, country),
-      names_from = year,
-      values_from = percentage
-    ) %>%
-    dplyr::arrange(country)
-  
-  # Get list of year columns for formatting
-  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
-  
-  article_data %>%
-    gt() %>%
-    gt::fmt_flag(columns = iso2c) %>%
-    # Use percentage formatting for this table
-    gt::fmt_percent(columns = tidyselect::all_of(year_cols), decimals = 1, scale = 0.01) %>%
-    gt::tab_header(
-      title = "China-US Contributions and Collaborations",
-      subtitle = "Percentage of national contribution"
-    ) %>%
-    gt::cols_label(
-      iso2c = "",
-      country = "Country/Metric"
-    ) %>%
-    gt::tab_style(
-      style = gt::cell_text(weight = "bold"),
-      locations = gt::cells_column_labels()
-    ) %>%
-    gt::opt_row_striping()
-})
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # End of server
