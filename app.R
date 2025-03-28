@@ -40,7 +40,7 @@ country_list <- ds %>%
 # Create a Shiny app object
 ui <- page_navbar(
   id = "selected",
-  selected = "National Trends in the CS📈",
+  selected = "National Trends 📈",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
   header = NULL,
   navbar_options = navbar_options(collapsible = TRUE, underline = TRUE),
@@ -105,7 +105,7 @@ ui <- page_navbar(
   # 1) NATIONAL TRENDS (INDIVIDUAL),
   # ------------------------------,
   nav_panel(
-    "National Trends in the CS📈",
+    "National Trends 📈",
     fluidPage(
       fluidRow(
         column(
@@ -122,14 +122,14 @@ ui <- page_navbar(
       card(
         navset_card_tab(
           nav_panel(
-            "Trends📈",
+            "Trends in CS📈",
             tooltip(
               bsicons::bs_icon("question-circle"),
               "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.", # nolint: line_length_linter.
               placement = "left"
             ),
             h5("Countrywise expansion of the chemical space (CS)"),
-            p("National Contributions to Chemical Space"),
+            p("National Contributions to CS, which spans all chemicals and reactions reported in the literature."),
             withSpinner(plotlyOutput("trendPlot"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
@@ -219,7 +219,7 @@ ui <- page_navbar(
       card(
         navset_card_tab(
           nav_panel(
-            "Trends📈",
+            "Trends in CS📈",
             tooltip(
               bsicons::bs_icon("question-circle"),
               "China's Chemical Revolution: From 1996 to 2022...",
@@ -511,7 +511,7 @@ server <- function(input, output, session) {
 
   # Active dataset based on tab
   active_dataset <- reactive({
-    if (active_tab() == "National Trends in the CS📈") {
+    if (active_tab() == "National Trends 📈") {
       individual_data()
     } else if (active_tab() == "Collaboration Trends 🤝") {
       collab_data() %>%
@@ -578,10 +578,28 @@ server <- function(input, output, session) {
   }) %>% bindCache(active_tab(), input$years, input$region)
 
 
-  # Initial country choices setup - properly respond to region changes
+  # Add this new reactive to filter countries by region
+  filtered_countries <- reactive({
+    # Start with active dataset
+    result <- active_dataset()
+    
+    # Apply region filter if set
+    if (!is.null(input$region) && input$region != "All") {
+      result <- result %>% dplyr::filter(region == input$region)
+    }
+    
+    # Get distinct countries and sort them
+    result %>%
+      dplyr::distinct(country) %>%
+      dplyr::collect() %>%
+      dplyr::pull(country) %>%
+      sort()
+  }) %>% bindCache(active_tab(), input$region)
+
+  # Modify this observer to use filtered_countries instead of all_countries
   observe({
-    req(all_countries())
-    req(top_countries()) # Add explicit dependency on top_countries
+    req(filtered_countries())
+    req(top_countries())
 
     # Only auto-select countries when:
     # 1. User hasn't explicitly cleared selections
@@ -595,20 +613,21 @@ server <- function(input, output, session) {
       # If region changed, update with new top countries
       top_countries()
     } else {
-      input$countries
+      # Keep only selected countries that are still in the filtered list
+      intersect(input$countries, filtered_countries())
     }
 
     # Store current region for comparison
     prev_region <<- input$region
 
     updateCheckboxGroupInput(session, "countries",
-      choices = all_countries(),
+      choices = filtered_countries(),
       selected = selected_countries
     )
 
     # Reset the flag
     user_cleared <- FALSE
-  }) %>% bindEvent(all_countries(), top_countries(), input$region)
+  }) %>% bindEvent(filtered_countries(), top_countries(), input$region)
 
   # Initialize region choices once when the app starts
   observe({
@@ -668,10 +687,10 @@ server <- function(input, output, session) {
   })
 
   observe({
-    if (active_tab() == "National Trends in the CS📈") {
-      showNotification("Double click on the legend to isolate a country or single click to hide it.",
+    if (active_tab() == "National Trends 📈") {
+      showNotification("Hover over the plot to see more details.",
         type = "message",
-        duration = 3
+        duration = 2
       )
     } else if (active_tab() == "Collaboration Trends 🤝") {
       showNotification("Please select Plot Top or Plot All from the sidebar to see the visualizations.",
@@ -692,7 +711,7 @@ server <- function(input, output, session) {
   })
 
   observe({
-    if (active_tab() %in% c("National Trends in the CS📈", "Collaboration Trends 🤝")) {
+    if (active_tab() %in% c("National Trends 📈", "Collaboration Trends 🤝")) {
       sidebar_toggle(
         id = "sidebar",
         open = TRUE
@@ -728,7 +747,7 @@ server <- function(input, output, session) {
   # Generate table data for top contributors by year
   top_contributors_by_year <- reactive({
     req(filtered_data())
-    req(active_tab() == "National Trends in the CS📈")
+    req(active_tab() == "National Trends 📈")
 
     # Extract top 3 contributors by year from filtered data
     filtered_data() %>%
@@ -785,7 +804,7 @@ server <- function(input, output, session) {
   # National Trends Plot
   # National Trends Plot with optimized rendering
   output$trendPlot <- renderPlotly({
-    req(active_tab() == "National Trends in the CS📈", nrow(filtered_data()) > 0)
+    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
 
     # Filter data first
     data <- filtered_data()[filtered_data()$chemical == "All", ]
@@ -856,7 +875,7 @@ server <- function(input, output, session) {
     bindCache(active_tab(), filtered_data())
 
   output$mapPlot <- renderPlotly({
-    req(active_tab() == "National Trends in the CS📈", nrow(filtered_data()) > 0)
+    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
 
     # Filter data
     data <- filtered_data()[filtered_data()$chemical == "All", ]
@@ -971,7 +990,7 @@ server <- function(input, output, session) {
 
 
   output$substancePlot <- renderPlotly({
-    req(active_tab() == "National Trends in the CS📈", nrow(filtered_data()) > 0)
+    req(active_tab() == "National Trends 📈", nrow(filtered_data()) > 0)
 
     data <- data <- filtered_data()[filtered_data()$chemical == input$chemicalSelector, ]
 
