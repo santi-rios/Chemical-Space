@@ -41,7 +41,7 @@ country_list <- ds %>%
 ui <- page_navbar(
   id = "selected",
   selected = "National Trends 📈",
-  theme = bs_theme(version = 5, bootswatch = "cosmo"),
+  theme = bs_theme(version = 5, bootswatch = "flatly"),
   header = NULL,
   navbar_options = navbar_options(collapsible = TRUE, underline = TRUE),
   sidebar = sidebar(
@@ -49,10 +49,6 @@ ui <- page_navbar(
     width = "14rem",
     id = "sidebar",
     open = FALSE,
-    tooltip(
-      fontawesome::fa("info-circle", a11y = "sem", title = "Warnings"),
-      "For more interactive visualizations, select the different tabs on the TOP panel.\n\n"
-    ),
     sliderInput(
       min = 1996,
       max = 2022,
@@ -194,25 +190,14 @@ ui <- page_navbar(
         )
       ),
       card(
-        navset_card_tab(
-          nav_panel(
-            "Top Contributors 🏆",
-            tooltip(
-              bsicons::bs_icon("question-circle"),
-              "Top contributors by year...",
-              placement = "left"
-            ),
-            gt_output("top_contributors_table"),
-            card_footer(
-              "Source: China's rise in the chemical space and the decline of US influence.",
-              popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-                )
-              )
-            )
+        card_header(
+          div(
+            class = "d-flex align-items-center",
+            h4("Top Contributors 🏆", class = "mb-0 me-2")
           )
+        ),
+        card_body(
+          gt_output("top_contributors_table")
         )
       )
     )
@@ -370,52 +355,53 @@ ui <- page_navbar(
   # ------------------------------,
   # 3) ARTICLE FIGURES,
   # ------------------------------,
-tabPanel("Article Figures 📰",
-  navset_card_tab(
-    nav_panel(
-      "Country Participation",
-      plotlyOutput("countryParticipationPlot", height = "400px"),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      hr(),
-      gt_output("countryParticipationTable")
-    ),
-    nav_panel(
-      "Researchers",
-      plotlyOutput("researchersPlot", height = "400px"),
-      gt_output("researchersTable")
-    ),
-    nav_panel(
-      "GDP Growth",
-      plotlyOutput("gdpGrowthPlot", height = "400px"),
-      gt_output("gdpGrowthTable")
-    ),
-    nav_panel(
-      "CS Expansion",
-      plotlyOutput("csExpansionPlot", height = "400px"),
-      gt_output("csExpansionTable")
+  tabPanel(
+    "Article Figures 📰",
+    navset_card_tab(
+      nav_panel(
+        "Country Participation",
+        plotlyOutput("countryParticipationPlot", height = "400px"),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        hr(),
+        gt_output("countryParticipationTable")
+      ),
+      nav_panel(
+        "Researchers",
+        plotlyOutput("researchersPlot", height = "400px"),
+        gt_output("researchersTable")
+      ),
+      nav_panel(
+        "GDP Growth",
+        plotlyOutput("gdpGrowthPlot", height = "400px"),
+        gt_output("gdpGrowthTable")
+      ),
+      nav_panel(
+        "CS Expansion",
+        plotlyOutput("csExpansionPlot", height = "400px"),
+        gt_output("csExpansionTable")
+      )
     )
-  )
-),
+  ),
   # # ------------------------------,
   # 5) KNOW MORE,
   # ------------------------------,
@@ -593,8 +579,8 @@ server <- function(input, output, session) {
   # Initial country choices setup - properly respond to region changes
   observe({
     req(all_countries())
-    req(top_countries())  # Add explicit dependency on top_countries
-    
+    req(top_countries()) # Add explicit dependency on top_countries
+
     # Only auto-select countries when:
     # 1. User hasn't explicitly cleared selections
     # 2. Countries selection is empty
@@ -609,18 +595,18 @@ server <- function(input, output, session) {
     } else {
       input$countries
     }
-    
+
     # Store current region for comparison
     prev_region <<- input$region
-    
+
     updateCheckboxGroupInput(session, "countries",
       choices = all_countries(),
       selected = selected_countries
     )
-    
+
     # Reset the flag
     user_cleared <- FALSE
-  }) %>% bindEvent(all_countries(), top_countries(), input$region) 
+  }) %>% bindEvent(all_countries(), top_countries(), input$region)
 
   # Initialize region choices once when the app starts
   observe({
@@ -802,7 +788,6 @@ server <- function(input, output, session) {
     # Filter data first
     data <- filtered_data()[filtered_data()$chemical == "All", ]
 
-
     # Find minimum and maximum years
     min_year <- min(data$year, na.rm = TRUE)
     max_year <- max(data$year, na.rm = TRUE)
@@ -905,7 +890,7 @@ server <- function(input, output, session) {
     bindCache(active_tab(), filtered_data())
 
 
-output$mapPlotCollab <- renderPlotly({
+  output$mapPlotCollab <- renderPlotly({
     req(active_tab() == "Collaboration Trends 🤝")
 
     # Filter data for collaboration tab
@@ -951,13 +936,13 @@ output$mapPlotCollab <- renderPlotly({
       ) %>%
       dplyr::summarise(
         value = mean(value, na.rm = TRUE),
-        best_year = year[max_idx][1],  # Take first if multiple ties
+        best_year = year[max_idx][1], # Take first if multiple ties
         worst_year = year[min_idx][1],
         best_year_value = value[max_idx][1],
         worst_year_value = value[min_idx][1],
         # Create a formatted list of countries this country collaborates with
         collab_list = paste(unique(unlist(strsplit(
-          paste(unique(collab_pairs), collapse = "; "), 
+          paste(unique(collab_pairs), collapse = "; "),
           "; "
         ))), collapse = "; "),
         .groups = "drop"
@@ -1059,128 +1044,128 @@ output$mapPlotCollab <- renderPlotly({
   # Flag buttons
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Then add this to your server function:
-output$conditionalCollabPlot <- renderUI({
-  if (!is.null(input$country_select) && input$country_select != "") {
-    tagList(
-      withSpinner(
-        plotlyOutput("collab_plot", width = "100%", height = "100%"), 
-        color = "#024173"
+  # Then add this to your server function:
+  output$conditionalCollabPlot <- renderUI({
+    if (!is.null(input$country_select) && input$country_select != "") {
+      tagList(
+        withSpinner(
+          plotlyOutput("collab_plot", width = "100%", height = "100%"),
+          color = "#024173"
+        )
       )
-    )
-  } else {
-    div(
-      style = "text-align: center; margin-top: 100px; color: #666;",
-      h4("Please select a country to view collaboration data"),
-      icon("search")
-    )
-  }
-})
+    } else {
+      div(
+        style = "text-align: center; margin-top: 100px; color: #666;",
+        h4("Please select a country to view collaboration data"),
+        icon("search")
+      )
+    }
+  })
 
   # Reactive for filtered collaboration data
-filtered_collab <- reactive({
-  req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
-  
-  ds %>%
-    dplyr::filter(
-      is_collab == TRUE,
-      year >= input$years[1],
-      year <= input$years[2]
-    ) %>%
-    # Incluir todas las columnas necesarias
-    dplyr::select(iso2c, year, percentage, country) %>% # <- ¡NUEVO!
-    dplyr::filter(grepl(input$country_select, iso2c)) %>%
-    dplyr::collect() %>%
-    mutate(
-      partners = strsplit(iso2c, "-"),
-      # Modificado para manejar múltiples partners
-      partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
-    ) %>%
-    tidyr::unnest(partner) %>% # Convertir lista en filas
-    # Agregar nombre del país partner usando tu metadata
-    left_join(country_list, by = c("partner" = "iso2c")) %>%
-    rename(partner_country = country.y) # country.x es el original
-})
+  filtered_collab <- reactive({
+    req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
 
-# Collaboration plot
-# Collaboration plot
-output$collab_plot <- renderPlotly({
-  data <- filtered_collab()
-  validate(need(nrow(data) > 0, "No collaborations found..."))
-  
-  agg_data <- data %>%
-    group_by(partner_country, year) %>% # Group by country and year
-    summarise(
-      total_percentage = sum(percentage, na.rm = TRUE),
-      .groups = "drop"
-    )
-  
-  # Create proper country labels for tooltip
-  country_selected_name <- country_list$country[match(input$country_select, country_list$iso2c)]
-  
-  plot <- ggplot(agg_data, aes(x = year, y = total_percentage)) +
-    geom_jitter(
-      aes(
-        size = total_percentage,
-        color = partner_country, # Map color to country name
-        # Improved tooltip formatting
-        text = paste0(
-          "<b>", partner_country, "</b><br>",
-          "<b>Year:</b> ", year, "<br>",
-          "<b>Collaboration with ", country_selected_name, ":</b> ", 
-          scales::percent(total_percentage, scale = 1, accuracy = 0.0001)
+    ds %>%
+      dplyr::filter(
+        is_collab == TRUE,
+        year >= input$years[1],
+        year <= input$years[2]
+      ) %>%
+      # Incluir todas las columnas necesarias
+      dplyr::select(iso2c, year, percentage, country) %>% # <- ¡NUEVO!
+      dplyr::filter(grepl(input$country_select, iso2c)) %>%
+      dplyr::collect() %>%
+      mutate(
+        partners = strsplit(iso2c, "-"),
+        # Modificado para manejar múltiples partners
+        partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+      ) %>%
+      tidyr::unnest(partner) %>% # Convertir lista en filas
+      # Agregar nombre del país partner usando tu metadata
+      left_join(country_list, by = c("partner" = "iso2c")) %>%
+      rename(partner_country = country.y) # country.x es el original
+  })
+
+  # Collaboration plot
+  # Collaboration plot
+  output$collab_plot <- renderPlotly({
+    data <- filtered_collab()
+    validate(need(nrow(data) > 0, "No collaborations found..."))
+
+    agg_data <- data %>%
+      group_by(partner_country, year) %>% # Group by country and year
+      summarise(
+        total_percentage = sum(percentage, na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    # Create proper country labels for tooltip
+    country_selected_name <- country_list$country[match(input$country_select, country_list$iso2c)]
+
+    plot <- ggplot(agg_data, aes(x = year, y = total_percentage)) +
+      geom_jitter(
+        aes(
+          size = total_percentage,
+          color = partner_country, # Map color to country name
+          # Improved tooltip formatting
+          text = paste0(
+            "<b>", partner_country, "</b><br>",
+            "<b>Year:</b> ", year, "<br>",
+            "<b>Collaboration with ", country_selected_name, ":</b> ",
+            scales::percent(total_percentage, scale = 1, accuracy = 0.0001)
+          )
+        ),
+        alpha = 0.35,
+        width = 1
+      ) +
+      # Use viridis "turbo" palette which has good range for many categories
+      scale_color_viridis_d(
+        option = "turbo",
+        name = "Partner Country",
+        guide = guide_legend(
+          override.aes = list(size = 3),
+          ncol = 2
         )
-      ),
-      alpha = 0.35,
-      width = 1
-    ) +
-    # Use viridis "turbo" palette which has good range for many categories
-    scale_color_viridis_d(
-      option = "turbo", 
-      name = "Partner Country",
-      guide = guide_legend(
-        override.aes = list(size = 3),
-        ncol = 2
+      ) +
+      scale_radius(range = c(0.5, 8), name = "") +
+      scale_y_continuous(
+        labels = scales::percent_format(accuracy = 0.01, scale = 1),
+        expand = expansion(mult = c(0.05, 0.15))
+      ) +
+      scale_x_continuous(
+        breaks = scales::pretty_breaks()
+      ) +
+      labs(
+        title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
+        x = "Year",
+        y = "% of substances contributed by each collaboration",
+      ) +
+      theme_minimal() +
+      theme(
+        legend.position = "right",
+        legend.title = element_text(face = "bold", size = 10),
+        plot.title = element_text(face = "bold"),
+        # Adjust legend to handle many countries
+        legend.key.size = unit(0.5, "lines"),
+        legend.text = element_text(size = 7)
       )
-    ) +
-    scale_radius(range = c(0.5, 8), name = "") +
-    scale_y_continuous(
-      labels = scales::percent_format(accuracy = 0.01, scale = 1),
-      expand = expansion(mult = c(0.05, 0.15))
-    ) +
-    scale_x_continuous(
-      breaks = scales::pretty_breaks()
-    ) +
-    labs(
-      title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
-      x = "Year",
-      y = "% of substances contributed by each collaboration",
-    ) +
-    theme_minimal() +
-    theme(
-      legend.position = "right",
-      legend.title = element_text(face = "bold", size = 10),
-      plot.title = element_text(face = "bold"),
-      # Adjust legend to handle many countries
-      legend.key.size = unit(0.5, "lines"),
-      legend.text = element_text(size = 7)
-    )
-  
-  # Convert to plotly with improved tooltip handling
-  ggplotly(plot, tooltip = "text") %>%
-    layout(
-      hoverlabel = list(
-        bgcolor = "white",
-        bordercolor = "black",
-        font = list(family = "Arial", size = 12)
-      ),
-      legend = list(
-        font = list(size = 9),
-        itemsizing = "constant"
-      )
-    ) %>%
-    config(displayModeBar = TRUE)
-}) %>% bindCache(input$country_select, input$years)
+
+    # Convert to plotly with improved tooltip handling
+    ggplotly(plot, tooltip = "text") %>%
+      layout(
+        hoverlabel = list(
+          bgcolor = "white",
+          bordercolor = "black",
+          font = list(family = "Arial", size = 12)
+        ),
+        legend = list(
+          font = list(size = 9),
+          itemsizing = "constant"
+        )
+      ) %>%
+      config(displayModeBar = TRUE)
+  }) %>% bindCache(input$country_select, input$years)
 
   # Añade esto al server después del gráfico
 
@@ -1232,256 +1217,256 @@ output$collab_plot <- renderPlotly({
   # Article Figures
   ##################
   # app.R (server)
-# FLAG-BASED VISUALIZATIONS
-  
-# GDP Growth Rate Plot
-output$gdpGrowthPlot <- renderPlotly({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Annual growth rate of the GDP")
-  
-  createArticleFlagPlot(
-    data = article_data,
-    source_title = "Annual growth rate of the GDP",
-    y_title = "GDP per capita growth (annual %)",
-    flag_size_range = c(1, 4)
-  )
-})
+  # FLAG-BASED VISUALIZATIONS
 
-# Researchers Plot
-output$researchersPlot <- renderPlotly({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Number of Researchers")
-  
-  createArticleFlagPlot(
-    data = article_data,
-    source_title = "Number of Researchers",
-    y_title = "Researchers",
-    flag_size_range = c(0.4, 4)
-  )
-})
+  # GDP Growth Rate Plot
+  output$gdpGrowthPlot <- renderPlotly({
+    req(active_tab() == "Article Figures 📰")
 
-# Country Participation Plot
-output$countryParticipationPlot <- renderPlotly({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Country participation in the CS")
-  
-  createArticleDotPlot(
-    data = article_data,
-    source_title = "Country participation in the CS",
-    y_title = "Number of new substances"
-    # flag_size_range = c(1, 4)
-  )
-})
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Annual growth rate of the GDP")
 
-# DOT-BASED VISUALIZATIONS
-
-# CS Expansion Plot
-output$csExpansionPlot <- renderPlotly({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Expansion of the CS")
-  
-  createArticleDotPlot(
-    data = article_data,
-    source_title = "Expansion of the CS",
-    y_title = "Number of new substances"
-  )
-})
-
-
-
-# Add these after your existing plot renderers
-
-# GDP Growth Table
-# GDP Growth Table in wide format
-output$gdpGrowthTable <- render_gt({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Annual growth rate of the GDP") %>%
-    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Pivot to wide format: countries as rows, years as columns
-    tidyr::pivot_wider(
-      id_cols = c(iso2c, country),
-      names_from = year,
-      values_from = percentage
-    ) %>%
-    dplyr::arrange(country)
-  
-  # Get list of year columns for formatting
-  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
-  
-  # Create GT table with wide format
-  tbl <- article_data %>%
-    gt() %>%
-    gt::fmt_flag(columns = iso2c) %>%
-    # Format all year columns
-    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 2) %>%
-    gt::tab_header(
-      title = "GDP Growth Rates by Country and Year",
-      subtitle = "Annual percentage change in GDP per capita"
-    ) %>%
-    gt::cols_label(
-      iso2c = "",
-      country = "Country"
-    ) %>%
-    gt::tab_style(
-      style = gt::cell_text(weight = "bold"),
-      locations = gt::cells_column_labels()
-    ) %>%
-    # Add custom labels for specific years
-    gt::cols_label(
-      "2007" = gt::md("2007 **Global Financial Crisis**"),
-      "2020" = gt::md("2020 **COVID**")
+    createArticleFlagPlot(
+      data = article_data,
+      source_title = "Annual growth rate of the GDP",
+      y_title = "GDP per capita growth (annual %)",
+      flag_size_range = c(1, 4)
     )
-  
-  # Highlight negative growth rates in red
-  for(year_col in year_cols) {
-    tbl <- tbl %>%
+  })
+
+  # Researchers Plot
+  output$researchersPlot <- renderPlotly({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Number of Researchers")
+
+    createArticleFlagPlot(
+      data = article_data,
+      source_title = "Number of Researchers",
+      y_title = "Researchers",
+      flag_size_range = c(0.4, 4)
+    )
+  })
+
+  # Country Participation Plot
+  output$countryParticipationPlot <- renderPlotly({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Country participation in the CS")
+
+    createArticleDotPlot(
+      data = article_data,
+      source_title = "Country participation in the CS",
+      y_title = "Number of new substances"
+      # flag_size_range = c(1, 4)
+    )
+  })
+
+  # DOT-BASED VISUALIZATIONS
+
+  # CS Expansion Plot
+  output$csExpansionPlot <- renderPlotly({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Expansion of the CS")
+
+    createArticleDotPlot(
+      data = article_data,
+      source_title = "Expansion of the CS",
+      y_title = "Number of new substances"
+    )
+  })
+
+
+
+  # Add these after your existing plot renderers
+
+  # GDP Growth Table
+  # GDP Growth Table in wide format
+  output$gdpGrowthTable <- render_gt({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Annual growth rate of the GDP") %>%
+      dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+      # Pivot to wide format: countries as rows, years as columns
+      tidyr::pivot_wider(
+        id_cols = c(iso2c, country),
+        names_from = year,
+        values_from = percentage
+      ) %>%
+      dplyr::arrange(country)
+
+    # Get list of year columns for formatting
+    year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
+
+    # Create GT table with wide format
+    tbl <- article_data %>%
+      gt() %>%
+      gt::fmt_flag(columns = iso2c) %>%
+      # Format all year columns
+      gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 2) %>%
+      gt::tab_header(
+        title = "GDP Growth Rates by Country and Year",
+        subtitle = "Annual percentage change in GDP per capita"
+      ) %>%
+      gt::cols_label(
+        iso2c = "",
+        country = "Country"
+      ) %>%
       gt::tab_style(
-        style = list(
-          gt::cell_fill(color = "#FFDDDD"),
-          gt::cell_text(color = "#AA0000")
-        ),
-        locations = gt::cells_body(
-          columns = tidyselect::all_of(year_col),
-          rows = article_data[[year_col]] < 0
-        )
+        style = gt::cell_text(weight = "bold"),
+        locations = gt::cells_column_labels()
+      ) %>%
+      # Add custom labels for specific years
+      gt::cols_label(
+        "2007" = gt::md("2007 **Global Financial Crisis**"),
+        "2020" = gt::md("2020 **COVID**")
       )
-  }
-  
-  tbl %>% gt::opt_row_striping()
-})
 
-# Researchers Table in wide format
-output$researchersTable <- render_gt({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Number of Researchers") %>%
-    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Pivot to wide format
-    tidyr::pivot_wider(
-      id_cols = c(iso2c, country),
-      names_from = year,
-      values_from = percentage
-    ) %>%
-    dplyr::arrange(country)
-  
-  # Get list of year columns for formatting
-  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
-  
-  article_data %>%
-    gt() %>%
-    gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(
-      columns = tidyselect::all_of(year_cols),
-      decimals = 1,
-      scale_by = 1 / 1000,
-      suffixing = c("k", "M", "B")
-    ) %>%
-    gt::tab_header(
-      title = "Number of researchers in research and development activities",
-      subtitle = "Number of Researchers by Country and Year"
-    ) %>%
-    gt::cols_label(
-      iso2c = "",
-      country = "Country"
-    ) %>%
-    gt::tab_style(
-      style = gt::cell_text(weight = "bold"),
-      locations = gt::cells_column_labels()
-    ) %>%
-    gt::opt_row_striping()
-})
+    # Highlight negative growth rates in red
+    for (year_col in year_cols) {
+      tbl <- tbl %>%
+        gt::tab_style(
+          style = list(
+            gt::cell_fill(color = "#FFDDDD"),
+            gt::cell_text(color = "#AA0000")
+          ),
+          locations = gt::cells_body(
+            columns = tidyselect::all_of(year_col),
+            rows = article_data[[year_col]] < 0
+          )
+        )
+    }
 
-# Country Participation Table in wide format
-output$countryParticipationTable <- render_gt({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Country participation in the CS") %>%
-    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Pivot to wide format and fill missing values with 0
-    tidyr::pivot_wider(
-      id_cols = c(iso2c, country),
-      names_from = year,
-      values_from = percentage,
-      values_fill = list(percentage = 0)
-    ) %>%
-    # Order alphabetically by country
-    dplyr::arrange(country)
-  
-  # Identify year columns
-  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
-  
-  article_data %>%
-    gt() %>%
-    gt::fmt_flag(columns = iso2c) %>%
-    # Format all year columns in percent format
-    gt::fmt_percent(
-      columns = tidyselect::all_of(year_cols),
-      decimals = 0,
-      scale_values = FALSE
-    ) %>%
-    gt::tab_header(
-      title = "Country Participation in Chemical Space",
-      subtitle = "Percentage of new substances contributed by country"
-    ) %>%
-    gt::cols_label(
-      iso2c = "",
-      country = "Country"
-    ) %>%
-    gt::tab_style(
-      style = gt::cell_text(weight = "bold"),
-      locations = gt::cells_column_labels()
-    ) %>%
-    gt::opt_row_striping()
-})
+    tbl %>% gt::opt_row_striping()
+  })
 
-# CS Expansion Table in wide format
-output$csExpansionTable <- render_gt({
-  req(active_tab() == "Article Figures 📰")
-  
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "Expansion of the CS") %>%
-    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
-    # Pivot to wide format
-    tidyr::pivot_wider(
-      id_cols = c(iso2c, country),
-      names_from = year,
-      values_from = percentage
-    ) %>%
-    dplyr::arrange(country)
-  
-  # Get list of year columns for formatting
-  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
-  
-  article_data %>%
-    gt() %>%
-    gt::fmt_flag(columns = iso2c) %>%
-    gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
-    gt::tab_header(
-      title = "Chemical Space Expansion Over Time",
-      subtitle = "Growth in number of substances"
-    ) %>%
-    gt::cols_label(
-      iso2c = "",
-      country = "Country"
-    ) %>%
-    gt::tab_style(
-      style = gt::cell_text(weight = "bold"),
-      locations = gt::cells_column_labels()
-    ) %>%
-    gt::opt_row_striping()
-})
+  # Researchers Table in wide format
+  output$researchersTable <- render_gt({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Number of Researchers") %>%
+      dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+      # Pivot to wide format
+      tidyr::pivot_wider(
+        id_cols = c(iso2c, country),
+        names_from = year,
+        values_from = percentage
+      ) %>%
+      dplyr::arrange(country)
+
+    # Get list of year columns for formatting
+    year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
+
+    article_data %>%
+      gt() %>%
+      gt::fmt_flag(columns = iso2c) %>%
+      gt::fmt_number(
+        columns = tidyselect::all_of(year_cols),
+        decimals = 1,
+        scale_by = 1 / 1000,
+        suffixing = c("k", "M", "B")
+      ) %>%
+      gt::tab_header(
+        title = "Number of researchers in research and development activities",
+        subtitle = "Number of Researchers by Country and Year"
+      ) %>%
+      gt::cols_label(
+        iso2c = "",
+        country = "Country"
+      ) %>%
+      gt::tab_style(
+        style = gt::cell_text(weight = "bold"),
+        locations = gt::cells_column_labels()
+      ) %>%
+      gt::opt_row_striping()
+  })
+
+  # Country Participation Table in wide format
+  output$countryParticipationTable <- render_gt({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Country participation in the CS") %>%
+      dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+      # Pivot to wide format and fill missing values with 0
+      tidyr::pivot_wider(
+        id_cols = c(iso2c, country),
+        names_from = year,
+        values_from = percentage,
+        values_fill = list(percentage = 0)
+      ) %>%
+      # Order alphabetically by country
+      dplyr::arrange(country)
+
+    # Identify year columns
+    year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
+
+    article_data %>%
+      gt() %>%
+      gt::fmt_flag(columns = iso2c) %>%
+      # Format all year columns in percent format
+      gt::fmt_percent(
+        columns = tidyselect::all_of(year_cols),
+        decimals = 0,
+        scale_values = FALSE
+      ) %>%
+      gt::tab_header(
+        title = "Country Participation in Chemical Space",
+        subtitle = "Percentage of new substances contributed by country"
+      ) %>%
+      gt::cols_label(
+        iso2c = "",
+        country = "Country"
+      ) %>%
+      gt::tab_style(
+        style = gt::cell_text(weight = "bold"),
+        locations = gt::cells_column_labels()
+      ) %>%
+      gt::opt_row_striping()
+  })
+
+  # CS Expansion Table in wide format
+  output$csExpansionTable <- render_gt({
+    req(active_tab() == "Article Figures 📰")
+
+    article_data <- figure_article() %>%
+      dplyr::filter(source == "Expansion of the CS") %>%
+      dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
+      # Pivot to wide format
+      tidyr::pivot_wider(
+        id_cols = c(iso2c, country),
+        names_from = year,
+        values_from = percentage
+      ) %>%
+      dplyr::arrange(country)
+
+    # Get list of year columns for formatting
+    year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
+
+    article_data %>%
+      gt() %>%
+      gt::fmt_flag(columns = iso2c) %>%
+      gt::fmt_number(columns = tidyselect::all_of(year_cols), decimals = 0) %>%
+      gt::tab_header(
+        title = "Chemical Space Expansion Over Time",
+        subtitle = "Growth in number of substances"
+      ) %>%
+      gt::cols_label(
+        iso2c = "",
+        country = "Country"
+      ) %>%
+      gt::tab_style(
+        style = gt::cell_text(weight = "bold"),
+        locations = gt::cells_column_labels()
+      ) %>%
+      gt::opt_row_striping()
+  })
 
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

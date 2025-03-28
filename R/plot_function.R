@@ -29,8 +29,8 @@ createChemicalSpacePlot <- function(data, end_labels_data,
                                     group_var = "country",
                                     region_var = "region",
                                     # flag_png_col = "flags",   # column with PNG flag URLs
-                                    title = "National Contributions to Chemical Space",
-                                    y_label = "% of New Substances",
+                                    # title = "National Contributions to Chemical Space",
+                                    y_label = "% of New Substances contributed by each country",
                                     x_label = NULL) {
   # Create a named vector mapping each country to its hex color
   country_colors <- unique(data[, c(group_var, color_var)])
@@ -84,12 +84,12 @@ createChemicalSpacePlot <- function(data, end_labels_data,
       legend.direction = "horizontal",
       legend.text = element_text(size = 7, face = "bold"),
       legend.title = element_blank(),
-      plot.title = element_text(size = 9, face = "bold"),
+      # plot.title = element_text(size = 9, face = "bold"),
       axis.title = element_text(size = 9),
       axis.title.x = if (is.null(x_label)) element_blank() else element_text()
     ) +
     labs(
-      title = title,
+      # title = title,
       y = y_label,
       x = if (!is.null(x_label)) x_label else NULL
     )
