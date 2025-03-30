@@ -200,9 +200,9 @@ createStaticMapPlot <- function(df,
     labs(title = main_title) +
     scale_x_continuous(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
-    theme_void() +
+    theme_void() +  
     # coord_fixed(ratio = 1.3) +
-    coord_map(projection = "mollweide", xlim = c(-180, 180), ylim = c(-90, 90)) +
+    # coord_map(projection = "mollweide", xlim = c(-180, 180), ylim = c(-90, 90)) +
     theme(
       plot.title = element_text(hjust = 0.5, size = 14),
       legend.position = "bottom",
@@ -246,133 +246,133 @@ createStaticMapPlot <- function(df,
 # Create a custom variant of createStaticMapPlot for collaborations
 # Add this function to your R/plot_function.R file
 # Add this function to your R/plot_function.R file
-createCollabMapPlot <- function(df,
-                                world_df,
-                                map_key = "country",
-                                fill_var = "value",
-                                fill_label = "Collaboration Strength",
-                                main_title = "") {
+# createCollabMapPlot <- function(df,
+#                                 world_df,
+#                                 map_key = "country",
+#                                 fill_var = "value",
+#                                 fill_label = "Collaboration Strength",
+#                                 main_title = "") {
 
-  # Get max value for scaling (round up to nearest 5%)
-  max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
-  ceiling_val <- ceiling(max_val / 5) * 5
+#   # Get max value for scaling (round up to nearest 5%)
+#   max_val <- ifelse(length(df[[fill_var]]) > 0, max(df[[fill_var]], na.rm = TRUE), 0)
+#   ceiling_val <- ceiling(max_val / 5) * 5
 
-  # Create nice round breaks based on data range
-  if (ceiling_val <= 5) {
-    breaks <- seq(0, max(5, ceiling_val), by = 1)
-    label_fmt <- "%.1f-%.1f%%"
-  } else if (ceiling_val <= 20) {
-    breaks <- seq(0, ceiling_val, by = 2.5)
-    label_fmt <- "%.1f-%.1f%%"
-  } else {
-    breaks <- seq(0, ceiling_val, by = 5)
-    label_fmt <- "%.0f-%.0f%%"
-  }
+#   # Create nice round breaks based on data range
+#   if (ceiling_val <= 5) {
+#     breaks <- seq(0, max(5, ceiling_val), by = 1)
+#     label_fmt <- "%.1f-%.1f%%"
+#   } else if (ceiling_val <= 20) {
+#     breaks <- seq(0, ceiling_val, by = 2.5)
+#     label_fmt <- "%.1f-%.1f%%"
+#   } else {
+#     breaks <- seq(0, ceiling_val, by = 5)
+#     label_fmt <- "%.0f-%.0f%%"
+#   }
 
-  # Create labels showing ranges
-  labels <- character(length(breaks) - 1)
-  for (i in 1:(length(breaks) - 1)) {
-    labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
-  }
+#   # Create labels showing ranges
+#   labels <- character(length(breaks) - 1)
+#   for (i in 1:(length(breaks) - 1)) {
+#     labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
+#   }
 
-  # Merge data with world map
-  plot_data <- world_df %>%
-    left_join(df, by = "country") %>%
-    mutate(
-      formatted_value = ifelse(!is.na(.data[[fill_var]]),
-                              sprintf("%.2f%%", .data[[fill_var]]),
-                              "No data for current selection"),
-      # Create discrete fill variable using our custom breaks
-      fill_discrete = cut(
-        .data[[fill_var]],
-        breaks = breaks,
-        labels = labels,
-        include.lowest = TRUE
-      ),
-      # Format collaboration list for better readability
-      formatted_collab_list = ifelse(!is.na(collab_list),
-                                    gsub(",", " & ", collab_list),
-                                    NA_character_),
-      # Enhanced tooltip with better explanation of collaboration information
-      tooltip_text = paste(
-        "<b>", country, "</b><br>",
-        "<b>Collaboration Strength:</b> ", formatted_value, "<br>",
-        "<i>This represents the country's average contribution to the chemical space<br>",
-        "through international collaborations over the selected time period.</i><br>",
-        ifelse(!is.na(best_year) & !is.na(worst_year),
-               paste0(
-                 "<b>Strongest Year:</b> ", best_year, " (", 
-                 sprintf("%.2f%%", best_year_value), ")<br>",
-                 "<b>Weakest Year:</b> ", worst_year, " (", 
-                 sprintf("%.2f%%", worst_year_value), ")"
-               ),
-               ""),
-        ifelse(!is.na(formatted_collab_list),
-               paste0("<br><b>Main Collaborations:</b><br>• ", 
-                      gsub("; ", "<br>• ", formatted_collab_list)),
-               "")
-      )
-    )
+#   # Merge data with world map
+#   plot_data <- world_df %>%
+#     left_join(df, by = "country") %>%
+#     mutate(
+#       formatted_value = ifelse(!is.na(.data[[fill_var]]),
+#                               sprintf("%.2f%%", .data[[fill_var]]),
+#                               "No data for current selection"),
+#       # Create discrete fill variable using our custom breaks
+#       fill_discrete = cut(
+#         .data[[fill_var]],
+#         breaks = breaks,
+#         labels = labels,
+#         include.lowest = TRUE
+#       ),
+#       # Format collaboration list for better readability
+#       formatted_collab_list = ifelse(!is.na(collab_list),
+#                                     gsub(",", " & ", collab_list),
+#                                     NA_character_),
+#       # Enhanced tooltip with better explanation of collaboration information
+#       tooltip_text = paste(
+#         "<b>", country, "</b><br>",
+#         "<b>Collaboration Strength:</b> ", formatted_value, "<br>",
+#         "<i>This represents the country's average contribution to the chemical space<br>",
+#         "through international collaborations over the selected time period.</i><br>",
+#         ifelse(!is.na(best_year) & !is.na(worst_year),
+#                paste0(
+#                  "<b>Strongest Year:</b> ", best_year, " (", 
+#                  sprintf("%.2f%%", best_year_value), ")<br>",
+#                  "<b>Weakest Year:</b> ", worst_year, " (", 
+#                  sprintf("%.2f%%", worst_year_value), ")"
+#                ),
+#                ""),
+#         ifelse(!is.na(formatted_collab_list),
+#                paste0("<br><b>Main Collaborations:</b><br>• ", 
+#                       gsub("; ", "<br>• ", formatted_collab_list)),
+#                "")
+#       )
+#     )
 
-  # Create plot with discrete fill
-  p <- ggplot(plot_data, aes(
-    lng, lat,
-    group = group,
-    fill = fill_discrete, # Use the discrete fill variable
-    text = tooltip_text
-  )) +
-    geom_polygon(color = "white", size = 0.01) +
-    # Use a discrete color scale with explicit NA handling
-    scale_fill_brewer(
-      palette = "Spectral",
-      direction = -1,
-      name = fill_label,
-      na.value = "#EEEEEE", # Light gray
-      na.translate = TRUE,
-      labels = function(x) {
-        ifelse(is.na(x), "No data for current selection", as.character(x))
-      },
-      drop = FALSE
-    ) +
-    labs(title = main_title) +
-    theme_void() +
-    coord_fixed(ratio = 1.3) +
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 14),
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      legend.title = element_text(size = 8)
-    )
+#   # Create plot with discrete fill
+#   p <- ggplot(plot_data, aes(
+#     lng, lat,
+#     group = group,
+#     fill = fill_discrete, # Use the discrete fill variable
+#     text = tooltip_text
+#   )) +
+#     geom_polygon(color = "white", size = 0.01) +
+#     # Use a discrete color scale with explicit NA handling
+#     scale_fill_brewer(
+#       palette = "Spectral",
+#       direction = -1,
+#       name = fill_label,
+#       na.value = "#EEEEEE", # Light gray
+#       na.translate = TRUE,
+#       labels = function(x) {
+#         ifelse(is.na(x), "No data for current selection", as.character(x))
+#       },
+#       drop = FALSE
+#     ) +
+#     labs(title = main_title) +
+#     theme_void() +
+#     coord_fixed(ratio = 1.3) +
+#     theme(
+#       plot.title = element_text(hjust = 0.5, size = 14),
+#       legend.position = "bottom",
+#       legend.direction = "horizontal",
+#       legend.title = element_text(size = 8)
+#     )
 
-  # Convert to plotly with custom tooltip
-  plotly::ggplotly(p, tooltip = "text") %>%
-    config(
-      displayModeBar = TRUE,
-      displaylogo = FALSE,
-      toImageButtonOptions = list(
-        format = 'svg',
-        filename = 'bermudez-montana_etal_2025_collab',
-        height = 500,
-        width = 700,
-        scale = 1
-      )
-    ) %>%
-    layout(
-      legend = list(
-        orientation = "h",
-        y = -0.15,
-        yanchor = "top",
-        x = 0.5,
-        xanchor = "center"
-      ),
-      hoverlabel = list(
-        bgcolor = "white",
-        bordercolor = "black",
-        font = list(size = 12)
-      ),
-      margin = list(b = 80, l = 40, r = 40, t = 40)
-    )
-}
+#   # Convert to plotly with custom tooltip
+#   plotly::ggplotly(p, tooltip = "text") %>%
+#     config(
+#       displayModeBar = TRUE,
+#       displaylogo = FALSE,
+#       toImageButtonOptions = list(
+#         format = 'svg',
+#         filename = 'bermudez-montana_etal_2025_collab',
+#         height = 500,
+#         width = 700,
+#         scale = 1
+#       )
+#     ) %>%
+#     layout(
+#       legend = list(
+#         orientation = "h",
+#         y = -0.15,
+#         yanchor = "top",
+#         x = 0.5,
+#         xanchor = "center"
+#       ),
+#       hoverlabel = list(
+#         bgcolor = "white",
+#         bordercolor = "black",
+#         font = list(size = 12)
+#       ),
+#       margin = list(b = 80, l = 40, r = 40, t = 40)
+#     )
+# }
 
 
 ##########
@@ -401,12 +401,12 @@ createTrendPlot <- function(data, end_labels_data,
         group = .data[[group_var]],
         text = paste0(
           "<b>Country:</b> ", .data[[group_var]],
-          "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.01, scale = 1),
+          "<br><b>Percentage:</b> ", scales::percent(.data[[y_var]], accuracy = 0.1, scale = 1),
           "<br><b>Year:</b> ", .data[[x_var]],
           "<br><b>Region:</b> ", .data[[region_var]]
         ))
   ) +
-    geom_line(alpha = 0.85) +
+    geom_line(aes(linetype = country), alpha = 0.5) +
     geom_point(
       aes(size = .data[[y_var]]),
       shape = 16,
@@ -417,15 +417,16 @@ createTrendPlot <- function(data, end_labels_data,
       data = end_labels_data,
       aes(
         label = .data[[group_var]],
-        x = .data[[x_var]]
-        # y = .data[[y_var]] + 0.4
+        x = .data[[x_var]] -1
+        # y = .data[[y_var]]
       ),
-      # hjust = max_year + 3,
-      nudge_x = -1.3,
-      vjust = 1,
-      angle = 45,
-      size = 3,
-      alpha = 0.7,
+      hjust = 5,
+      vjust = -2,
+      position = "jitter",
+      # nudge_x = -1.3,
+      # vjust = 1,
+      # angle = 45,
+      size = 2.5,
       check_overlap = TRUE,
       show.legend = FALSE
     ) +
@@ -436,10 +437,7 @@ createTrendPlot <- function(data, end_labels_data,
       expand = expansion(mult = c(0.05, 0.15))
     ) +
     theme(
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      legend.text = element_text(size = 7, face = "bold"),
-      legend.title = element_blank(),
+      legend.position = "none",
       plot.title = element_text(size = 9, face = "bold"),
       axis.title = element_text(size = 9),
       axis.title.x = if (is.null(x_label)) element_blank() else element_text()
@@ -456,17 +454,7 @@ createTrendPlot <- function(data, end_labels_data,
       displayModeBar = TRUE,
       displaylogo = FALSE
     ) %>%
-    # UNCOMMENT THESE LINES - they're needed for proper layout
-    layout(
-      legend = list(
-        orientation = "h",
-        y = -0.15,
-        yanchor = "top",
-        x = 0.5,
-        xanchor = "center"
-      ),
-      margin = list(b = 80, l = 40, r = 40, t = 40)
-    )
+    plotly::toWebGL()
 
   return(plotly_obj)
 }
@@ -852,7 +840,7 @@ createArticleDotPlot <- function(data, source_title, y_title) {
   layout_args$annotations <- end_annotations
   
   # Apply layout
-  p <- p %>% layout(layout_args)
+  # p <- p %>% layout(layout_args)
   
   return(p)
 }

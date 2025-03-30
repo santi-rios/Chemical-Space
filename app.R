@@ -145,7 +145,7 @@ ui <- page_navbar(
             "Map📌",
             tooltip(
               bsicons::bs_icon("question-circle"),
-              "Interactive map showing country contributions...",
+              "Double click on the legend to filter isolate categories. Single click to isolate a category.",
               placement = "left"
             ),
             withSpinner(plotlyOutput("mapPlot"), color = "#024173"),
@@ -160,10 +160,10 @@ ui <- page_navbar(
             )
           ),
           nav_panel(
-            "Substance Types🧪",
+            "Trends in subspaces🧪",
             tooltip(
               bsicons::bs_icon("question-circle"),
-              "Chemical type distribution over time...",
+              "Chemical Space was divided into three subspaces: Organic, Organometallic, and Rare-Earths. The plots show the distribution of these subspaces over time.",
               placement = "left"
             ),
             fluidRow(
@@ -222,7 +222,7 @@ ui <- page_navbar(
             "Trends in CS📈",
             tooltip(
               bsicons::bs_icon("question-circle"),
-              "China's Chemical Revolution: From 1996 to 2022...",
+              "Top 25 collaborations are available in this panel. For more details, please check the Explore All Collaborations 🤝 tab.",
               placement = "left"
             ),
             withSpinner(plotlyOutput("collabTrendPlot", width = "100%"), color = "#024173"),
@@ -236,29 +236,29 @@ ui <- page_navbar(
               )
             )
           ),
+          # nav_panel(
+          #   "Map📌",
+          #   tooltip(
+          #     bsicons::bs_icon("question-circle"),
+          #     "Double click on the legend to filter isolate categories. Single click to isolate a category.",
+          #     placement = "left"
+          #   ),
+          #   withSpinner(plotlyOutput("mapPlotCollab"), color = "#024173"),
+          #   card_footer(
+          #     "Source: China's rise in the chemical space and the decline of US influence.",
+          #     popover(
+          #       a("Learn more", href = "#"),
+          #       markdown(
+          #         "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+          #       )
+          #     )
+          #   )
+          # ),
           nav_panel(
-            "Map📌",
+            "Trends in subspaces🧪",
             tooltip(
               bsicons::bs_icon("question-circle"),
-              "Interactive map showing country contributions...",
-              placement = "left"
-            ),
-            withSpinner(plotlyOutput("mapPlotCollab"), color = "#024173"),
-            card_footer(
-              "Source: China's rise in the chemical space and the decline of US influence.",
-              popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-                )
-              )
-            )
-          ),
-          nav_panel(
-            "Substance Types🧪",
-            tooltip(
-              bsicons::bs_icon("question-circle"),
-              "Chemical type distribution over time...",
+              "Chemical Space was divided into three subspaces: Organic, Organometallic, and Rare-Earths. The plots show the distribution of these subspaces over time.",
               placement = "left"
             ),
             fluidRow(
@@ -292,7 +292,7 @@ ui <- page_navbar(
   # 2.1) COLLABORATION TRENDS b,
   # ------------------------------,
   nav_panel(
-    "Collaboration Trends B 🤝",
+    "Explore All Collaborations 🤝",
     fluidPage(
       fluidRow(
         column(
@@ -312,11 +312,11 @@ ui <- page_navbar(
         navset_card_tab(
           nav_panel(
             "Explore All collaborations",
-            tooltip(
-              bsicons::bs_icon("question-circle"),
-              "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.",
-              placement = "left"
-            ),
+            # tooltip(
+            #   bsicons::bs_icon("question-circle"),
+            #   "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.",
+            #   placement = "left"
+            # ),
             uiOutput("conditionalCollabPlot"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
@@ -331,25 +331,14 @@ ui <- page_navbar(
         )
       ),
       card(
-        navset_card_tab(
-          nav_panel(
-            "Top Contributors 🏆",
-            tooltip(
-              bsicons::bs_icon("question-circle"),
-              "Top contributors by year...",
-              placement = "left"
-            ),
-            gt_output("top_contributors_tableB"),
-            card_footer(
-              "Source: China's rise in the chemical space and the decline of US influence.",
-              popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-                )
-              )
-            )
+        card_header(
+          div(
+            class = "d-flex align-items-center",
+            h4("Top Historical Contributors 🏆", class = "mb-0 me-2")
           )
+        ),
+        card_body(
+          gt_output("top_contributors_tableB")
         )
       )
     )
@@ -361,7 +350,7 @@ ui <- page_navbar(
     "Article Figures 📰",
     navset_card_tab(
       nav_panel(
-        "Country Participation",
+        "Country Participation in CS",
         plotlyOutput("countryParticipationPlot", height = "400px"),
         br(),
         br(),
@@ -403,68 +392,68 @@ ui <- page_navbar(
         gt_output("csExpansionTable")
       )
     )
-  ),
+  )
   # # ------------------------------,
   # 5) KNOW MORE,
   # ------------------------------,
-  nav_panel(
-    "Know more about the research 🥼",
-    fluidPage(
-      fluidRow(
-        column(
-          width = 12,
-          h3("Chinas rise in the chemical space and the decline of US influence"),
-          p("This dashboard is based on the study China's rise in the chemical space and the decline of US influence. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
-          p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
-          p("Useful links for more information:"),
-          tags$ul(
-            tags$li(
-              tags$a(
-                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-                target = "_blank",
-                "Access the full preprint 📄"
-              )
-            ),
-            tags$li(
-              tags$a(
-                href = "https://github.com/santi-rios/Chemical-Space/wiki",
-                target = "_blank",
-                "App wiki and documentation 📖"
-              )
-            ),
-            tags$li(
-              tags$a(
-                href = "https://github.com/santi-rios/Chemical-Space",
-                target = "_blank",
-                "Code Repository 📦"
-              )
-            )
-          )
-        )
-      ),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      br(),
-      hr(),
-      fluidRow(
-        column(
-          width = 12,
-          tags$a(
-            href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-            target = "_blank",
-            tags$img(
-              src = "logos_footer.png",
-              class = "img-fluid",
-              style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
-            )
-          )
-        )
-      )
-    )
-  )
+  # nav_panel(
+  #   "Know more about the research 🥼",
+  #   fluidPage(
+  #     fluidRow(
+  #       column(
+  #         width = 12,
+  #         h3("Chinas rise in the chemical space and the decline of US influence"),
+  #         p("This dashboard is based on the study China's rise in the chemical space and the decline of US influence. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
+  #         p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
+  #         p("Useful links for more information:"),
+  #         tags$ul(
+  #           tags$li(
+  #             tags$a(
+  #               href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+  #               target = "_blank",
+  #               "Access the full preprint 📄"
+  #             )
+  #           ),
+  #           tags$li(
+  #             tags$a(
+  #               href = "https://github.com/santi-rios/Chemical-Space/wiki",
+  #               target = "_blank",
+  #               "App wiki and documentation 📖"
+  #             )
+  #           ),
+  #           tags$li(
+  #             tags$a(
+  #               href = "https://github.com/santi-rios/Chemical-Space",
+  #               target = "_blank",
+  #               "Code Repository 📦"
+  #             )
+  #           )
+  #         )
+  #       )
+  #     ),
+  #     br(),
+  #     br(),
+  #     br(),
+  #     br(),
+  #     br(),
+  #     br(),
+  #     hr(),
+  #     fluidRow(
+  #       column(
+  #         width = 12,
+  #         tags$a(
+  #           href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+  #           target = "_blank",
+  #           tags$img(
+  #             src = "logos_footer.png",
+  #             class = "img-fluid",
+  #             style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
+  #           )
+  #         )
+  #       )
+  #     )
+  #   )
+  # )
 )
 
 
@@ -523,7 +512,7 @@ server <- function(input, output, session) {
           "FR-RU"
         )) %>%
         dplyr::collect()
-    } else if (active_tab() == "Collaboration Trends B 🤝") {
+    } else if (active_tab() == "Explore All Collaborations 🤝") {
       collab_data()
     } else if (active_tab() == "Article Figures 📰") {
       figure_article()
@@ -686,6 +675,29 @@ server <- function(input, output, session) {
     updateCheckboxGroupInput(session, "countries", selected = all_countries())
   })
 
+  # Add this observer to handle tab switching
+  observe({
+    # When the active tab changes...
+    if (active_tab() == "Collaboration Trends 🤝") {
+      # Reset country selection when switching to Collaboration tab
+      # This ensures we start fresh with appropriate countries for this view
+      user_cleared <- FALSE
+      
+      # Auto-select top countries for the new tab
+      top_countries_current_sel <- top_countries()
+      updateCheckboxGroupInput(session, "countries", selected = top_countries_current_sel)
+      
+      # If a region was selected in the previous tab, maintain it if valid
+      # Otherwise reset to "All"
+      if (!is.null(input$region)) {
+        existing_regions <- all_regions()
+        if (!(input$region %in% existing_regions)) {
+          updateSelectizeInput(session, "region", selected = "All")
+        }
+      }
+    }
+  }) %>% bindEvent(active_tab())
+
   observe({
     if (active_tab() == "National Trends 📈") {
       showNotification("Hover over the plot to see more details.",
@@ -697,7 +709,7 @@ server <- function(input, output, session) {
         type = "error",
         duration = 4
       )
-    } else if (active_tab() == "Collaboration Trends B 🤝") {
+    } else if (active_tab() == "Explore All Collaborations 🤝") {
       showNotification("Start searching for a country at the top to see its collaborations. Please be patient as we are loading the data.",
         type = "warning",
         duration = 5
@@ -725,7 +737,7 @@ server <- function(input, output, session) {
   })
 
   observe({
-    if (active_tab() %in% c("Collaboration Trends B 🤝", "Article Figures 📰", "Know more about the research 🥼")) {
+    if (active_tab() %in% c("Explore All Collaborations 🤝", "Article Figures 📰", "Know more about the research 🥼")) {
       accordion_panel_close(
         id = "countryAccordion",
         "countriesPanel" # Remove "panel =" - just pass the value directly
@@ -764,7 +776,7 @@ server <- function(input, output, session) {
   # Render the top contributors table with flags
   # Render the top contributors table with flags
   output$top_contributors_table <- render_gt({
-    req(top_contributors_by_year())
+    req(top_contributors_by_year(), active_tab() == "National Trends 📈")
     req(nrow(top_contributors_by_year()) > 0)
 
     top_contributors_by_year() %>%
@@ -869,7 +881,8 @@ server <- function(input, output, session) {
       min_year = min_year,
       max_year = max_year,
       region_var = "country",
-      end_labels_data = end_labels_data
+      end_labels_data = end_labels_data,
+      y_label = "% of New Substances contributed by collaborations",
     )
   }) %>%
     bindCache(active_tab(), filtered_data())
@@ -911,78 +924,78 @@ server <- function(input, output, session) {
     bindCache(active_tab(), filtered_data())
 
 
-  output$mapPlotCollab <- renderPlotly({
-    req(active_tab() == "Collaboration Trends 🤝")
+  # output$mapPlotCollab <- renderPlotly({
+  #   req(active_tab() == "Collaboration Trends 🤝")
 
-    # Filter data for collaboration tab
-    data <- filtered_data() %>%
-      filter(chemical == "All")
+  #   # Filter data for collaboration tab
+  #   data <- filtered_data() %>%
+  #     filter(chemical == "All")
 
-    # IMPORTANT: Check if there's data after filtering
-    req(nrow(data) > 0)
+  #   # IMPORTANT: Check if there's data after filtering
+  #   req(nrow(data) > 0)
 
-    # Process the collaboration data by splitting country pairs
-    map_data <- data %>%
-      # Step 1: Get yearly averages by collaboration pair
-      dplyr::group_by(country, year) %>%
-      dplyr::summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
-      # Step 2: Split the country codes and expand the data
-      mutate(
-        country_parts = strsplit(as.character(country), ","),
-        country1 = sapply(country_parts, function(x) if (length(x) > 0) x[1] else NA_character_),
-        country2 = sapply(country_parts, function(x) if (length(x) > 1) x[2] else NA_character_)
-      ) %>%
-      # Filter out any rows where splitting didn't work properly
-      filter(!is.na(country1), !is.na(country2)) %>%
-      # Step 3: Create separate rows for each country in the pair
-      tidyr::pivot_longer(
-        cols = c(country1, country2),
-        names_to = "country_position",
-        values_to = "individual_country"
-      ) %>%
-      # Step 4: Group by individual country and year to get yearly stats
-      dplyr::group_by(individual_country, year) %>%
-      dplyr::summarise(
-        value = sum(yearly_avg, na.rm = TRUE),
-        # Store the specific collaboration pairs for this country by year
-        collab_pairs = paste(sort(unique(country)), collapse = "; "),
-        .groups = "drop"
-      ) %>%
-      # Step 5: Find best/worst years for each country with their values
-      dplyr::group_by(individual_country) %>%
-      dplyr::mutate(
-        avg_value = mean(value, na.rm = TRUE),
-        max_idx = which.max(value),
-        min_idx = which.min(value),
-      ) %>%
-      dplyr::summarise(
-        value = mean(value, na.rm = TRUE),
-        best_year = year[max_idx][1], # Take first if multiple ties
-        worst_year = year[min_idx][1],
-        best_year_value = value[max_idx][1],
-        worst_year_value = value[min_idx][1],
-        # Create a formatted list of countries this country collaborates with
-        collab_list = paste(unique(unlist(strsplit(
-          paste(unique(collab_pairs), collapse = "; "),
-          "; "
-        ))), collapse = "; "),
-        .groups = "drop"
-      ) %>%
-      # Step 6: Rename to match the expected format for the plot function
-      rename(country = individual_country) %>%
-      # Add a placeholder for region as it might be needed
-      mutate(region = NA_character_)
+  #   # Process the collaboration data by splitting country pairs
+  #   map_data <- data %>%
+  #     # Step 1: Get yearly averages by collaboration pair
+  #     dplyr::group_by(country, year) %>%
+  #     dplyr::summarise(yearly_avg = mean(percentage, na.rm = TRUE), .groups = "drop") %>%
+  #     # Step 2: Split the country codes and expand the data
+  #     mutate(
+  #       country_parts = strsplit(as.character(country), ","),
+  #       country1 = sapply(country_parts, function(x) if (length(x) > 0) x[1] else NA_character_),
+  #       country2 = sapply(country_parts, function(x) if (length(x) > 1) x[2] else NA_character_)
+  #     ) %>%
+  #     # Filter out any rows where splitting didn't work properly
+  #     filter(!is.na(country1), !is.na(country2)) %>%
+  #     # Step 3: Create separate rows for each country in the pair
+  #     tidyr::pivot_longer(
+  #       cols = c(country1, country2),
+  #       names_to = "country_position",
+  #       values_to = "individual_country"
+  #     ) %>%
+  #     # Step 4: Group by individual country and year to get yearly stats
+  #     dplyr::group_by(individual_country, year) %>%
+  #     dplyr::summarise(
+  #       value = sum(yearly_avg, na.rm = TRUE),
+  #       # Store the specific collaboration pairs for this country by year
+  #       collab_pairs = paste(sort(unique(country)), collapse = "; "),
+  #       .groups = "drop"
+  #     ) %>%
+  #     # Step 5: Find best/worst years for each country with their values
+  #     dplyr::group_by(individual_country) %>%
+  #     dplyr::mutate(
+  #       avg_value = mean(value, na.rm = TRUE),
+  #       max_idx = which.max(value),
+  #       min_idx = which.min(value),
+  #     ) %>%
+  #     dplyr::summarise(
+  #       value = mean(value, na.rm = TRUE),
+  #       best_year = year[max_idx][1], # Take first if multiple ties
+  #       worst_year = year[min_idx][1],
+  #       best_year_value = value[max_idx][1],
+  #       worst_year_value = value[min_idx][1],
+  #       # Create a formatted list of countries this country collaborates with
+  #       collab_list = paste(unique(unlist(strsplit(
+  #         paste(unique(collab_pairs), collapse = "; "),
+  #         "; "
+  #       ))), collapse = "; "),
+  #       .groups = "drop"
+  #     ) %>%
+  #     # Step 6: Rename to match the expected format for the plot function
+  #     rename(country = individual_country) %>%
+  #     # Add a placeholder for region as it might be needed
+  #     mutate(region = NA_character_)
 
-    # Generate the map plot
-    createCollabMapPlot(
-      df = map_data,
-      world_df = world_data,
-      fill_var = "value",
-      fill_label = "Average Collaboration Strength (%)",
-      main_title = "International Research Collaboration Network"
-    )
-  }) %>%
-    bindCache(active_tab(), filtered_data())
+  #   # Generate the map plot
+  #   createCollabMapPlot(
+  #     df = map_data,
+  #     world_df = world_data,
+  #     fill_var = "value",
+  #     fill_label = "Average Collaboration Strength (%)",
+  #     main_title = "International Research Collaboration Network"
+  #   )
+  # }) %>%
+  #   bindCache(active_tab(), filtered_data())
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Substance Types
@@ -1019,7 +1032,8 @@ server <- function(input, output, session) {
       min_year = min_year,
       max_year = max_year,
       end_labels_data = end_labels_data,
-      title = paste("Contribution to", input$chemicalSelector)
+      title = paste("Contribution to", input$chemicalSelector),
+      x_label = ""
     )
   }) %>%
     bindCache(active_tab(), input$chemicalSelector, filtered_data())
@@ -1055,7 +1069,8 @@ server <- function(input, output, session) {
       min_year = min_year,
       max_year = max_year,
       end_labels_data = end_labels_data,
-      title = paste("Contribution to", input$chemicalSelectorcollab)
+      title = paste("Contribution to", input$chemicalSelectorcollab),
+      x_label = ""
     )
   }) %>%
     bindCache(active_tab(), input$chemicalSelectorcollab, filtered_data())
@@ -1085,7 +1100,7 @@ server <- function(input, output, session) {
 
   # Reactive for filtered collaboration data
   filtered_collab <- reactive({
-    req(active_tab() == "Collaboration Trends B 🤝", input$country_select, input$years)
+    req(active_tab() == "Explore All Collaborations 🤝", input$country_select, input$years)
 
     ds %>%
       dplyr::filter(
@@ -1299,6 +1314,7 @@ server <- function(input, output, session) {
       source_title = "Expansion of the CS",
       y_title = "Number of new substances"
     )
+
   })
 
 
