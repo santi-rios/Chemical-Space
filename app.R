@@ -296,7 +296,7 @@ ui <- page_navbar(
     fluidPage(
       fluidRow(
         column(
-          width = 12,
+          width = 8,
           selectizeInput(
             "country_select", "Select Country:",
             # selected = NULL,
@@ -304,6 +304,27 @@ ui <- page_navbar(
             options = list(
               placeholder = "Search for a country and see its collaborations",
               onInitialize = I('function() { this.setValue(""); }')
+            )
+          )
+        ),
+        column(
+          width = 4,
+          selectInput(
+            "collab_filter", "Data Amount:",
+            choices = c(
+              "Top 25% (Fast)" = 0.25,
+              "Top 50% (Medium)" = 0.5, 
+              "Top 75% (Slower)" = 0.75,
+              "All Data (Slowest)" = 1
+            ),
+            selected = 0.25
+          ),
+          conditionalPanel(
+            condition = "input.collab_filter > 0.25",
+            div(
+              style = "color: #d9534f; font-size: 12px; margin-top: -15px;",
+              icon("exclamation-triangle"), 
+              "Showing more data will increase loading time"
             )
           )
         )
@@ -1099,123 +1120,243 @@ server <- function(input, output, session) {
   })
 
   # Reactive for filtered collaboration data
+  # Reactive for filtered collaboration data
+  # Reactive for filtered collaboration data
   filtered_collab <- reactive({
     req(active_tab() == "Explore All Collaborations 🤝", input$country_select, input$years)
-
-    ds %>%
-      dplyr::filter(
-        is_collab == TRUE,
-        year >= input$years[1],
-        year <= input$years[2]
-      ) %>%
-      # Incluir todas las columnas necesarias
-      dplyr::select(iso2c, year, percentage, country) %>% # <- ¡NUEVO!
-      dplyr::filter(grepl(input$country_select, iso2c)) %>%
-      dplyr::collect() %>%
-      mutate(
-        partners = strsplit(iso2c, "-"),
-        # Modificado para manejar múltiples partners
-        partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
-      ) %>%
-      tidyr::unnest(partner) %>% # Convertir lista en filas
-      # Agregar nombre del país partner usando tu metadata
-      left_join(country_list, by = c("partner" = "iso2c")) %>%
-      rename(partner_country = country.y) # country.x es el original
+    
+    # Validate filter value
+    filter_value <- as.numeric(input$collab_filter)
+    if(is.na(filter_value)) filter_value <- 0.25
+    
+    # Show a notification for larger data requests
+    if (filter_value > 0.25) {
+      showNotification(
+        paste0("Loading ", filter_value*100, "% of data. Please wait..."),
+        type = "warning", 
+        duration = 3
+      )
+    }
+    
+    # Get base data with minimal columns first 
+    base_data <- tryCatch({
+      ds %>%
+        dplyr::filter(
+          is_collab == TRUE,
+          year >= input$years[1],
+          year <= input$years[2]
+        ) %>%
+        dplyr::filter(grepl(input$country_select, iso2c)) %>%
+        dplyr::select(iso2c, year, percentage) %>%
+        dplyr::collect()
+    }, error = function(e) {
+      # Log the error and return empty data frame
+      warning("Error fetching base data: ", e$message)
+      return(data.frame())
+    })
+    
+    # Early exit if no data
+    if (nrow(base_data) == 0) return(data.frame())
+    
+    # Ensure percentage is numeric
+    base_data$percentage <- as.numeric(base_data$percentage)
+    
+    # Process to get partner data
+    processed_data <- tryCatch({
+      base_data %>%
+        mutate(
+          partners = strsplit(as.character(iso2c), "-"),
+          partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+        ) %>%
+        tidyr::unnest(partner) %>%
+        left_join(country_list, by = c("partner" = "iso2c")) %>%
+        rename(partner_country = country)
+    }, error = function(e) {
+      warning("Error processing partner data: ", e$message)
+      return(data.frame())
+    })
+    
+    if (nrow(processed_data) == 0) return(data.frame())
+    
+    # Group by partner and year, and get total contribution
+    agg_data <- tryCatch({
+      processed_data %>%
+        group_by(partner, partner_country, year) %>%
+        summarise(
+          total_percentage = sum(percentage, na.rm = TRUE),
+          .groups = "drop"
+        )
+    }, error = function(e) {
+      warning("Error aggregating data: ", e$message)
+      return(data.frame())
+    })
+    
+    if (nrow(agg_data) == 0) return(data.frame())
+    
+    # Filter to only top X% of contributors based on their total contribution
+    if (filter_value < 1) {
+      tryCatch({
+        # Get total contribution by partner
+        partner_totals <- agg_data %>%
+          group_by(partner, partner_country) %>%
+          summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
+          arrange(desc(total_contribution))
+        
+        # Ensure we have numeric data
+        if(nrow(partner_totals) > 0 && is.numeric(partner_totals$total_contribution)) {
+          # Calculate the threshold for top X%
+          threshold <- quantile(partner_totals$total_contribution, 1 - filter_value, na.rm = TRUE)
+          
+          # Filter the significant partners
+          significant_partners <- partner_totals %>%
+            filter(total_contribution >= threshold) %>%
+            pull(partner)
+          
+          # Filter the data to only include those partners
+          agg_data <- agg_data %>%
+            filter(partner %in% significant_partners)
+        }
+      }, error = function(e) {
+        warning("Error filtering top contributors: ", e$message)
+        # Return the original aggregated data if filtering fails
+      })
+    }
+    
+    # Ensure all numeric columns are actually numeric
+    if(nrow(agg_data) > 0) {
+      agg_data$total_percentage <- as.numeric(agg_data$total_percentage)
+      agg_data$year <- as.numeric(agg_data$year)
+    }
+    
+    return(agg_data)
   })
-
+  # Collaboration plot
   # Collaboration plot
   # Collaboration plot
   output$collab_plot <- renderPlotly({
+    # Get the data and validate it
     data <- filtered_collab()
     validate(need(nrow(data) > 0, "No collaborations found..."))
-
-    agg_data <- data %>%
-      group_by(partner_country, year) %>% # Group by country and year
-      summarise(
-        total_percentage = sum(percentage, na.rm = TRUE),
-        .groups = "drop"
-      )
-
-    # Create proper country labels for tooltip
-    country_selected_name <- country_list$country[match(input$country_select, country_list$iso2c)]
-
-    plot <- ggplot(agg_data, aes(x = year, y = total_percentage)) +
-      geom_jitter(
-        aes(
-          size = total_percentage,
-          color = partner_country, # Map color to country name
-          # Improved tooltip formatting
-          text = paste0(
-            "<b>", partner_country, "</b><br>",
-            "<b>Year:</b> ", year, "<br>",
-            "<b>Collaboration with ", country_selected_name, ":</b> ",
-            scales::percent(total_percentage, scale = 1, accuracy = 0.0001)
+    
+    # Ensure we have the right types of data
+    data$total_percentage <- as.numeric(data$total_percentage)
+    data$year <- as.numeric(data$year)
+    
+    # Safely convert filter percentage
+    filter_value <- as.numeric(input$collab_filter)
+    if(is.na(filter_value)) filter_value <- 0.25
+    filter_pct <- filter_value * 100
+    
+    # Create proper country labels for tooltip - with validation
+    country_selected_name <- tryCatch({
+      country_match <- match(input$country_select, country_list$iso2c)
+      if(!is.na(country_match)) {
+        country_list$country[country_match]
+      } else {
+        input$country_select
+      }
+    }, error = function(e) {
+      input$country_select
+    })
+    
+    # Count number of unique partner countries for subtitle
+    partner_count <- length(unique(data$partner_country))
+    
+    # Create the plot with error handling
+    tryCatch({
+      plot <- ggplot(data, aes(x = year, y = total_percentage)) +
+        geom_jitter(
+          aes(
+            size = total_percentage,
+            color = partner_country,
+            text = paste0(
+              "<b>", partner_country, "</b><br>",
+              "<b>Year:</b> ", year, "<br>",
+              "<b>Collaboration with ", country_selected_name, ":</b> ",
+              scales::percent(total_percentage/100, accuracy = 0.01)  # Division by 100 if your data is already in percentage (not decimal)
+            )
+          ),
+          alpha = 0.35,
+          width = 1
+        ) +
+        scale_color_viridis_d(
+          option = "turbo",
+          name = "Partner Country",
+          guide = guide_legend(
+            override.aes = list(size = 3),
+            ncol = 2
           )
-        ),
-        alpha = 0.35,
-        width = 1
-      ) +
-      # Use viridis "turbo" palette which has good range for many categories
-      scale_color_viridis_d(
-        option = "turbo",
-        name = "Partner Country",
-        guide = guide_legend(
-          override.aes = list(size = 3),
-          ncol = 2
+        ) +
+        scale_radius(range = c(0.5, 8), name = "") +
+        scale_y_continuous(
+          labels = scales::percent_format(accuracy = 0.01, scale = 1),
+          expand = expansion(mult = c(0.05, 0.15))
+        ) +
+        scale_x_continuous(
+          breaks = scales::pretty_breaks()
+        ) +
+        labs(
+          title = paste("Collaborations for", country_selected_name),
+          subtitle = if(filter_pct < 100) {
+            paste0("Showing top ", filter_pct, "% of collaborations (", partner_count, " countries)")
+          } else {
+            paste0("Showing all collaborations (", partner_count, " countries)")
+          },
+          x = "Year",
+          y = "% of substances contributed by each collaboration"
+        ) +
+        theme_minimal() +
+        theme(
+          legend.position = "right",
+          legend.title = element_text(face = "bold", size = 10),
+          plot.title = element_text(face = "bold"),
+          plot.subtitle = element_text(size = 9, color = "#666666"),
+          legend.key.size = unit(0.5, "lines"),
+          legend.text = element_text(size = 7)
         )
-      ) +
-      scale_radius(range = c(0.5, 8), name = "") +
-      scale_y_continuous(
-        labels = scales::percent_format(accuracy = 0.01, scale = 1),
-        expand = expansion(mult = c(0.05, 0.15))
-      ) +
-      scale_x_continuous(
-        breaks = scales::pretty_breaks()
-      ) +
-      labs(
-        title = paste("Collaborations for", country_list$country[match(input$country_select, country_list$iso2c)]),
-        x = "Year",
-        y = "% of substances contributed by each collaboration",
-      ) +
-      theme_minimal() +
-      theme(
-        legend.position = "right",
-        legend.title = element_text(face = "bold", size = 10),
-        plot.title = element_text(face = "bold"),
-        # Adjust legend to handle many countries
-        legend.key.size = unit(0.5, "lines"),
-        legend.text = element_text(size = 7)
-      )
-
-    # Convert to plotly with improved tooltip handling
-    ggplotly(plot, tooltip = "text") %>%
-      layout(
-        hoverlabel = list(
-          bgcolor = "white",
-          bordercolor = "black",
-          font = list(family = "Arial", size = 12)
-        ),
-        legend = list(
-          font = list(size = 9),
-          itemsizing = "constant"
+      
+      # Convert to plotly with improved tooltip handling
+      ggplotly(plot, tooltip = "text") %>%
+        layout(
+          hoverlabel = list(
+            bgcolor = "white",
+            bordercolor = "black",
+            font = list(family = "Arial", size = 12)
+          ),
+          legend = list(
+            font = list(size = 9),
+            itemsizing = "constant"
+          )
+        ) %>%
+        config(displayModeBar = TRUE)
+    }, error = function(e) {
+      # If plot generation fails, return a simple error message plot
+      plot_ly() %>% 
+        layout(
+          title = "Error creating plot",
+          annotations = list(
+            x = 0.5,
+            y = 0.5,
+            text = paste("Could not generate plot:", e$message),
+            showarrow = FALSE
+          )
         )
-      ) %>%
-      config(displayModeBar = TRUE)
-  }) %>% bindCache(input$country_select, input$years)
-
+    })
+  }) %>% bindCache(input$country_select, input$years, input$collab_filter)
   # Añade esto al server después del gráfico
 
-  # Top contributors table (historical)
-  top_contributors <- reactive({
-    req(filtered_collab())
-
-    filtered_collab() %>%
-      group_by(partner, partner_country) %>% # Asumiendo que ya tienes estas columnas
-      summarise(total_contribution = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
-      arrange(desc(total_contribution)) %>%
-      slice_head(n = 3) %>%
-      select(partner, partner_country) # Seleccionar solo las columnas necesarias
-  })
+# Top contributors table (historical)
+top_contributors <- reactive({
+  req(filtered_collab())
+  
+  # Since filtered_collab is already aggregated, we can use it directly
+  filtered_collab() %>%
+    group_by(partner, partner_country) %>%
+    summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
+    arrange(desc(total_contribution)) %>%
+    slice_head(n = 3) %>%
+    select(partner, partner_country)
+}) %>% bindCache(input$country_select, input$years, input$collab_filter)  # Update table cache too
 
   # Render the table with flags
   output$top_contributors_tableB <- render_gt({
