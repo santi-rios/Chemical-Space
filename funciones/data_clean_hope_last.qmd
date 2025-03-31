@@ -425,7 +425,7 @@ df <- read.csv("./data6/df_cc_4.csv") %>%
 # Build lookup for blue_group
 blue_codes <- unique(df$iso2c[df$blue_group])
 blue_palette <- col_numeric(
-  palette = c("#76a4d2", "#002852"),
+  palette = c("#76a4d2", "#000f1f"),
   domain = c(1, length(blue_codes))
 )
 blue_color_map <- setNames(blue_palette(seq_along(blue_codes)), blue_codes)
@@ -433,7 +433,7 @@ blue_color_map <- setNames(blue_palette(seq_along(blue_codes)), blue_codes)
 # Build lookup for red_group
 red_codes <- unique(df$iso2c[df$red_group])
 red_palette <- col_numeric(
-  palette = c("#fe0000", "#e79797"),
+  palette = c("#fe0000", "#e7b61c"),
   domain = c(1, length(red_codes))
 )
 red_color_map <- setNames(red_palette(seq_along(red_codes)), red_codes)
