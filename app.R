@@ -1,4 +1,25 @@
 # app.R
+  # Checar paquetes necesarios
+  list.of.packages <- c(
+    "shiny",
+    "bslib",
+    "plotly",
+    "arrow",
+    "tidytable",
+    "countrycode",
+    "glue",
+    "ggplot2",
+    "data.table",
+    "shinycssloaders",
+    "RColorBrewer",
+    "gt",
+    "mapproj"
+    )
+  # Comparar output para instalar paquetes
+  new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+  if(length(new.packages)) install.packages(new.packages)
+
+
 library(shiny)
 library(bslib)
 library(plotly)
@@ -11,20 +32,17 @@ library(data.table)
 library(shinycssloaders)
 library(RColorBrewer)
 library(gt)
-# library(mapproj)
-# library(leaflet)
-# library(highcharter)
-# library(viridisLite)
+library(mapproj)
+
 theme_set(theme_light())
 
 source("R/plot_function.R")
 
 # Efficient data preparation using Arrow and dplyr
-ds <- arrow::open_dataset("./data6/df_cc_4.parquet", format = "parquet")
+ds <- arrow::open_dataset("./data/data.parquet", format = "parquet")
 
-# Then in your app.R, replace the world_data computation with:
-# In global scope (outside server function)
 # Load world map data once and collect immediately (more efficient)
+# this is used for the map plot
 world_data <- arrow::read_parquet("data/world_data.parquet") %>%
   as.data.frame()
 
@@ -131,36 +149,36 @@ ui <- page_navbar(
             ),
             h5("Countrywise expansion of the chemical space (CS)"),
             p("National Contributions to CS, which spans all chemicals and reactions reported in the literature."),
-            withSpinner(plotlyOutput("trendPlot"), color = "#024173"),
+            withSpinner(plotlyOutput("trendPlot", height = "auto", width = "100%"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-                )
+              a("Learn more", href = "#"),
+              markdown(
+                "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+              )
               )
             )
-          ),
-          nav_panel(
+            ),
+            nav_panel(
             "Map📌",
             tooltip(
               bsicons::bs_icon("question-circle"),
               "Double click on the legend to filter isolate categories. Single click to isolate a category.",
               placement = "left"
             ),
-            withSpinner(plotlyOutput("mapPlot", height = "100%", width = "70%"), color = "#024173"),
+            withSpinner(plotlyOutput("mapPlot", height = "auto", width = "100%"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
-                )
+              a("Learn more", href = "#"),
+              markdown(
+                "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+              )
               )
             )
-          ),
-          nav_panel(
+            ),
+            nav_panel(
             "Trends in subspaces🧪",
             tooltip(
               bsicons::bs_icon("question-circle"),
@@ -169,17 +187,17 @@ ui <- page_navbar(
             ),
             fluidRow(
               column(
-                width = 12,
-                selectInput(
-                  "chemicalSelector",
-                  "Select Chemical Type",
-                  choices = c("Organic", "Organometallic", "Rare-Earths"),
-                  selected = "Organic",
-                  width = "30%"
-                )
+              width = 12,
+              selectInput(
+                "chemicalSelector",
+                "Select Chemical Type",
+                choices = c("Organic", "Organometallic", "Rare-Earths"),
+                selected = "Organic",
+                width = "30%"
+              )
               )
             ),
-            withSpinner(plotlyOutput("substancePlot", width = "100%"), color = "#024173"),
+            withSpinner(plotlyOutput("substancePlot", height = "auto", width = "100%"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
@@ -435,6 +453,13 @@ ui <- page_navbar(
         br(),
         br(),
         br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
         gt_output("gdpGrowthTable")
       ),
       nav_panel(
@@ -467,6 +492,19 @@ ui <- page_navbar(
         "CS Expansion",
         plotlyOutput("csExpansionPlot", height = "400px"),
                 br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
+        br(),
         br(),
         br(),
         br(),

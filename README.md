@@ -79,3 +79,28 @@ La aplicación proporciona valor significativo como herramienta de:
 Esta aplicación representa una herramienta analítica avanzada que transforma datos complejos sobre el espacio químico global en visualizaciones accesibles e interactivas. Su implementación técnica sofisticada permite análisis que serían difíciles o imposibles con herramientas tradicionales, ofreciendo valiosa información sobre las cambiantes dinámicas de la investigación química internacional.
 
 La herramienta no solo ofrece un valor académico para investigadores, sino también un valor estratégico para responsables de políticas científicas y tomadores de decisiones en el ámbito de la investigación química.
+
+## Cite this
+
+
+---
+citation:
+  type: article-journal
+  title: "China's Rise in the Chemical Space and the Decline of US Influence"
+  container-title: "ChemRxiv"
+  issued: 
+    year: 2025
+    month: 1
+  doi: 10.26434/chemrxiv-2025-d2zc8
+  author:
+    - family: Bermúdez-Montaña
+      given: Marisol
+    - family: Garcia-Chung
+      given: Angel
+    - family: Stadler
+      given: Peter F.
+    - family: Jost
+      given: Jürgen
+    - family: Restrepo
+      given: Guillermo
+---
