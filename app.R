@@ -13,7 +13,8 @@ list.of.packages <- c(
   "shinycssloaders",
   "RColorBrewer",
   "gt",
-  "mapproj"
+  "mapproj",
+  "bsicons"
   )
 # Comparar output para instalar paquetes
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -357,7 +358,7 @@ ui <- page_navbar(
             #   "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration. Toggle between country-specific and collaboration plots to explore these dynamics.",
             #   placement = "left"
             # ),
-            uiOutput("conditionalCollabPlot"),
+            uiOutput("conditionalCollabPlot") %>% withSpinner(),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
@@ -378,7 +379,7 @@ ui <- page_navbar(
           )
         ),
         card_body(
-          gt_output("top_contributors_tableB")
+          gt_output("top_contributors_tableB") %>% withSpinner()
         )
       )
     )
@@ -1246,7 +1247,7 @@ server <- function(input, output, session) {
     } else {
       div(
         style = "text-align: center; margin-top: 100px; color: #666;",
-        h4("Please select a country to view collaboration data"),
+        h4("Data ready. Please select a country to view visualizations."),
         icon("search")
       )
     }
@@ -1356,7 +1357,7 @@ server <- function(input, output, session) {
     
     if (nrow(agg_data) == 0) return(data.frame())
     
-    # OPTIMIZATION 6: Apply filtering efficiently
+    # OPTIMIZATION 6: Apply filtering efficiently with minimum data guarantee
     if (filter_value < 1) {
       tryCatch({
         partner_totals <- agg_data %>%
@@ -1365,8 +1366,14 @@ server <- function(input, output, session) {
           arrange(desc(total_contribution))
         
         if(nrow(partner_totals) > 0 && is.numeric(partner_totals$total_contribution)) {
-          # OPTIMIZATION 7: Calculate filtered cutoff before filtering
-          cutoff_value <- ceiling(filter_value * nrow(partner_totals))
+          # IMPORTANT FIX: Always ensure we have at least some minimal data
+          # Calculate cutoff with minimum data guarantee
+          min_partners <- 3  # Minimum partners to show
+          cutoff_value <- max(
+            ceiling(filter_value * nrow(partner_totals)), 
+            min(min_partners, nrow(partner_totals))
+          )
+          
           significant_partners <- partner_totals %>%
             slice_head(n = cutoff_value) %>%
             pull(partner)
@@ -1390,7 +1397,6 @@ server <- function(input, output, session) {
   # OPTIMIZATION 8: Add debouncing and improve caching keys
   bindCache(input$country_select, input$years, input$collab_filter) %>%
   debounce(500)
-
 
   # Collaboration plot
    # Collaboration plot with optimized rendering
@@ -1592,31 +1598,116 @@ top_contributors <- reactive({
     select(partner, partner_country)
 }) %>% bindCache(input$country_select, input$years, input$collab_filter)
 
-  # Render the table with flags
+  # Top Contributors Table B with improved error handling
   output$top_contributors_tableB <- render_gt({
-    req(top_contributors())
-    req(nrow(top_contributors()) > 0)
-
-    top_contributors() %>%
-      gt() %>%
-      gt::tab_header(
-        title = "Top 3 Historical Contributors of Country selected",
-        subtitle = "All selected years considered for the Historical top contributors"
-      ) %>%
-      gt::fmt_flag(columns = partner) %>% # Mostrar banderas desde códigos ISO2
-      gt::cols_label(
-        partner = "", # Ocultar título de columna de banderas
-        partner_country = "Country"
-      ) %>%
-      gt::cols_width(
-        partner ~ px(50), # Ancho fijo para columna de bandera
-        partner_country ~ px(200)
-      ) %>%
-      gt::opt_row_striping() %>%
-      gt::tab_options(
-        table.font.size = "14px",
-        heading.title.font.size = "18px"
-      )
+    # Require valid input country
+    req(input$country_select)
+    
+    # Ensure we have data
+    collab_data <- filtered_collab()
+    validate(need(nrow(collab_data) > 0, "No collaboration data available."))
+    
+    # Get proper country name for display
+    country_selected_name <- tryCatch({
+      country_match <- match(input$country_select, country_list$iso2c)
+      if(!is.na(country_match)) {
+        country_list$country[country_match]
+      } else {
+        input$country_select
+      }
+    }, error = function(e) {
+      input$country_select
+    })
+    
+    tryCatch({
+      # Use direct data.table operations for performance
+      if (requireNamespace("data.table", quietly = TRUE)) {
+        dt <- data.table::as.data.table(collab_data)
+        
+        # Ensure we have required columns
+        required_cols <- c("partner", "partner_country", "total_percentage")
+        missing_cols <- setdiff(required_cols, names(dt))
+        if (length(missing_cols) > 0) {
+          return(gt::gt(data.frame(
+            Message = paste("Error: Missing required columns:", 
+                           paste(missing_cols, collapse=", "))
+          )))
+        }
+        
+        # Calculate total contribution
+        result <- dt[, .(total_contribution = sum(total_percentage, na.rm = TRUE)), 
+                    by = .(partner, partner_country)]
+        
+        # Make sure we have data
+        if (nrow(result) == 0) {
+          return(gt::gt(data.frame(
+            Message = paste("No collaboration data found for", country_selected_name)
+          )))
+        }
+        
+        # Sort and get top contributors
+        data.table::setorder(result, -total_contribution)
+        top_contrib <- head(result, 10)
+        
+        # Fix column types and names for the table
+        final_data <- data.frame(
+          Rank = 1:nrow(top_contrib),
+          Country = top_contrib$partner_country,
+          Contribution = top_contrib$total_contribution
+        )
+        
+      } else {
+        # Fall back to dplyr if data.table not available
+        top_contrib <- collab_data %>%
+          group_by(partner, partner_country) %>%
+          summarise(total_contribution = sum(total_percentage, na.rm = TRUE), 
+                    .groups = "drop") %>%
+          arrange(desc(total_contribution)) %>%
+          slice_head(n = 10)
+        
+        # Check for empty data
+        if (nrow(top_contrib) == 0) {
+          return(gt::gt(data.frame(
+            Message = paste("No collaboration data found for", country_selected_name)
+          )))
+        }
+        
+        final_data <- data.frame(
+          Rank = 1:nrow(top_contrib),
+          Country = top_contrib$partner_country,
+          Contribution = top_contrib$total_contribution
+        )
+      }
+      
+      # Generate the GT table with proper formatting
+      gt::gt(final_data) %>%
+        gt::fmt_percent(
+          columns = Contribution,
+          decimals = 2,
+          scale_values = FALSE
+        ) %>%
+        gt::tab_header(
+          title = paste("Top Collaboration Partners with", country_selected_name)
+        ) %>%
+        gt::tab_style(
+          style = list(
+            gt::cell_fill(color = "#e9f3ff"),
+            gt::cell_text(weight = "bold")
+          ),
+          locations = gt::cells_body(rows = 1)
+        ) %>%
+        gt::tab_options(
+          heading.title.font.size = 16,
+          heading.subtitle.font.size = 13,
+          table.font.size = 13,
+          column_labels.font.weight = "bold"
+        )
+    }, error = function(e) {
+      # Return a graceful error message as a table
+      gt::gt(data.frame(
+        Error = paste("Could not generate table:", e$message)
+      ))
+    })
   })
 
   #################
