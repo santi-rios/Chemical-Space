@@ -201,8 +201,8 @@ createStaticMapPlot <- function(df,
     scale_x_continuous(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
     theme_void() +
-    # coord_fixed(ratio = 1.3) +
-    coord_map(projection = "mollweide") +
+    coord_fixed(ratio = 1.3) +
+    # coord_map(projection = "mollweide") +
     theme(
       plot.title = element_text(hjust = 0.5, size = 14),
       legend.position = "bottom",

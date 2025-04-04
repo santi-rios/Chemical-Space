@@ -1181,16 +1181,15 @@ server <- function(input, output, session) {
   })
 
   # Reactive for filtered collaboration data
-  # Reactive for filtered collaboration data
   filtered_collab <- reactive({
-    req(active_tab() == "Explore All Collaborations 🤝", input$country_select)
+    req(active_tab() == "Explore All Collaborations 🤝")
     
     # Validate filter value
     filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.10
+    if(is.na(filter_value)) filter_value <- 0.05
     
     # Show a notification for larger data requests
-    if (filter_value > 0.10) {
+    if (filter_value > 0.05) {
       showNotification(
         paste0("Loading ", filter_value*100, "% of data. Please wait..."),
         type = "warning", 
@@ -1204,6 +1203,8 @@ server <- function(input, output, session) {
       ds %>%
         dplyr::filter(
           is_collab == TRUE,
+          year >= input$years[1],
+          year <= input$years[2],
           grepl(input$country_select, iso2c)
         ) %>%
         # OPTIMIZATION 2: Only select necessary columns
@@ -1282,7 +1283,7 @@ server <- function(input, output, session) {
     
     if (nrow(agg_data) == 0) return(data.frame())
     
-    # OPTIMIZATION 6: Apply filtering efficiently with minimum data guarantee
+    # OPTIMIZATION 6: Apply filtering efficiently
     if (filter_value < 1) {
       tryCatch({
         partner_totals <- agg_data %>%
@@ -1291,14 +1292,8 @@ server <- function(input, output, session) {
           arrange(desc(total_contribution))
         
         if(nrow(partner_totals) > 0 && is.numeric(partner_totals$total_contribution)) {
-          # IMPORTANT FIX: Always ensure we have at least some minimal data
-          # Calculate cutoff with minimum data guarantee
-          min_partners <- 3  # Minimum partners to show
-          cutoff_value <- max(
-            ceiling(filter_value * nrow(partner_totals)), 
-            min(min_partners, nrow(partner_totals))
-          )
-          
+          # OPTIMIZATION 7: Calculate filtered cutoff before filtering
+          cutoff_value <- ceiling(filter_value * nrow(partner_totals))
           significant_partners <- partner_totals %>%
             slice_head(n = cutoff_value) %>%
             pull(partner)
@@ -1320,11 +1315,10 @@ server <- function(input, output, session) {
     return(agg_data)
   }) %>% 
   # OPTIMIZATION 8: Add debouncing and improve caching keys
-  bindCache(input$country_select, input$collab_filter) %>%
+  bindCache(input$country_select, input$years, input$collab_filter) %>%
   debounce(500)
 
-  # Collaboration plot
-   # Collaboration plot with optimized rendering
+  # Collaboration plot with optimized rendering
   output$collab_plot <- renderPlotly({
     # Get the data and validate it
     data <- filtered_collab()
@@ -1336,7 +1330,7 @@ server <- function(input, output, session) {
     
     # Safely convert filter percentage
     filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.10
+    if(is.na(filter_value)) filter_value <- 0.05
     filter_pct <- filter_value * 100
     
     # Get proper country name for display
@@ -1498,7 +1492,8 @@ server <- function(input, output, session) {
           )
         )
     })
-  }) %>% bindCache(input$country_select, input$collab_filter)
+  }) %>% bindCache(input$country_select, input$years, input$collab_filter)
+
 
 # Top contributors table (historical) - optimized
 top_contributors <- reactive({
@@ -1521,119 +1516,35 @@ top_contributors <- reactive({
     arrange(desc(total_contribution)) %>%
     slice_head(n = 3) %>%
     select(partner, partner_country)
-}) %>% bindCache(input$country_select, input$collab_filter)
+}) %>% bindCache(input$country_select, input$years, input$collab_filter)
 
   # Top Contributors Table B with improved error handling
   output$top_contributors_tableB <- render_gt({
-    # Require valid input country
-    req(input$country_select)
-    
-    # Ensure we have data
-    collab_data <- filtered_collab()
-    validate(need(nrow(collab_data) > 0, "No collaboration data available."))
-    
-    # Get proper country name for display
-    country_selected_name <- tryCatch({
-      country_match <- match(input$country_select, country_list$iso2c)
-      if(!is.na(country_match)) {
-        country_list$country[country_match]
-      } else {
-        input$country_select
-      }
-    }, error = function(e) {
-      input$country_select
-    })
-    
-    tryCatch({
-      # Use direct data.table operations for performance
-      if (requireNamespace("data.table", quietly = TRUE)) {
-        dt <- data.table::as.data.table(collab_data)
-        
-        # Ensure we have required columns
-        required_cols <- c("partner", "partner_country", "total_percentage")
-        missing_cols <- setdiff(required_cols, names(dt))
-        if (length(missing_cols) > 0) {
-          return(gt::gt(data.frame(
-            Message = paste("Error: Missing required columns:", 
-                           paste(missing_cols, collapse=", "))
-          )))
-        }
-        
-        # Calculate total contribution
-        result <- dt[, .(total_contribution = sum(total_percentage, na.rm = TRUE)), 
-                    by = .(partner, partner_country)]
-        
-        # Make sure we have data
-        if (nrow(result) == 0) {
-          return(gt::gt(data.frame(
-            Message = paste("No collaboration data found for", country_selected_name)
-          )))
-        }
-        
-        # Sort and get top contributors
-        data.table::setorder(result, -total_contribution)
-        top_contrib <- head(result, 10)
-        
-        # Fix column types and names for the table
-        final_data <- data.frame(
-          Rank = 1:nrow(top_contrib),
-          Country = top_contrib$partner_country,
-          Contribution = top_contrib$total_contribution
-        )
-        
-      } else {
-        # Fall back to dplyr if data.table not available
-        top_contrib <- collab_data %>%
-          group_by(partner, partner_country) %>%
-          summarise(total_contribution = sum(total_percentage, na.rm = TRUE), 
-                    .groups = "drop") %>%
-          arrange(desc(total_contribution)) %>%
-          slice_head(n = 10)
-        
-        # Check for empty data
-        if (nrow(top_contrib) == 0) {
-          return(gt::gt(data.frame(
-            Message = paste("No collaboration data found for", country_selected_name)
-          )))
-        }
-        
-        final_data <- data.frame(
-          Rank = 1:nrow(top_contrib),
-          Country = top_contrib$partner_country,
-          Contribution = top_contrib$total_contribution
-        )
-      }
-      
-      # Generate the GT table with proper formatting
-      gt::gt(final_data) %>%
-        gt::fmt_percent(
-          columns = Contribution,
-          decimals = 2,
-          scale_values = FALSE
-        ) %>%
-        gt::tab_header(
-          title = paste("Top Collaboration Partners with", country_selected_name)
-        ) %>%
-        gt::tab_style(
-          style = list(
-            gt::cell_fill(color = "#e9f3ff"),
-            gt::cell_text(weight = "bold")
-          ),
-          locations = gt::cells_body(rows = 1)
-        ) %>%
-        gt::tab_options(
-          heading.title.font.size = 16,
-          heading.subtitle.font.size = 13,
-          table.font.size = 13,
-          column_labels.font.weight = "bold"
-        )
-    }, error = function(e) {
-      # Return a graceful error message as a table
-      gt::gt(data.frame(
-        Error = paste("Could not generate table:", e$message)
-      ))
-    })
+    req(top_contributors())
+    req(nrow(top_contributors()) > 0)
+
+    top_contributors() %>%
+      gt() %>%
+      gt::tab_header(
+        title = "Top 3 Historical Contributors of Country selected",
+        subtitle = "All selected years considered for the Historical top contributors"
+      ) %>%
+      gt::fmt_flag(columns = partner) %>% # Mostrar banderas desde códigos ISO2
+      gt::cols_label(
+        partner = "", # Ocultar título de columna de banderas
+        partner_country = "Country"
+      ) %>%
+      gt::cols_width(
+        partner ~ px(50), # Ancho fijo para columna de bandera
+        partner_country ~ px(200)
+      ) %>%
+      gt::opt_row_striping() %>%
+      gt::tab_options(
+        table.font.size = "14px",
+        heading.title.font.size = "18px"
+      )
   })
+
 
   #################
   # Article Figures
