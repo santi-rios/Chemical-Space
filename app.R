@@ -245,7 +245,7 @@ ui <- page_navbar(
               "Top 25 collaborations are available in this panel. For more details, please check the Explore All Collaborations 🤝 tab.",
               placement = "left"
             ),
-            withSpinner(plotlyOutput("collabTrendPlot", width = "100%"), color = "#024173"),
+            withSpinner(plotlyOutput("collabTrendPlot", height = "auto", width = "100%"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
@@ -293,7 +293,7 @@ ui <- page_navbar(
                 )
               )
             ),
-            withSpinner(plotlyOutput("collabSubstancePlot", width = "100%"), color = "#024173"),
+            withSpinner(plotlyOutput("collabSubstancePlot", height = "auto", width = "100%"), color = "#024173"),
             card_footer(
               "Source: China's rise in the chemical space and the decline of US influence.",
               popover(
@@ -387,209 +387,134 @@ ui <- page_navbar(
   # ------------------------------,
   # 3) ARTICLE FIGURES,
   # ------------------------------,
-  tabPanel(
+   # ------------------------------,
+  # 3) ARTICLE FIGURES,
+  # ------------------------------,
+  nav_panel(
     "Article Figures 📰",
     navset_card_tab(
       nav_panel(
         "Country Participation in CS",
-        plotlyOutput("countryParticipationPlot", height = "400px"),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
+        withSpinner(
+          plotlyOutput("countryParticipationPlot", height = "600px", width = "100%"),
+          color = "#024173"
+        ),
+        div(style = "height: 30px;"),
         hr(),
-        gt_output("countryParticipationTable")
+        withSpinner(gt_output("countryParticipationTable"), color = "#024173")
       ),
       nav_panel(
         "Researchers",
-        plotlyOutput("researchersPlot", height = "400px"),
-                br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        gt_output("researchersTable")
+        withSpinner(
+          plotlyOutput("researchersPlot", height = "600px", width = "100%"),
+          color = "#024173"
+        ),
+        div(style = "height: 30px;"),
+        withSpinner(gt_output("researchersTable"), color = "#024173")
       ),
       nav_panel(
         "GDP Growth",
-        plotlyOutput("gdpGrowthPlot", height = "400px"),
-                br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        gt_output("gdpGrowthTable")
+        withSpinner(
+          plotlyOutput("gdpGrowthPlot", height = "600px", width = "100%"),
+          color = "#024173"
+        ),
+        div(style = "height: 30px;"),
+        withSpinner(gt_output("gdpGrowthTable"), color = "#024173")
       ),
       nav_panel(
         "China and US in the CS",
-        p("Note that China-US collaboration represent percentage of new substances with participation of either China or USA,
-          while the rest of data represent percentage of new substances that are reported in papers with no international collaboration."),
-        plotlyOutput("chinaUsintheCS", height = "400px")
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # br(),
-        # gt_output("chinaUSTable")
+        p(
+          "Note that China-US collaboration represent percentage of new substances",
+          "with participation of either China or USA, while the rest of data",
+          "represent percentage of new substances that are reported in papers",
+          "with no international collaboration."
+        ),
+        withSpinner(
+          plotlyOutput("chinaUsInTheCS", height = "600px", width = "100%"),
+          color = "#024173"
+        ),
+        div(style = "height: 30px;"),
+        withSpinner(gt_output("chinaUSTable"), color = "#024173")
       ),
       nav_panel(
         "CS Expansion",
-        plotlyOutput("csExpansionPlot", height = "400px"),
-                br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        br(),
-        gt_output("csExpansionTable")
-      )
-    ),
-                card_footer(
-              "Source: China's rise in the chemical space and the decline of US influence.",
-              popover(
-                a("Learn more", href = "#"),
-                markdown(
-                  "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A., Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in the chemical space and the decline of US influence. Working Paper, Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
+        withSpinner(
+          plotlyOutput("csExpansionPlot", height = "600px", width = "100%"),
+          color = "#024173"
+        ),
+        div(style = "height: 30px;"),
+        withSpinner(gt_output("csExpansionTable"), color = "#024173")
+      ),
+      # New About the Research panel
+      nav_panel(
+        "About the Research 🥼",
+        fluidPage(
+          fluidRow(
+            column(
+              width = 12,
+              h3("China's rise in the chemical space and the decline of US influence"),
+              p("This dashboard is based on the study China's rise in the chemical space and the decline of US influence. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
+              p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
+              p("Useful links for more information:"),
+              tags$ul(
+                tags$li(
+                  tags$a(
+                    href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+                    target = "_blank",
+                    "Access the full preprint 📄"
+                  )
+                ),
+                tags$li(
+                  tags$a(
+                    href = "https://github.com/santi-rios/Chemical-Space/wiki",
+                    target = "_blank",
+                    "App wiki and documentation 📖"
+                  )
+                ),
+                tags$li(
+                  tags$a(
+                    href = "https://github.com/santi-rios/Chemical-Space",
+                    target = "_blank",
+                    "Code Repository 📦"
+                  )
                 )
               )
             )
+          ),
+          hr(),
+          fluidRow(
+            column(
+              width = 12,
+              tags$a(
+                href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
+                target = "_blank",
+                tags$img(
+                  src = "logos_footer.png",
+                  class = "img-fluid",
+                  style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+    card_footer(
+      "Source: China's rise in the chemical space and the decline of US influence.",
+      popover(
+        a("Learn more", href = "#"),
+        markdown(
+          paste(
+            "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A.,", 
+            "Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in", 
+            "the chemical space and the decline of US influence. Working Paper,", 
+            "Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/",
+            "67920ada6dde43c908f688f6)"
+          )
+        )
+      )
+    )
   )
-  # # ------------------------------,
-  # 5) KNOW MORE,
-  # ------------------------------,
-  # nav_panel(
-  #   "Know more about the research 🥼",
-  #   fluidPage(
-  #     fluidRow(
-  #       column(
-  #         width = 12,
-  #         h3("Chinas rise in the chemical space and the decline of US influence"),
-  #         p("This dashboard is based on the study China's rise in the chemical space and the decline of US influence. Between 1996 and 2022, the research shows that China has emerged as a dominant force in chemical discovery—especially after 2013—mainly through national efforts, while US contributions depend largely on international collaborations."),
-  #         p("The analysis spans various chemical domains including organic, rare-earth, and organometallic chemistry, also highlighting the emerging role of India in the field. These insights provide a contemporary account of global shifts in the chemical space and may guide future science policies and R&D agendas."),
-  #         p("Useful links for more information:"),
-  #         tags$ul(
-  #           tags$li(
-  #             tags$a(
-  #               href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-  #               target = "_blank",
-  #               "Access the full preprint 📄"
-  #             )
-  #           ),
-  #           tags$li(
-  #             tags$a(
-  #               href = "https://github.com/santi-rios/Chemical-Space/wiki",
-  #               target = "_blank",
-  #               "App wiki and documentation 📖"
-  #             )
-  #           ),
-  #           tags$li(
-  #             tags$a(
-  #               href = "https://github.com/santi-rios/Chemical-Space",
-  #               target = "_blank",
-  #               "Code Repository 📦"
-  #             )
-  #           )
-  #         )
-  #       )
-  #     ),
-  #     br(),
-  #     br(),
-  #     br(),
-  #     br(),
-  #     br(),
-  #     br(),
-  #     hr(),
-  #     fluidRow(
-  #       column(
-  #         width = 12,
-  #         tags$a(
-  #           href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6",
-  #           target = "_blank",
-  #           tags$img(
-  #             src = "logos_footer.png",
-  #             class = "img-fluid",
-  #             style = "max-width: 320px; height: 100px; display: block; margin: 0 auto;"
-  #           )
-  #         )
-  #       )
-  #     )
-  #   )
-  # )
 )
 
 
