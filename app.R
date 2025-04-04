@@ -836,9 +836,9 @@ server <- function(input, output, session) {
 
   observe({
     if (active_tab() == "National Trends 📈") {
-      showNotification("Hover over the plot to see more details.",
+      showNotification("Hover over the plot to see more details. I you don't see the plot, please check select again from the sidebar.",
         type = "message",
-        duration = 2
+        duration = 5
       )
     } else if (active_tab() == "Collaboration Trends 🤝") {
       showNotification("Please select Plot Top or Plot All from the sidebar to see the visualizations.",
