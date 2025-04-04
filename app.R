@@ -426,21 +426,18 @@ ui <- page_navbar(
         div(style = "height: 30px;"),
         withSpinner(gt_output("gdpGrowthTable"), color = "#024173")
       ),
-      nav_panel(
-        "China and US in the CS",
-        p(
-          "Note that China-US collaboration represent percentage of new substances",
-          "with participation of either China or USA, while the rest of data",
-          "represent percentage of new substances that are reported in papers",
-          "with no international collaboration."
-        ),
-        withSpinner(
-          plotlyOutput("chinaUsInTheCS", height = "auto", width = "100%"),
-          color = "#024173"
-        ),
-        div(style = "height: 30px;"),
-        withSpinner(gt_output("chinaUSTable"), color = "#024173")
-      ),
+      # nav_panel(
+      #   "China and US in the CS",
+      #   p(
+      #     "Note that China-US collaboration represent percentage of new substances with participation of either China or USA, while the rest of data represent percentage of new substances that are reported in papers with no international collaboration."
+      #   ),
+      #   withSpinner(
+      #     plotlyOutput("chinaUsInTheCS", height = "600px", width = "100%"),
+      #     color = "#024173"
+      #   )
+      #   # div(style = "height: 30px;"),
+      #   # withSpinner(gt_output("chinaUSTable"), color = "#024173")
+      # ),
       nav_panel(
         "CS Expansion",
         withSpinner(
@@ -1793,213 +1790,113 @@ top_contributors <- reactive({
   })
 
 
-  # CS Expansion Plot without animation and end annotations
-  output$csExpansionPlot <- renderPlotly({
-    req(active_tab() == "Article Figures 📰")
-  
-    # Get the data
-    article_data <- figure_article() %>%
-      dplyr::filter(source == "Expansion of the CS")
-    
-    # Prepare data for plotting
-    plot_data <- article_data %>%
-      dplyr::mutate(
-        # Ensure percentage is treated as a count, not a percentage
-        value = as.numeric(percentage),
-        formatted_value = scales::comma(value),
-        iso2c = countrycode::countrycode(country, "country.name", "iso2c", warn = FALSE)
-      )
-    
-    # Define colors for countries
-    country_colors <- c(
-      "China" = "#c5051b",
-      "China alone" = "#c56a75",
-      "China w/o US" = "#9b2610",
-      "France" = "#0a3161",
-      "Germany" = "#000000", 
-      "India" = "#ff671f",
-      "Japan" = "#000091",
-      "Russia" = "#d51e9b", 
-      "USA alone" = "#3b5091",
-      "USA w/o China" = "#006341",
-      "United Kingdom" = "#74acdf",
-      "United States" = "#002852",
-      "All substances" = "#4879a7",
-      "Organic Chemicals" = "#ff6d45",
-      "Organometallics" = "#55713e",
-      "Rare-Earths" = "#800525"
-    )
-    
-    # Get available country colors and create mapping
-    available_countries <- unique(plot_data$country)
-    plot_colors <- country_colors[names(country_colors) %in% available_countries]
-    
-    # For any countries not in our predefined list, assign colors from a palette
-    missing_countries <- setdiff(available_countries, names(country_colors))
-    if (length(missing_countries) > 0) {
-      extra_colors <- colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(length(missing_countries))
-      names(extra_colors) <- missing_countries
-      plot_colors <- c(plot_colors, extra_colors)
-    }
-    
-    # Create plot without animation and end annotations
-    p <- plot_data %>%
-      plot_ly() %>%
-      add_trace(
-        x = ~year, 
-        y = ~value,
-        color = ~country,
-        colors = plot_colors,
-        type = "scatter",
-        mode = "lines+markers",
-        marker = list(
-          size = 8,
-          opacity = 0.8,
-          line = list(width = 1, color = '#FFFFFF')
-        ),
-        line = list(width = 2),
-        text = ~paste(
-          "<b>Country:</b> ", country,
-          "<br><b>Year:</b> ", year,
-          "<br><b>Value:</b> ", formatted_value
-        ),
-        hoverinfo = "text"
-      ) %>%
-      layout(
-        title = list(
-          text = "",
-          font = list(size = 18)
-        ),
-        xaxis = list(
-          title = "Year", 
-          gridcolor = "#eeeeee",
-          range = c(min(plot_data$year) - 0.5, max(plot_data$year) + 0.5)
-        ),
-        yaxis = list(
-          title = "Number of new substances",
-          gridcolor = "#eeeeee",
-          tickformat = ",.0f"
-        ),
-        plot_bgcolor = "rgb(250, 250, 250)",
-        paper_bgcolor = "rgb(250, 250, 250)",
-        showlegend = TRUE,
-        legend = list(
-          orientation = "h",
-          y = -0.15
-        )
-      ) %>%
-      config(displayModeBar = TRUE)
-    
-    return(p)
-  })
-
   # Add these after your existing plot renderers
 # China-US in the CS Plot
-output$chinaUsintheCS <- renderPlotly({
-  req(active_tab() == "Article Figures 📰")
+# output$chinaUsintheCS <- renderPlotly({
+#   req(active_tab() == "Article Figures 📰")
   
-  # Get the data
-  article_data <- figure_article() %>%
-    dplyr::filter(source == "China-US in the CS")
+#   # Get the data
+#   article_data <- figure_article() %>%
+#     dplyr::filter(source == "China-US in the CS")
   
-  # Prepare data for plotting
-  plot_data <- article_data %>%
-    dplyr::mutate(
-      # Handle different percentage formats
-      percentage = dplyr::case_when(
-        country %in% c("CN-US collab/CN", "CN-US collab/US") ~ percentage, # Keep as decimal
-        TRUE ~ percentage / 100 # Convert main countries to decimals
-      ),
-      formatted_value = ifelse(
-        country %in% c("CN-US collab/CN", "CN-US collab/US"),
-        scales::percent(percentage, scale=1, accuracy = 0.1), # Format collaboration as %
-        scales::percent(percentage, scale=1, accuracy = 0.1) # Main countries
-      ),
-      # Handle country codes (not used for collaboration)
-      iso2c = dplyr::if_else(
-        country %in% c("CN-US collab/CN", "CN-US collab/US"),
-        NA_character_,
-        countrycode::countrycode(country, "country.name", "iso2c", warn = FALSE)
-      )
-    )
+#   # Prepare data for plotting
+#   plot_data <- article_data %>%
+#     dplyr::mutate(
+#       # Handle different percentage formats
+#       percentage = dplyr::case_when(
+#         country %in% c("CN-US collab/CN", "CN-US collab/US") ~ percentage, # Keep as decimal
+#         TRUE ~ percentage / 100 # Convert main countries to decimals
+#       ),
+#       formatted_value = ifelse(
+#         country %in% c("CN-US collab/CN", "CN-US collab/US"),
+#         scales::percent(percentage, scale=1, accuracy = 0.1), # Format collaboration as %
+#         scales::percent(percentage, scale=1, accuracy = 0.1) # Main countries
+#       ),
+#       # Handle country codes (not used for collaboration)
+#       iso2c = dplyr::if_else(
+#         country %in% c("CN-US collab/CN", "CN-US collab/US"),
+#         NA_character_,
+#         countrycode::countrycode(country, "country.name", "iso2c", warn = FALSE)
+#       )
+#     )
   
-  # Define colors using data's 'cc' values
-  country_colors <- c(
-    "China" = "#c5051b",
-    "United States" = "#0285d1",
-    "CN-US collab/CN" = "#9b0b17",
-    "CN-US collab/US" = "#a04981"
-  )
+#   # Define colors using data's 'cc' values
+#   country_colors <- c(
+#     "China" = "#c5051b",
+#     "United States" = "#0285d1",
+#     "CN-US collab/CN" = "#9b0b17",
+#     "CN-US collab/US" = "#a04981"
+#   )
   
-  # Split data for dual-axis plot
-  main_countries <- c("China", "United States")
-  main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
-  collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
+#   # Split data for dual-axis plot
+#   main_countries <- c("China", "United States")
+#   main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
+#   collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
   
-  # Create the plot
-  p <- plot_ly() %>%
-    # Main countries (left axis)
-    add_trace(
-      data = main_data,
-      x = ~year,
-      y = ~percentage,
-      color = ~country,
-      # colors = country_colors[main_countries],
-      type = "scatter",
-      mode = "lines+markers",
-      marker = list(size = 12, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
-      line = list(width = 3),
-      yaxis = "y1",
-      text = ~paste(
-        "<b>Country:</b> ", country,
-        "<br><b>Year:</b> ", year,
-        "<br><b>Value:</b> ", formatted_value
-      ),
-      hoverinfo = "text"
-    ) %>%
-    # Collaboration metrics (right axis)
-    add_trace(
-      data = collab_data,
-      x = ~year,
-      y = ~percentage,
-      color = ~country,
-      # colors = country_colors[unique(collab_data$country)],
-      type = "scatter",
-      mode = "lines+markers",
-      marker = list(size = 10, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
-      line = list(width = 2, dash = "dot"),
-      yaxis = "y2",
-      text = ~paste(
-        "<b>Collaboration:</b> ", country,
-        "<br><b>Year:</b> ", year,
-        "<br><b>Value:</b> ", formatted_value
-      ),
-      hoverinfo = "text"
-    ) %>%
-    layout(
-      title = list(text = "", font = list(size = 18)),
-      xaxis = list(title = "Year", gridcolor = "#eeeeee"),
-      yaxis = list(
-        title = "Own National contribution to the national share of the CS (%)",
-        tickformat = ".0%",
-        range = c(0.6, 1.0),
-        gridcolor = "#eeeeee"
-      ),
-      yaxis2 = list(
-        title = "China-US contribution",
-        overlaying = "y",
-        side = "right",
-        tickformat = ".0%",
-        range = c(0, 0.2), # 0% to 20%
-        gridcolor = "#eeeeee"
-      ),
-      plot_bgcolor = "rgb(250, 250, 250)",
-      legend = list(orientation = "h", y = -0.2)
-    ) %>%
-    config(displayModeBar = TRUE)
+#   # Create the plot
+#   p <- plot_ly() %>%
+#     # Main countries (left axis)
+#     add_trace(
+#       data = main_data,
+#       x = ~year,
+#       y = ~percentage,
+#       color = ~country,
+#       # colors = country_colors[main_countries],
+#       type = "scatter",
+#       mode = "lines+markers",
+#       marker = list(size = 12, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
+#       line = list(width = 3),
+#       yaxis = "y1",
+#       text = ~paste(
+#         "<b>Country:</b> ", country,
+#         "<br><b>Year:</b> ", year,
+#         "<br><b>Value:</b> ", formatted_value
+#       ),
+#       hoverinfo = "text"
+#     ) %>%
+#     # Collaboration metrics (right axis)
+#     add_trace(
+#       data = collab_data,
+#       x = ~year,
+#       y = ~percentage,
+#       color = ~country,
+#       # colors = country_colors[unique(collab_data$country)],
+#       type = "scatter",
+#       mode = "lines+markers",
+#       marker = list(size = 10, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
+#       line = list(width = 2, dash = "dot"),
+#       yaxis = "y2",
+#       text = ~paste(
+#         "<b>Collaboration:</b> ", country,
+#         "<br><b>Year:</b> ", year,
+#         "<br><b>Value:</b> ", formatted_value
+#       ),
+#       hoverinfo = "text"
+#     ) %>%
+#     layout(
+#       title = list(text = "", font = list(size = 18)),
+#       xaxis = list(title = "Year", gridcolor = "#eeeeee"),
+#       yaxis = list(
+#         title = "Own National contribution to the national share of the CS (%)",
+#         tickformat = ".0%",
+#         range = c(0.6, 1.0),
+#         gridcolor = "#eeeeee"
+#       ),
+#       yaxis2 = list(
+#         title = "China-US contribution",
+#         overlaying = "y",
+#         side = "right",
+#         tickformat = ".0%",
+#         range = c(0, 0.2), # 0% to 20%
+#         gridcolor = "#eeeeee"
+#       ),
+#       plot_bgcolor = "rgb(250, 250, 250)",
+#       legend = list(orientation = "h", y = -0.2)
+#     ) %>%
+#     config(displayModeBar = TRUE)
   
-  return(p)
-})
+#   return(p)
+# })
 
 
   # GDP Growth Table
