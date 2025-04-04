@@ -426,18 +426,18 @@ ui <- page_navbar(
         div(style = "height: 30px;"),
         withSpinner(gt_output("gdpGrowthTable"), color = "#024173")
       ),
-      # nav_panel(
-      #   "China and US in the CS",
-      #   p(
-      #     "Note that China-US collaboration represent percentage of new substances with participation of either China or USA, while the rest of data represent percentage of new substances that are reported in papers with no international collaboration."
-      #   ),
-      #   withSpinner(
-      #     plotlyOutput("chinaUsInTheCS", height = "600px", width = "100%"),
-      #     color = "#024173"
-      #   )
-      #   # div(style = "height: 30px;"),
-      #   # withSpinner(gt_output("chinaUSTable"), color = "#024173")
-      # ),
+      nav_panel(
+        "China and US in the CS",
+        p(
+          "Note that China-US collaboration represent percentage of new substances with participation of either China or USA, while the rest of data represent percentage of new substances that are reported in papers with no international collaboration."
+        ),
+        withSpinner(
+          plotlyOutput("chinaUsInTheCS", height = "600px", width = "100%"),
+          color = "#024173"
+        )
+        # div(style = "height: 30px;"),
+        # withSpinner(gt_output("chinaUSTable"), color = "#024173")
+      ),
       nav_panel(
         "CS Expansion",
         withSpinner(
@@ -510,8 +510,7 @@ ui <- page_navbar(
             "Preprint published in: [Bermúdez-Montaña, M., Garcia-Chung, A.,", 
             "Stadler, P. F., Jost, J., & Restrepo, G. (2025). China's rise in", 
             "the chemical space and the decline of US influence. Working Paper,", 
-            "Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/",
-            "67920ada6dde43c908f688f6)"
+            "Version 1.](https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6)"
           )
         )
       )
@@ -763,7 +762,7 @@ server <- function(input, output, session) {
 
   observe({
     if (active_tab() == "National Trends 📈") {
-      showNotification("Hover over the plot to see more details. I you don't see the plot, please check select again from the sidebar.",
+      showNotification("Hover over the plot to see more details. I you don't see the plot, please select a country again from the sidebar.",
         type = "message",
         duration = 5
       )
@@ -1492,7 +1491,8 @@ server <- function(input, output, session) {
           )
         )
     })
-  }) %>% bindCache(input$country_select, input$years, input$collab_filter)
+  }) 
+  # %>% bindCache(input$country_select, input$years, input$collab_filter)
 
 
 # Top contributors table (historical) - optimized
@@ -1516,7 +1516,8 @@ top_contributors <- reactive({
     arrange(desc(total_contribution)) %>%
     slice_head(n = 3) %>%
     select(partner, partner_country)
-}) %>% bindCache(input$country_select, input$years, input$collab_filter)
+}) 
+# %>% bindCache(input$country_select, input$years, input$collab_filter)
 
   # Top Contributors Table B with improved error handling
   output$top_contributors_tableB <- render_gt({
@@ -1703,113 +1704,138 @@ top_contributors <- reactive({
 
   # Add these after your existing plot renderers
 # China-US in the CS Plot
-# output$chinaUsintheCS <- renderPlotly({
-#   req(active_tab() == "Article Figures 📰")
+output$chinaUsInTheCS <- renderPlotly({
+  req(active_tab() == "Article Figures 📰")
   
-#   # Get the data
-#   article_data <- figure_article() %>%
-#     dplyr::filter(source == "China-US in the CS")
+  # Get the data
+  article_data <- figure_article() %>%
+    dplyr::filter(source == "China-US in the CS")
   
-#   # Prepare data for plotting
-#   plot_data <- article_data %>%
-#     dplyr::mutate(
-#       # Handle different percentage formats
-#       percentage = dplyr::case_when(
-#         country %in% c("CN-US collab/CN", "CN-US collab/US") ~ percentage, # Keep as decimal
-#         TRUE ~ percentage / 100 # Convert main countries to decimals
-#       ),
-#       formatted_value = ifelse(
-#         country %in% c("CN-US collab/CN", "CN-US collab/US"),
-#         scales::percent(percentage, scale=1, accuracy = 0.1), # Format collaboration as %
-#         scales::percent(percentage, scale=1, accuracy = 0.1) # Main countries
-#       ),
-#       # Handle country codes (not used for collaboration)
-#       iso2c = dplyr::if_else(
-#         country %in% c("CN-US collab/CN", "CN-US collab/US"),
-#         NA_character_,
-#         countrycode::countrycode(country, "country.name", "iso2c", warn = FALSE)
-#       )
-#     )
+  # Define main countries and scaling factor for collaboration data
+  main_countries <- c("China", "United States")
+  SCALE_FACTOR <- 10  # Adjust to control visibility of collaboration data
   
-#   # Define colors using data's 'cc' values
-#   country_colors <- c(
-#     "China" = "#c5051b",
-#     "United States" = "#0285d1",
-#     "CN-US collab/CN" = "#9b0b17",
-#     "CN-US collab/US" = "#a04981"
-#   )
+  # Prepare data: adjust scales for plotting
+  plot_data <- article_data %>%
+    dplyr::mutate(
+      # Convert main countries to decimal (e.g., 93.19 -> 0.9319)
+      # Scale collaboration data for better visibility
+      percentage = dplyr::if_else(
+        country %in% main_countries,
+        percentage / 100,  # Main data (as decimal)
+        percentage * SCALE_FACTOR  # Collaboration data (scaled up)
+      ),
+      # Format hover text correctly for both groups
+      formatted_value = dplyr::if_else(
+        country %in% main_countries,
+        scales::percent(percentage, accuracy = 0.1),  # Main: "93.2%"
+        scales::percent(percentage / SCALE_FACTOR, accuracy = 0.01, scale = 1)  # Collab: "0.18%"
+      ),
+      # Handle country codes
+      iso2c = dplyr::if_else(
+        country %in% c("CN-US collab/CN", "CN-US collab/US"),
+        NA_character_,
+        countrycode::countrycode(country, "country.name", "iso2c", warn = FALSE)
+      )
+    )
   
-#   # Split data for dual-axis plot
-#   main_countries <- c("China", "United States")
-#   main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
-#   collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
+  # Split data
+  main_data <- plot_data %>% dplyr::filter(country %in% main_countries)
+  collab_data <- plot_data %>% dplyr::filter(!country %in% main_countries)
   
-#   # Create the plot
-#   p <- plot_ly() %>%
-#     # Main countries (left axis)
-#     add_trace(
-#       data = main_data,
-#       x = ~year,
-#       y = ~percentage,
-#       color = ~country,
-#       # colors = country_colors[main_countries],
-#       type = "scatter",
-#       mode = "lines+markers",
-#       marker = list(size = 12, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
-#       line = list(width = 3),
-#       yaxis = "y1",
-#       text = ~paste(
-#         "<b>Country:</b> ", country,
-#         "<br><b>Year:</b> ", year,
-#         "<br><b>Value:</b> ", formatted_value
-#       ),
-#       hoverinfo = "text"
-#     ) %>%
-#     # Collaboration metrics (right axis)
-#     add_trace(
-#       data = collab_data,
-#       x = ~year,
-#       y = ~percentage,
-#       color = ~country,
-#       # colors = country_colors[unique(collab_data$country)],
-#       type = "scatter",
-#       mode = "lines+markers",
-#       marker = list(size = 10, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
-#       line = list(width = 2, dash = "dot"),
-#       yaxis = "y2",
-#       text = ~paste(
-#         "<b>Collaboration:</b> ", country,
-#         "<br><b>Year:</b> ", year,
-#         "<br><b>Value:</b> ", formatted_value
-#       ),
-#       hoverinfo = "text"
-#     ) %>%
-#     layout(
-#       title = list(text = "", font = list(size = 18)),
-#       xaxis = list(title = "Year", gridcolor = "#eeeeee"),
-#       yaxis = list(
-#         title = "Own National contribution to the national share of the CS (%)",
-#         tickformat = ".0%",
-#         range = c(0.6, 1.0),
-#         gridcolor = "#eeeeee"
-#       ),
-#       yaxis2 = list(
-#         title = "China-US contribution",
-#         overlaying = "y",
-#         side = "right",
-#         tickformat = ".0%",
-#         range = c(0, 0.2), # 0% to 20%
-#         gridcolor = "#eeeeee"
-#       ),
-#       plot_bgcolor = "rgb(250, 250, 250)",
-#       legend = list(orientation = "h", y = -0.2)
-#     ) %>%
-#     config(displayModeBar = TRUE)
+  # Define colors
+  country_colors <- c(
+    "China" = "#c5051b",
+    "United States" = "#0285d1",
+    "CN-US collab/CN" = "#9b0b17",
+    "CN-US collab/US" = "#a04981"
+  )
   
-#   return(p)
-# })
-
-
+  # Create plot
+  p <- plot_ly() %>%
+    # Main countries (left axis)
+    add_trace(
+      data = main_data,
+      x = ~year,
+      y = ~percentage,
+      color = ~country,
+      type = "scatter",
+      mode = "lines+markers",
+      marker = list(size = 12, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
+      line = list(width = 3),
+      yaxis = "y1",
+      text = ~paste(
+        "<b>Country:</b> ", country,
+        "<br><b>Year:</b> ", year,
+        "<br><b>Value:</b> ", formatted_value
+      ),
+      hoverinfo = "text"
+    ) %>%
+    # Collaboration metrics (right axis)
+    add_trace(
+      data = collab_data,
+      x = ~year,
+      y = ~percentage,
+      color = ~country,
+      type = "scatter",
+      mode = "lines+markers",
+      marker = list(size = 10, opacity = 0.8, line = list(width = 1, color = '#FFFFFF')),
+      line = list(width = 2, dash = "dot"),
+      yaxis = "y2",
+      text = ~paste(
+        "<b>Collaboration:</b> ", country,
+        "<br><b>Year:</b> ", year,
+        "<br><b>Value:</b> ", formatted_value
+      ),
+      hoverinfo = "text"
+    ) %>%
+    layout(
+      title = list(text = "", font = list(size = 18)),
+      xaxis = list(title = "Year", gridcolor = "#eeeeee"),
+      yaxis = list(
+        title = "Own National Contribution (%)",
+        tickformat = ".0%",
+        range = c(0.6, 1.0),  # 60% to 100%
+        gridcolor = "#eeeeee"
+      ),
+      yaxis2 = list(
+        title = "China-US Collaboration (%)",
+        overlaying = "y",
+        side = "right",
+        tickvals = seq(0, 2, by = 0.5),  # Scaled axis markers
+        ticktext = c("0%", "0.05%", "0.10%", "0.15%", "0.20%"),  # Actual labels
+        range = c(0, 2),  # Scaled range (0% to 0.2%)
+        gridcolor = "#eeeeee"
+      ),
+      plot_bgcolor = "rgb(250, 250, 250)",
+      legend = list(orientation = "h", y = -0.2),
+      # Add annotations to explain the dual axis
+      annotations = list(
+        list(
+          text = "Left axis: National contributions (60-100%)",
+          x = 0.02,
+          y = 1.05,
+          xref = "paper",
+          yref = "paper",
+          showarrow = FALSE,
+          font = list(size = 10, color = "#0285d1")
+        ),
+        list(
+          text = "Right axis: Collaboration percentages (0-0.18%)",
+          x = 0.98,
+          y = 1.05,
+          xref = "paper",
+          yref = "paper",
+          showarrow = FALSE,
+          font = list(size = 10, color = "#9b0b17")
+        )
+      )
+    ) %>%
+    config(displayModeBar = TRUE)
+  
+  return(p)
+})
+  
   # GDP Growth Table
   # GDP Growth Table in wide format
   output$gdpGrowthTable <- render_gt({
@@ -2009,75 +2035,75 @@ top_contributors <- reactive({
 
 # China-US Table in wide format
  
-output$chinaUSTable <- render_gt({
+# output$chinaUSTable <- render_gt({
  
-  req(active_tab() == "Article Figures 📰")
- 
-
- 
-  article_data <- figure_article() %>%
- 
-    dplyr::filter(source == "China-US in the CS") %>%
- 
-    dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
- 
-    # Pivot to wide format
- 
-    tidyr::pivot_wider(
- 
-      id_cols = c(iso2c, country),
- 
-      names_from = year,
- 
-      values_from = percentage
- 
-    ) %>%
- 
-    dplyr::arrange(country)
+#   req(active_tab() == "Article Figures 📰")
  
 
  
-  # Get list of year columns for formatting
+#   article_data <- figure_article() %>%
  
-  year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
+#     dplyr::filter(source == "China-US in the CS") %>%
  
-  article_data %>%
+#     dplyr::mutate(iso2c = countrycode::countrycode(country, "country.name", "iso2c")) %>%
  
-    gt() %>%
+#     # Pivot to wide format
  
-    gt::fmt_flag(columns = iso2c) %>%
+#     tidyr::pivot_wider(
  
-    # Use percentage formatting for this table
+#       id_cols = c(iso2c, country),
  
-    gt::fmt_percent(columns = tidyselect::all_of(year_cols), decimals = 1, scale = 0.01) %>%
+#       names_from = year,
  
-    gt::tab_header(
+#       values_from = percentage
  
-      title = "China-US Contributions and Collaborations",
+#     ) %>%
  
-      subtitle = "Percentage of national contribution"
+#     dplyr::arrange(country)
  
-    ) %>%
+
  
-    gt::cols_label(
+#   # Get list of year columns for formatting
  
-      iso2c = "",
+#   year_cols <- names(article_data)[!names(article_data) %in% c("iso2c", "country")]
  
-      country = "Country/Metric"
+#   article_data %>%
  
-    ) %>%
+#     gt() %>%
  
-    gt::tab_style(
+#     gt::fmt_flag(columns = iso2c) %>%
  
-      style = gt::cell_text(weight = "bold"),
+#     # Use percentage formatting for this table
  
-      locations = gt::cells_column_labels()
+#     gt::fmt_percent(columns = tidyselect::all_of(year_cols), decimals = 1, scale = 0.01) %>%
  
-    ) %>%
+#     gt::tab_header(
  
-    gt::opt_row_striping()
+#       title = "China-US Contributions and Collaborations",
  
-})
+#       subtitle = "Percentage of national contribution"
+ 
+#     ) %>%
+ 
+#     gt::cols_label(
+ 
+#       iso2c = "",
+ 
+#       country = "Country/Metric"
+ 
+#     ) %>%
+ 
+#     gt::tab_style(
+ 
+#       style = gt::cell_text(weight = "bold"),
+ 
+#       locations = gt::cells_column_labels()
+ 
+#     ) %>%
+ 
+#     gt::opt_row_striping()
+ 
+# })
 
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
