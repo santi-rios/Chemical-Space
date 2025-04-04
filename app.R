@@ -1,4 +1,6 @@
 # app.R
+# 2025_04_04
+# Codigo por Santiago Garcia Rios
 # Checar paquetes necesarios
 list.of.packages <- c(
   "shiny",
