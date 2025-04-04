@@ -379,6 +379,11 @@ ui <- page_navbar(
           )
         ),
         card_body(
+          popover(
+          bsicons::bs_icon("info-circle"),
+          a("About these percentages"),
+          markdown("These percentages represent the total proportion of chemical substances discovered through collaboration between the selected country and each partner country. Higher percentages indicate stronger and more productive scientific partnerships in terms of novel chemical discoveries."),
+          ),
           gt_output("top_contributors_tableB") %>% withSpinner()
         )
       )
@@ -430,7 +435,7 @@ ui <- page_navbar(
           "with no international collaboration."
         ),
         withSpinner(
-          plotlyOutput("chinaUsInTheCS", height = "600px", width = "100%"),
+          plotlyOutput("chinaUsInTheCS", height = "auto", width = "100%"),
           color = "#024173"
         ),
         div(style = "height: 30px;"),
@@ -1181,7 +1186,7 @@ server <- function(input, output, session) {
   # Reactive for filtered collaboration data
   # Reactive for filtered collaboration data
   filtered_collab <- reactive({
-    req(active_tab() == "Explore All Collaborations 🤝", input$country_select, input$years)
+    req(active_tab() == "Explore All Collaborations 🤝", input$country_select)
     
     # Validate filter value
     filter_value <- as.numeric(input$collab_filter)
@@ -1202,8 +1207,6 @@ server <- function(input, output, session) {
       ds %>%
         dplyr::filter(
           is_collab == TRUE,
-          year >= input$years[1],
-          year <= input$years[2],
           grepl(input$country_select, iso2c)
         ) %>%
         # OPTIMIZATION 2: Only select necessary columns
@@ -1320,7 +1323,7 @@ server <- function(input, output, session) {
     return(agg_data)
   }) %>% 
   # OPTIMIZATION 8: Add debouncing and improve caching keys
-  bindCache(input$country_select, input$years, input$collab_filter) %>%
+  bindCache(input$country_select, input$collab_filter) %>%
   debounce(500)
 
   # Collaboration plot
@@ -1498,7 +1501,7 @@ server <- function(input, output, session) {
           )
         )
     })
-  }) %>% bindCache(input$country_select, input$years, input$collab_filter)
+  }) %>% bindCache(input$country_select, input$collab_filter)
 
 # Top contributors table (historical) - optimized
 top_contributors <- reactive({
@@ -1521,7 +1524,7 @@ top_contributors <- reactive({
     arrange(desc(total_contribution)) %>%
     slice_head(n = 3) %>%
     select(partner, partner_country)
-}) %>% bindCache(input$country_select, input$years, input$collab_filter)
+}) %>% bindCache(input$country_select, input$collab_filter)
 
   # Top Contributors Table B with improved error handling
   output$top_contributors_tableB <- render_gt({
