@@ -1186,10 +1186,10 @@ server <- function(input, output, session) {
     
     # Validate filter value
     filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.05
+    if(is.na(filter_value)) filter_value <- 0.10
     
     # Show a notification for larger data requests
-    if (filter_value > 0.05) {
+    if (filter_value > 0.10) {
       showNotification(
         paste0("Loading ", filter_value*100, "% of data. Please wait..."),
         type = "warning", 
@@ -1315,7 +1315,7 @@ server <- function(input, output, session) {
     return(agg_data)
   }) %>% 
   # OPTIMIZATION 8: Add debouncing and improve caching keys
-  bindCache(input$country_select, input$years, input$collab_filter) %>%
+  # bindCache(input$country_select, input$years, input$collab_filter) %>%
   debounce(500)
 
   # Collaboration plot with optimized rendering
@@ -1330,7 +1330,7 @@ server <- function(input, output, session) {
     
     # Safely convert filter percentage
     filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.05
+    if(is.na(filter_value)) filter_value <- 0.10
     filter_pct <- filter_value * 100
     
     # Get proper country name for display
