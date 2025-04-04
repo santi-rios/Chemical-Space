@@ -1,23 +1,23 @@
 # app.R
-  # Checar paquetes necesarios
-  list.of.packages <- c(
-    "shiny",
-    "bslib",
-    "plotly",
-    "arrow",
-    "tidytable",
-    "countrycode",
-    "glue",
-    "ggplot2",
-    "data.table",
-    "shinycssloaders",
-    "RColorBrewer",
-    "gt",
-    "mapproj"
-    )
-  # Comparar output para instalar paquetes
-  new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-  if(length(new.packages)) install.packages(new.packages)
+# Checar paquetes necesarios
+list.of.packages <- c(
+  "shiny",
+  "bslib",
+  "plotly",
+  "arrow",
+  "tidytable",
+  "countrycode",
+  "glue",
+  "ggplot2",
+  "data.table",
+  "shinycssloaders",
+  "RColorBrewer",
+  "gt",
+  "mapproj"
+  )
+# Comparar output para instalar paquetes
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
 
 
 library(shiny)
@@ -331,12 +331,12 @@ ui <- page_navbar(
           selectInput(
             "collab_filter", "Data Amount:",
             choices = c(
-              "Top 5% (Fast)" = 0.05,
+              "Top 10% (Fast)" = 0.10,
               "Top 50% (Medium)" = 0.5, 
               "Top 75% (Slower)" = 0.75,
               "All Data (Slowest)" = 1
             ),
-            selected = 0.05
+            selected = 0.10
           ),
           conditionalPanel(
             condition = "input.collab_filter > 0.25",
@@ -1215,13 +1215,32 @@ server <- function(input, output, session) {
   # Flag buttons
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  # Then add this to your server function:
+
+
+  # Improved loading indicator in conditionalCollabPlot
   output$conditionalCollabPlot <- renderUI({
     if (!is.null(input$country_select) && input$country_select != "") {
       tagList(
+        div(
+          class = "alert alert-info",
+          style = "padding: 8px; margin-bottom: 10px;",
+          icon("info-circle"), 
+          "Tip: Start with '10% (Fast)' data setting and increase if needed. Loading 'All Data' may take much longer."
+        ),
         withSpinner(
           plotlyOutput("collab_plot", width = "100%", height = "100%"),
-          color = "#024173"
+          color = "#024173",
+          type = 8, # A different spinner type
+          size = 1.2
+        ),
+        # Progress indicators
+        conditionalPanel(
+          condition = "input.collab_filter >= 0.75",
+          tags$div(
+            style = "text-align: center; color: #d9534f; padding: 10px;",
+            tags$span(icon("exclamation-circle")),
+            "Loading large datasets... This may take some time."
+          )
         )
       )
     } else {
@@ -1235,16 +1254,15 @@ server <- function(input, output, session) {
 
   # Reactive for filtered collaboration data
   # Reactive for filtered collaboration data
-  # Reactive for filtered collaboration data
   filtered_collab <- reactive({
     req(active_tab() == "Explore All Collaborations 🤝", input$country_select, input$years)
     
     # Validate filter value
     filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.05
+    if(is.na(filter_value)) filter_value <- 0.10
     
     # Show a notification for larger data requests
-    if (filter_value > 0.05) {
+    if (filter_value > 0.10) {
       showNotification(
         paste0("Loading ", filter_value*100, "% of data. Please wait..."),
         type = "warning", 
@@ -1252,19 +1270,21 @@ server <- function(input, output, session) {
       )
     }
     
-    # Get base data with minimal columns first 
+    # OPTIMIZATION 1: Push more filtering to Arrow before collecting
+    # This reduces the amount of data transferred from disk
     base_data <- tryCatch({
       ds %>%
         dplyr::filter(
           is_collab == TRUE,
           year >= input$years[1],
-          year <= input$years[2]
+          year <= input$years[2],
+          grepl(input$country_select, iso2c)
         ) %>%
-        dplyr::filter(grepl(input$country_select, iso2c)) %>%
+        # OPTIMIZATION 2: Only select necessary columns
         dplyr::select(iso2c, year, percentage) %>%
+        # OPTIMIZATION 3: Pre-compute aggregation if possible
         dplyr::collect()
     }, error = function(e) {
-      # Log the error and return empty data frame
       warning("Error fetching base data: ", e$message)
       return(data.frame())
     })
@@ -1275,16 +1295,37 @@ server <- function(input, output, session) {
     # Ensure percentage is numeric
     base_data$percentage <- as.numeric(base_data$percentage)
     
-    # Process to get partner data
+    # OPTIMIZATION 4: Use more efficient methods for processing partner data
     processed_data <- tryCatch({
-      base_data %>%
-        mutate(
-          partners = strsplit(as.character(iso2c), "-"),
-          partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
-        ) %>%
-        tidyr::unnest(partner) %>%
-        left_join(country_list, by = c("partner" = "iso2c")) %>%
-        rename(partner_country = country)
+      # Process in chunks if dataset is large (> 10,000 rows)
+      if (nrow(base_data) > 10000) {
+        chunk_size <- 5000
+        chunks <- split(base_data, ceiling(seq_len(nrow(base_data))/chunk_size))
+        result <- data.frame()
+        
+        for (chunk in chunks) {
+          chunk_result <- chunk %>%
+            mutate(
+              partners = strsplit(as.character(iso2c), "-"),
+              partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+            ) %>%
+            tidyr::unnest(partner) %>%
+            left_join(country_list, by = c("partner" = "iso2c")) %>%
+            rename(partner_country = country)
+          
+          result <- rbind(result, chunk_result)
+        }
+        result
+      } else {
+        base_data %>%
+          mutate(
+            partners = strsplit(as.character(iso2c), "-"),
+            partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+          ) %>%
+          tidyr::unnest(partner) %>%
+          left_join(country_list, by = c("partner" = "iso2c")) %>%
+          rename(partner_country = country)
+      }
     }, error = function(e) {
       warning("Error processing partner data: ", e$message)
       return(data.frame())
@@ -1292,14 +1333,22 @@ server <- function(input, output, session) {
     
     if (nrow(processed_data) == 0) return(data.frame())
     
-    # Group by partner and year, and get total contribution
+    # OPTIMIZATION 5: Use more efficient aggregation with data.table if available
     agg_data <- tryCatch({
-      processed_data %>%
-        group_by(partner, partner_country, year) %>%
-        summarise(
-          total_percentage = sum(percentage, na.rm = TRUE),
-          .groups = "drop"
-        )
+      if (requireNamespace("data.table", quietly = TRUE)) {
+        DT <- data.table::as.data.table(processed_data)
+        data.table::setkey(DT, partner, partner_country, year)
+        result <- DT[, .(total_percentage = sum(percentage, na.rm = TRUE)), 
+                    by = .(partner, partner_country, year)]
+        as.data.frame(result)
+      } else {
+        processed_data %>%
+          group_by(partner, partner_country, year) %>%
+          summarise(
+            total_percentage = sum(percentage, na.rm = TRUE),
+            .groups = "drop"
+          )
+      }
     }, error = function(e) {
       warning("Error aggregating data: ", e$message)
       return(data.frame())
@@ -1307,32 +1356,26 @@ server <- function(input, output, session) {
     
     if (nrow(agg_data) == 0) return(data.frame())
     
-    # Filter to only top X% of contributors based on their total contribution
+    # OPTIMIZATION 6: Apply filtering efficiently
     if (filter_value < 1) {
       tryCatch({
-        # Get total contribution by partner
         partner_totals <- agg_data %>%
           group_by(partner, partner_country) %>%
           summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
           arrange(desc(total_contribution))
         
-        # Ensure we have numeric data
         if(nrow(partner_totals) > 0 && is.numeric(partner_totals$total_contribution)) {
-          # Calculate the threshold for top X%
-          threshold <- quantile(partner_totals$total_contribution, 1 - filter_value, na.rm = TRUE)
-          
-          # Filter the significant partners
+          # OPTIMIZATION 7: Calculate filtered cutoff before filtering
+          cutoff_value <- ceiling(filter_value * nrow(partner_totals))
           significant_partners <- partner_totals %>%
-            filter(total_contribution >= threshold) %>%
+            slice_head(n = cutoff_value) %>%
             pull(partner)
           
-          # Filter the data to only include those partners
           agg_data <- agg_data %>%
             filter(partner %in% significant_partners)
         }
       }, error = function(e) {
         warning("Error filtering top contributors: ", e$message)
-        # Return the original aggregated data if filtering fails
       })
     }
     
@@ -1343,10 +1386,14 @@ server <- function(input, output, session) {
     }
     
     return(agg_data)
-  })
+  }) %>% 
+  # OPTIMIZATION 8: Add debouncing and improve caching keys
+  bindCache(input$country_select, input$years, input$collab_filter) %>%
+  debounce(500)
+
+
   # Collaboration plot
-  # Collaboration plot
-  # Collaboration plot
+   # Collaboration plot with optimized rendering
   output$collab_plot <- renderPlotly({
     # Get the data and validate it
     data <- filtered_collab()
@@ -1358,10 +1405,10 @@ server <- function(input, output, session) {
     
     # Safely convert filter percentage
     filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.05
+    if(is.na(filter_value)) filter_value <- 0.10
     filter_pct <- filter_value * 100
     
-    # Create proper country labels for tooltip - with validation
+    # Get proper country name for display
     country_selected_name <- tryCatch({
       country_match <- match(input$country_select, country_list$iso2c)
       if(!is.na(country_match)) {
@@ -1376,7 +1423,71 @@ server <- function(input, output, session) {
     # Count number of unique partner countries for subtitle
     partner_count <- length(unique(data$partner_country))
     
-    # Create the plot with error handling
+    # OPTIMIZATION 1: Limit points plotted based on data size
+    max_points <- 1000
+    if(nrow(data) > max_points) {
+      # Sample data if too many points to display
+      set.seed(123)  # For reproducible results
+      data <- data %>% 
+        group_by(partner_country) %>%
+        slice_sample(prop = min(1, max_points/nrow(data))) %>%
+        ungroup()
+      sampled_note <- paste0(" (sampled ", nrow(data), " points)")
+    } else {
+      sampled_note <- ""
+    }
+    
+    # OPTIMIZATION 2: Use direct plotly for large datasets instead of ggplotly conversion
+    if(nrow(data) > 500) {
+      # Direct plotly implementation for better performance with large datasets
+      plot <- plot_ly(
+        data = data,
+        x = ~year,
+        y = ~total_percentage,
+        color = ~partner_country,
+        type = "scatter",
+        mode = "markers",
+        marker = list(
+          size = ~total_percentage/max(total_percentage, na.rm=TRUE)*14 + 4,
+          opacity = 0.6,
+          line = list(width = 1, color = '#FFFFFF')
+        ),
+        text = ~paste0(
+          "<b>", partner_country, "</b><br>",
+          "<b>Year:</b> ", year, "<br>",
+          "<b>Collaboration with ", country_selected_name, ":</b> ",
+          scales::percent(total_percentage/100, accuracy = 0.01)
+        ),
+        hoverinfo = "text"
+      ) %>%
+      layout(
+        title = paste("Collaborations for", country_selected_name, sampled_note),
+        xaxis = list(
+          title = "Year", 
+          gridcolor = "#eeeeee"
+        ),
+        yaxis = list(
+          title = "% of substances contributed by each collaboration",
+          tickformat = ".1%",
+          gridcolor = "#eeeeee"
+        ),
+        showlegend = TRUE,
+        legend = list(
+          font = list(size = 10),
+          itemsizing = "constant"
+        ),
+        hoverlabel = list(
+          bgcolor = "white",
+          bordercolor = "black",
+          font = list(family = "Arial", size = 12)
+        )
+      ) %>%
+      config(displayModeBar = TRUE)
+      
+      return(plot)
+    }
+    
+    # For smaller datasets, use ggplot with gradual enhancements
     tryCatch({
       plot <- ggplot(data, aes(x = year, y = total_percentage)) +
         geom_jitter(
@@ -1387,27 +1498,27 @@ server <- function(input, output, session) {
               "<b>", partner_country, "</b><br>",
               "<b>Year:</b> ", year, "<br>",
               "<b>Collaboration with ", country_selected_name, ":</b> ",
-              scales::percent(total_percentage/100, accuracy = 0.01)  # Division by 100 if your data is already in percentage (not decimal)
+              scales::percent(total_percentage/100, accuracy = 0.01)
             )
           ),
-          alpha = 0.35,
-          width = 1
+          alpha = 0.6,  # Increased transparency
+          width = 0.5   # Reduced jitter width
         ) +
         scale_color_viridis_d(
           option = "turbo",
           name = "Partner Country",
           guide = guide_legend(
             override.aes = list(size = 3),
-            ncol = 2
+            ncol = if(partner_count > 20) 3 else 2  # Adjust legend columns
           )
         ) +
-        scale_radius(range = c(0.5, 8), name = "") +
+        scale_radius(range = c(0.5, 6), name = "") + # Smaller max size
         scale_y_continuous(
           labels = scales::percent_format(accuracy = 0.01, scale = 1),
           expand = expansion(mult = c(0.05, 0.15))
         ) +
         scale_x_continuous(
-          breaks = scales::pretty_breaks()
+          breaks = scales::pretty_breaks(n = 10)
         ) +
         labs(
           title = paste("Collaborations for", country_selected_name),
@@ -1424,7 +1535,7 @@ server <- function(input, output, session) {
           legend.position = "right",
           legend.title = element_text(face = "bold", size = 10),
           plot.title = element_text(face = "bold"),
-          plot.subtitle = element_text(size = 9, color = "#666666"),
+          plot.subtitle = element_text(size = 8, color = "#666666"), # Smaller subtitle
           legend.key.size = unit(0.5, "lines"),
           legend.text = element_text(size = 7)
         )
@@ -1457,20 +1568,29 @@ server <- function(input, output, session) {
         )
     })
   }) %>% bindCache(input$country_select, input$years, input$collab_filter)
-  # Añade esto al server después del gráfico
 
-# Top contributors table (historical)
+# Top contributors table (historical) - optimized
 top_contributors <- reactive({
   req(filtered_collab())
   
-  # Since filtered_collab is already aggregated, we can use it directly
+  # Use direct data.table operations if available for better performance
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    dt <- data.table::as.data.table(filtered_collab())
+    result <- dt[, .(total_contribution = sum(total_percentage, na.rm = TRUE)), 
+                by = .(partner, partner_country)]
+    data.table::setorder(result, -total_contribution)
+    result <- head(result, 3)
+    return(as.data.frame(result[, .(partner, partner_country)]))
+  }
+  
+  # Fall back to dplyr
   filtered_collab() %>%
     group_by(partner, partner_country) %>%
     summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
     arrange(desc(total_contribution)) %>%
     slice_head(n = 3) %>%
     select(partner, partner_country)
-}) %>% bindCache(input$country_select, input$years, input$collab_filter)  # Update table cache too
+}) %>% bindCache(input$country_select, input$years, input$collab_filter)
 
   # Render the table with flags
   output$top_contributors_tableB <- render_gt({
@@ -1498,11 +1618,6 @@ top_contributors <- reactive({
         heading.title.font.size = "18px"
       )
   })
-
-
-
-
-
 
   #################
   # Article Figures
