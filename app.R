@@ -2,33 +2,32 @@
 # 2025_04_04
 # Codigo por Santiago Garcia Rios
 # Checar paquetes necesarios
-list.of.packages <- c("shiny", "bslib", "plotly", "arrow", "tidytable", "dplyr", 
-  "countrycode", "glue", "ggplot2", "data.table", "shinycssloaders", 
-  "RColorBrewer", "gt", "mapproj", "purrr", "viridis", "tidyr")
-  
-# Comparar output para instalar paquetes
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
-# Comparar output para instalar paquetes
 
+# core Shiny and UI  
+library(shiny)  
+library(bslib)  
+library(shinycssloaders)  
 
-library(shiny)
-library(bslib)
-library(plotly)
-library(arrow)
-library(tidytable)
-library(dplyr)
-library(countrycode)
-library(glue)
-library(ggplot2)
-library(data.table)
-library(shinycssloaders)
-library(RColorBrewer)
-library(gt)
-library(mapproj)
-library(purrr)
-library(viridis)
-library(tidyr)
+# plotting  
+library(plotly)  
+library(ggplot2)  
+library(RColorBrewer)  
+library(mapproj)  
+
+# data back‐end  
+library(nanoarrow)        # your parquet reader  
+library(arrow)            # for open_dataset + predicate pushdown  
+library(dplyr)            # verbs and arrow integration  
+library(tidyr)            # unnest  
+library(purrr)            # map over list columns  
+library(data.table)       # fast aggregations  
+library(tidytable)        # optional alternative dplyr syntax  
+library(countrycode)      # iso lookups  
+library(glue)             # string glue  
+library(scales)           # percent_format  
+
+# reporting  
+library(gt)  
 
 theme_set(theme_light())
 
@@ -1278,10 +1277,9 @@ server <- function(input, output, session) {
         withSpinner(
           plotlyOutput("collab_plot", width = "100%", height = "100%"),
           color = "#024173",
-          type = 8, # A different spinner type
+          type = 8,
           size = 1.2
         ),
-        # Progress indicators
         conditionalPanel(
           condition = "input.collab_filter >= 0.75",
           tags$div(
@@ -1299,8 +1297,10 @@ server <- function(input, output, session) {
       )
     }
   })
-
   # Reactive for filtered collaboration data
+  # Reactive for filtered collaboration data
+
+
   filtered_collab <- reactive({
     req(active_tab() == "Explore All Collaborations 🤝")
     
@@ -1434,10 +1434,9 @@ server <- function(input, output, session) {
     
     return(agg_data)
   }) %>% 
-  # OPTIMIZATION 8: Add debouncing and improve caching keys
-  # bindCache(input$country_select, input$years, input$collab_filter) %>%
+  # OPTIMIZATION 8: Add debouncing to prevent rapid recalculations
   debounce(500)
-
+  # Collaboration plot with optimized rendering
   # Collaboration plot with optimized rendering
   output$collab_plot <- renderPlotly({
     # Get the data and validate it
@@ -1546,18 +1545,18 @@ server <- function(input, output, session) {
               scales::percent(total_percentage/100, accuracy = 0.01)
             )
           ),
-          alpha = 0.6,  # Increased transparency
-          width = 0.5   # Reduced jitter width
+          alpha = 0.6,
+          width = 0.5
         ) +
         scale_color_viridis_d(
           option = "turbo",
           name = "Partner Country",
           guide = guide_legend(
             override.aes = list(size = 3),
-            ncol = if(partner_count > 20) 3 else 2  # Adjust legend columns
+            ncol = if(partner_count > 20) 3 else 2
           )
         ) +
-        scale_radius(range = c(0.5, 6), name = "") + # Smaller max size
+        scale_radius(range = c(0.5, 6), name = "") +
         scale_y_continuous(
           labels = scales::percent_format(accuracy = 0.01, scale = 1),
           expand = expansion(mult = c(0.05, 0.15))
@@ -1580,7 +1579,7 @@ server <- function(input, output, session) {
           legend.position = "right",
           legend.title = element_text(face = "bold", size = 10),
           plot.title = element_text(face = "bold"),
-          plot.subtitle = element_text(size = 8, color = "#666666"), # Smaller subtitle
+          plot.subtitle = element_text(size = 8, color = "#666666"),
           legend.key.size = unit(0.5, "lines"),
           legend.text = element_text(size = 7)
         )
@@ -1612,9 +1611,7 @@ server <- function(input, output, session) {
           )
         )
     })
-  }) 
-  # %>% bindCache(input$country_select, input$years, input$collab_filter)
-
+  })
 
 # Top contributors table (historical) - optimized
 top_contributors <- reactive({
