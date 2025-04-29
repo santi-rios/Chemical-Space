@@ -1300,71 +1300,62 @@ server <- function(input, output, session) {
   # Reactive for filtered collaboration data
   # Reactive for filtered collaboration data
 
+# Pre-aggregate collaborations in Arrow
+preagg_collab <- reactive({
+  req(active_tab() == "Explore All Collaborations 🤝")
+  req(input$country_select != "")
+  
+  # This is the heavy lifting part - let Arrow do this work
+  tryCatch({
+    ds %>%
+      dplyr::filter(
+        is_collab == TRUE,
+        year >= input$years[1],
+        year <= input$years[2],
+        grepl(input$country_select, iso2c)
+      ) %>%
+      dplyr::select(iso2c, year, percentage) %>%
+      dplyr::collect()
+  }, error = function(e) {
+    warning("Error in preagg_collab: ", e$message)
+    return(data.frame())
+  })
+}) %>% bindCache(active_tab(), input$country_select, input$years[1], input$years[2])
 
+  # Process the pre-aggregated data
   filtered_collab <- reactive({
-    req(active_tab() == "Explore All Collaborations 🤝")
-    
-    # Validate filter value
-    filter_value <- as.numeric(input$collab_filter)
-    if(is.na(filter_value)) filter_value <- 0.10
-    
-    # Show a notification for larger data requests
-    if (filter_value > 0.10) {
-      showNotification(
-        paste0("Loading ", filter_value*100, "% of data. Please wait..."),
-        type = "warning", 
-        duration = 3
-      )
-    }
-    
-    # OPTIMIZATION 1: Push more filtering to Arrow before collecting
-    # This reduces the amount of data transferred from disk
-    base_data <- tryCatch({
-      ds %>%
-        dplyr::filter(
-          is_collab == TRUE,
-          year >= input$years[1],
-          year <= input$years[2],
-          grepl(input$country_select, iso2c)
-        ) %>%
-        # OPTIMIZATION 2: Only select necessary columns
-        dplyr::select(iso2c, year, percentage) %>%
-        # OPTIMIZATION 3: Pre-compute aggregation if possible
-        dplyr::collect()
-    }, error = function(e) {
-      warning("Error fetching base data: ", e$message)
-      return(data.frame())
-    })
-    
-    # Early exit if no data
-    if (nrow(base_data) == 0) return(data.frame())
-    
-    # Ensure percentage is numeric
-    base_data$percentage <- as.numeric(base_data$percentage)
-    
-    # OPTIMIZATION 4: Use more efficient methods for processing partner data
-    processed_data <- tryCatch({
-      # Process in chunks if dataset is large (> 10,000 rows)
-      if (nrow(base_data) > 10000) {
-        chunk_size <- 5000
-        chunks <- split(base_data, ceiling(seq_len(nrow(base_data))/chunk_size))
-        result <- data.frame()
-        
-        for (chunk in chunks) {
-          chunk_result <- chunk %>%
-            mutate(
-              partners = strsplit(as.character(iso2c), "-"),
-              partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
-            ) %>%
-            tidyr::unnest(partner) %>%
-            left_join(country_list, by = c("partner" = "iso2c")) %>%
-            rename(partner_country = country)
-          
-          result <- rbind(result, chunk_result)
-        }
-        result
-      } else {
-        base_data %>%
+  # Get base data from pre-aggregation
+  base_data <- preagg_collab()
+  
+  # Validate filter value
+  filter_value <- as.numeric(input$collab_filter)
+  if(is.na(filter_value)) filter_value <- 0.10
+  
+  # Show a notification for larger data requests
+  if (filter_value > 0.10) {
+    showNotification(
+      paste0("Loading ", filter_value*100, "% of data. Please wait..."),
+      type = "warning", 
+      duration = 3
+    )
+  }
+  
+  # Early exit if no data
+  if (nrow(base_data) == 0) return(data.frame())
+  
+  # Ensure percentage is numeric
+  base_data$percentage <- as.numeric(base_data$percentage)
+  
+  # Extract partner country codes and join with country names
+  processed_data <- tryCatch({
+    # Process in chunks if dataset is large
+    if (nrow(base_data) > 10000) {
+      chunk_size <- 5000
+      chunks <- split(base_data, ceiling(seq_len(nrow(base_data))/chunk_size))
+      result <- data.frame()
+      
+      for (chunk in chunks) {
+        chunk_result <- chunk %>%
           mutate(
             partners = strsplit(as.character(iso2c), "-"),
             partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
@@ -1372,72 +1363,84 @@ server <- function(input, output, session) {
           tidyr::unnest(partner) %>%
           left_join(country_list, by = c("partner" = "iso2c")) %>%
           rename(partner_country = country)
-      }
-    }, error = function(e) {
-      warning("Error processing partner data: ", e$message)
-      return(data.frame())
-    })
-    
-    if (nrow(processed_data) == 0) return(data.frame())
-    
-    # OPTIMIZATION 5: Use more efficient aggregation with data.table if available
-    agg_data <- tryCatch({
-      if (requireNamespace("data.table", quietly = TRUE)) {
-        DT <- data.table::as.data.table(processed_data)
-        data.table::setkey(DT, partner, partner_country, year)
-        result <- DT[, .(total_percentage = sum(percentage, na.rm = TRUE)), 
-                    by = .(partner, partner_country, year)]
-        as.data.frame(result)
-      } else {
-        processed_data %>%
-          group_by(partner, partner_country, year) %>%
-          summarise(
-            total_percentage = sum(percentage, na.rm = TRUE),
-            .groups = "drop"
-          )
-      }
-    }, error = function(e) {
-      warning("Error aggregating data: ", e$message)
-      return(data.frame())
-    })
-    
-    if (nrow(agg_data) == 0) return(data.frame())
-    
-    # OPTIMIZATION 6: Apply filtering efficiently
-    if (filter_value < 1) {
-      tryCatch({
-        partner_totals <- agg_data %>%
-          group_by(partner, partner_country) %>%
-          summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
-          arrange(desc(total_contribution))
         
-        if(nrow(partner_totals) > 0 && is.numeric(partner_totals$total_contribution)) {
-          # OPTIMIZATION 7: Calculate filtered cutoff before filtering
-          cutoff_value <- ceiling(filter_value * nrow(partner_totals))
-          significant_partners <- partner_totals %>%
-            slice_head(n = cutoff_value) %>%
-            pull(partner)
-          
-          agg_data <- agg_data %>%
-            filter(partner %in% significant_partners)
-        }
-      }, error = function(e) {
-        warning("Error filtering top contributors: ", e$message)
-      })
+        result <- rbind(result, chunk_result)
+      }
+      result
+    } else {
+      base_data %>%
+        mutate(
+          partners = strsplit(as.character(iso2c), "-"),
+          partner = purrr::map(partners, ~ setdiff(.x, input$country_select))
+        ) %>%
+        tidyr::unnest(partner) %>%
+        left_join(country_list, by = c("partner" = "iso2c")) %>%
+        rename(partner_country = country)
     }
-    
-    # Ensure all numeric columns are actually numeric
-    if(nrow(agg_data) > 0) {
-      agg_data$total_percentage <- as.numeric(agg_data$total_percentage)
-      agg_data$year <- as.numeric(agg_data$year)
+  }, error = function(e) {
+    warning("Error processing partner data: ", e$message)
+    return(data.frame())
+  })
+  
+  if (nrow(processed_data) == 0) return(data.frame())
+  
+  # Aggregate the data efficiently
+  agg_data <- tryCatch({
+    if (requireNamespace("data.table", quietly = TRUE)) {
+      DT <- data.table::as.data.table(processed_data)
+      data.table::setkey(DT, partner, partner_country, year)
+      result <- DT[, .(total_percentage = sum(percentage, na.rm = TRUE)), 
+                  by = .(partner, partner_country, year)]
+      as.data.frame(result)
+    } else {
+      processed_data %>%
+        group_by(partner, partner_country, year) %>%
+        summarise(
+          total_percentage = sum(percentage, na.rm = TRUE),
+          .groups = "drop"
+        )
     }
-    
-    return(agg_data)
-  }) %>% 
-  # OPTIMIZATION 8: Add debouncing to prevent rapid recalculations
+  }, error = function(e) {
+    warning("Error aggregating data: ", e$message)
+    return(data.frame())
+  })
+  
+  if (nrow(agg_data) == 0) return(data.frame())
+  
+  # Apply filtering based on user selection
+  if (filter_value < 1) {
+    tryCatch({
+      partner_totals <- agg_data %>%
+        group_by(partner, partner_country) %>%
+        summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
+        arrange(desc(total_contribution))
+      
+      if(nrow(partner_totals) > 0 && is.numeric(partner_totals$total_contribution)) {
+        cutoff_value <- ceiling(filter_value * nrow(partner_totals))
+        significant_partners <- partner_totals %>%
+          slice_head(n = cutoff_value) %>%
+          pull(partner)
+        
+        agg_data <- agg_data %>%
+          filter(partner %in% significant_partners)
+      }
+    }, error = function(e) {
+      warning("Error filtering top contributors: ", e$message)
+    })
+  }
+  
+  # Ensure all numeric columns are actually numeric
+  if(nrow(agg_data) > 0) {
+    agg_data$total_percentage <- as.numeric(agg_data$total_percentage)
+    agg_data$year <- as.numeric(agg_data$year)
+  }
+  
+  return(agg_data)
+}) %>% 
+  bindCache(input$country_select, input$years, input$collab_filter) %>%
   debounce(500)
   # Collaboration plot with optimized rendering
-  # Collaboration plot with optimized rendering
+
   output$collab_plot <- renderPlotly({
     # Get the data and validate it
     data <- filtered_collab()
