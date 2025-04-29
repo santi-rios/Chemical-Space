@@ -2,25 +2,14 @@
 # 2025_04_04
 # Codigo por Santiago Garcia Rios
 # Checar paquetes necesarios
-list.of.packages <- c(
-  "shiny",
-  "bslib",
-  "plotly",
-  "arrow",
-  "tidytable",
-  "countrycode",
-  "glue",
-  "ggplot2",
-  "data.table",
-  "shinycssloaders",
-  "RColorBrewer",
-  "gt",
-  "mapproj",
-  "bsicons"
-  )
+list.of.packages <- c("shiny", "bslib", "plotly", "arrow", "tidytable", "dplyr", 
+  "countrycode", "glue", "ggplot2", "data.table", "shinycssloaders", 
+  "RColorBrewer", "gt", "mapproj", "purrr", "viridis", "tidyr")
+  
 # Comparar output para instalar paquetes
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
+# Comparar output para instalar paquetes
 
 
 library(shiny)
@@ -28,6 +17,7 @@ library(bslib)
 library(plotly)
 library(arrow)
 library(tidytable)
+library(dplyr)
 library(countrycode)
 library(glue)
 library(ggplot2)
@@ -36,6 +26,9 @@ library(shinycssloaders)
 library(RColorBrewer)
 library(gt)
 library(mapproj)
+library(purrr)
+library(viridis)
+library(tidyr)
 
 theme_set(theme_light())
 
@@ -48,7 +41,6 @@ ds <- arrow::open_dataset("./data/data.parquet", format = "parquet")
 # this is used for the map plot
 world_data <- arrow::read_parquet("data/world_data.parquet") %>%
   as.data.frame()
-
 
 # Precompute country list from individual data (fast metadata operation)
 country_list <- ds %>%
@@ -501,7 +493,134 @@ ui <- page_navbar(
             )
           )
         )
+      ),
+    nav_panel(
+  "Legal Notice",
+  fluidPage(
+    card(
+      card_header("Legal Notice / Provider Identification"),
+      card_body(
+        markdown(
+          "The following provides mandatory data concerning the provider of this Website, obligations with regard to data protection, as well as other important legal references involving the Website of the Max Planck Institute for Physics (Werner-Heisenberg Institute) Munich (http://www.mpp.mpg.de) as required by German law."
+        ),
+        h4("Provider"),
+        markdown(
+          "The provider of this Internet site within the legal meaning of the term is the registered association Max Planck Society for the Advancement of Science e.V."
+        ),
+        h4("Address"),
+        markdown(
+          "Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V.  
+          Hofgartenstrasse 8  
+          D-80539 Munich  
+          +49 89 2108-0  
+          [http://www.mpg.de](http://www.mpg.de)"
+        ),
+        h4("Register of Societies and Associations"),
+        markdown(
+          "The Max Planck Society is registered in the Official Register of Societies and Associations at Berlin-Charlottenburg Local Court under the register number VR 13378 B."
+        ),
+        h4("Representatives"),
+        markdown(
+          "The Max Planck Society is legally represented by its Board of Directors which, in turn, is represented by the President of the Society, Prof. Dr. Patrick Cramer, and by Secretary General Simone Schwanitz."
+        ),
+        h4("Value added tax identification number"),
+        markdown(
+          "The value added tax identification number of the Max Planck Society is DE 129517720."
+        ),
+        h4("Editor"),
+        markdown(
+          "Responsible editor for the contents of the website of the Max Planck Institute for Physics  
+          ([http://www.mpp.mpg.de](http://www.mpp.mpg.de)) with regard to media law is press officer:  
+          Barbara Wankerl  
+          Max Planck Institute for Physics  
+          Boltzmannstr. 8  
+          85748 Garching  
+          Germany  
+          +49 89 32354-292  
+          barbara.wankerl@mpp.mpg.de"
+        ),
+        h4("Technically responsible"),
+        markdown(
+          "Technically responsible for the website of the Max Planck Institute for Physics ([http://www.mpp.mpg.de](http://www.mpp.mpg.de)) are Thomas Hahn (hahn@mpp.mpg.de) and Uwe Leupold (webmaster@mpp.mpg.de). Support, maintainance and upgrades of the TYPO3 domain are handled by the web company metapublic GbR (Baldestr. 14, 80469 München)."
+        ),
+        h4("Legal Structure"),
+        markdown(
+          "The Max Planck Society is a non-profit research facility which is organized as a registered association. All of the institutes and facilities of the Max Planck Society are largely autonomous in terms of organization and research, but as a rule have no legal capacity of their own."
+        ),
+        h4("Liability for Contents of Online Information"),
+        markdown(
+          "As the provider of contents in accordance with Section 7 Paragraph 1 of the Tele-Media Law, the Max Planck Society shall be responsible for any contents which it makes available for use in accordance with general legal provisions. The Max Planck Society makes every effort to provide timely and accurate information on this Web site. Nevertheless, errors and inaccuracies cannot be completely ruled out. Therefore, the Max Planck Society does not assume any liability for the relevance, accuracy, completeness or quality of the information provided. The Max Planck Society shall not be liable for damage of a tangible or intangible nature caused directly or indirectly through the use or failure to use the information offered and/or through the use of faulty or incomplete information unless it is verifiably culpable of intent or gross negligence. The same shall apply to any downloadable software available free of charge. The Max Planck Society reserves the right to modify, supplement, or delete any or all of the information offered on its Internet site, or to temporarily or permanently cease publication thereof without prior and separate notification."
+        ),
+        h4("Copyright"),
+        markdown(
+          "The layout, graphics employed and any other contents on the homepage of the Max Planck Society Internet site are protected by copyright law.  
+          © Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V., Munich. All rights reserved."
+        )
       )
+    )
+  )
+),
+
+# ------------------------------
+# 5) PRIVACY POLICY,
+# ------------------------------
+nav_panel(
+  "Privacy Policy",
+  fluidPage(
+    card(
+      card_header("Privacy Policy"),
+      card_body(
+        markdown(
+          "The Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG) takes the protection of your personal data very seriously. Here we provide you with information concerning the main aspects of data processing in the context of our application and recruitment procedures."
+        ),
+        h4("1. Contact details of the data controller"),
+        markdown(
+          "The controller as defined by the EU General Data Protection Regulation (GDPR) and other provisions under data protection law is:  
+          
+          Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG)  
+          Hofgartenstraße 8, 80539 Munich  
+          Phone: +49 89 2108 -0  
+          [www.mpg.de](www.mpg.de)"
+        ),
+        h4("2. Contact details of the Data Protection Officer"),
+        markdown(
+          "The Data Protection Officer of the controller is Heidi Schuster, Hofgartenstraße 8, D-80539 Munich, telephone: +49 (89) 2108-1554, email address: datenschutz@mpg.de"
+        ),
+        h4("3. Purpose and legal basis of data processing"),
+        markdown(
+          "The personal data entered by you in our application system is saved and processed solely for the application and recruitment processes of the Max Planck Institute for Mathematics in the Sciences, Leipzig.  
+          
+          Fields marked with an * are mandatory fields that are required for the application process. If you do not provide these details, you cannot take part in the application process. The legal basis for processing is Article 6, para. 1, lit b GDPR (contractual basis) and § 26 Federal Data Protection Act 2018 (data processing as the basis for establishing an employment contract).  
+          
+          Fields not marked with an * are fields which you can complete voluntarily. By completing the voluntary fields, you give us your permission to store and process this data exclusively for the purpose of the application and recruitment process. The legal basis for processing in these instances is Article 6, para. 1, lit. a GDPR (consent of the data subject)."
+        ),
+        h4("4. Data recipients and categories of data recipients"),
+        markdown(
+          "Processing of your personal details is carried out by way of order processing on Haufe-umantis AG systems. The Max-Planck-Gesellschaft as the responsible body only has access to your data insofar as this is necessary for the application and recruitment process in line with the internal allocation of responsibilities. Personnel management staff have access to the data. They transfer the data to the selection committee assembled for the respective application procedure, as well as to the Gender Equality Officer and the Works Council. The selection committee may also include external experts with whom the data is then shared. The data is not shared with any other third parties."
+        ),
+        h4("5. Duration of storage"),
+        markdown(
+          "Your data will be stored until the end of the recruitment process or, in the case of a speculative application, until the end of the exploratory process or the appointment process, as the case may be. We only save your data for longer if you have given us your consent to do so."
+        ),
+        h4("6. Your rights"),
+        markdown(
+          "You can view, alter or delete the data you have entered at any time using your personal access to the application system. Your access is protected using your email address as a personal login name and a password of your choice.  
+          
+          You are fundamentally entitled to the rights of access (Article 15 GDPR), rectification (Article 16 GDPR), erasure (Article 17, para. 1 GDPR), restriction of processing (Article 18 GDPR), data portability (Article 20 GDPR) and withdrawal of consent (Article 7, para. 3 GDPR).  
+          
+          In order to assert your rights, please contact:  
+          Max Planck Institute for Mathematics in the Sciences  
+          Inselstrasse 22  
+          04103 Leipzig  
+          
+          If you believe that processing of your personal data is in breach of data protection law or your claims under data protection law are being violated in any other way, please contact the Max-Planck-Gesellschaft Data Protection Officer at datenschutz@mpg.de. The supervisory authority responsible for the Max-Planck-Gesellschaft is:  
+          BayLDA (Bavarian Data Protection Authority)  
+          Postfach 606, 91511 Ansbach."
+        )
+      )
+    )
+  )
+)
     ),
     card_footer(
       "Source: China's rise in the chemical space and the decline of US influence.",
