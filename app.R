@@ -47,7 +47,8 @@ country_list <- ds %>%
   dplyr::select(country, iso2c) %>%
   dplyr::distinct() %>%
   dplyr::collect() %>%
-  dplyr::arrange(country)
+  dplyr::arrange(country) %>%
+  data.table::as.data.table()
 
 
 # Create a Shiny app object
@@ -363,23 +364,23 @@ ui <- page_navbar(
             )
           )
         )
-      ),
-      card(
-        card_header(
-          div(
-            class = "d-flex align-items-center",
-            h4("Top Historical Contributors 🏆", class = "mb-0 me-2")
-          )
-        ),
-        card_body(
-          popover(
-          bsicons::bs_icon("info-circle"),
-          a("About these percentages"),
-          markdown("These percentages represent the total proportion of chemical substances discovered through collaboration between the selected country and each partner country. Higher percentages indicate stronger and more productive scientific partnerships in terms of novel chemical discoveries."),
-          ),
-          gt_output("top_contributors_tableB") %>% withSpinner()
-        )
       )
+      # card(
+      #   card_header(
+      #     div(
+      #       class = "d-flex align-items-center",
+      #       h4("Top Historical Contributors 🏆", class = "mb-0 me-2")
+      #     )
+      #   ),
+      #   card_body(
+      #     popover(
+      #     bsicons::bs_icon("info-circle"),
+      #     a("About these percentages"),
+      #     markdown("These percentages represent the total proportion of chemical substances discovered through collaboration between the selected country and each partner country. Higher percentages indicate stronger and more productive scientific partnerships in terms of novel chemical discoveries."),
+      #     ),
+      #     gt_output("top_contributors_tableB") %>% withSpinner()
+      #   )
+      # )
     )
   ),
   # ------------------------------,
@@ -1310,8 +1311,6 @@ preagg_collab <- reactive({
     ds %>%
       dplyr::filter(
         is_collab == TRUE,
-        year >= input$years[1],
-        year <= input$years[2],
         grepl(input$country_select, iso2c)
       ) %>%
       dplyr::select(iso2c, year, percentage) %>%
@@ -1320,7 +1319,8 @@ preagg_collab <- reactive({
     warning("Error in preagg_collab: ", e$message)
     return(data.frame())
   })
-}) %>% bindCache(active_tab(), input$country_select, input$years[1], input$years[2])
+}) 
+# %>% bindCache(active_tab(), input$country_select)
 
   # Process the pre-aggregated data
   filtered_collab <- reactive({
@@ -1492,7 +1492,7 @@ preagg_collab <- reactive({
         x = ~year,
         y = ~total_percentage,
         color = ~partner_country,
-        type = "scatter",
+        type = "scattergl",
         mode = "markers",
         marker = list(
           size = ~total_percentage/max(total_percentage, na.rm=TRUE)*14 + 4,
@@ -1617,55 +1617,55 @@ preagg_collab <- reactive({
   })
 
 # Top contributors table (historical) - optimized
-top_contributors <- reactive({
-  req(filtered_collab())
+# top_contributors <- reactive({
+#   req(filtered_collab())
   
-  # Use direct data.table operations if available for better performance
-  if (requireNamespace("data.table", quietly = TRUE)) {
-    dt <- data.table::as.data.table(filtered_collab())
-    result <- dt[, .(total_contribution = sum(total_percentage, na.rm = TRUE)), 
-                by = .(partner, partner_country)]
-    data.table::setorder(result, -total_contribution)
-    result <- head(result, 3)
-    return(as.data.frame(result[, .(partner, partner_country)]))
-  }
+#   # Use direct data.table operations if available for better performance
+#   if (requireNamespace("data.table", quietly = TRUE)) {
+#     dt <- data.table::as.data.table(filtered_collab())
+#     result <- dt[, .(total_contribution = sum(total_percentage, na.rm = TRUE)), 
+#                 by = .(partner, partner_country)]
+#     data.table::setorder(result, -total_contribution)
+#     result <- head(result, 3)
+#     return(as.data.frame(result[, .(partner, partner_country)]))
+#   }
   
-  # Fall back to dplyr
-  filtered_collab() %>%
-    group_by(partner, partner_country) %>%
-    summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
-    arrange(desc(total_contribution)) %>%
-    slice_head(n = 3) %>%
-    select(partner, partner_country)
-}) 
-# %>% bindCache(input$country_select, input$years, input$collab_filter)
+#   # Fall back to dplyr
+#   filtered_collab() %>%
+#     group_by(partner, partner_country) %>%
+#     summarise(total_contribution = sum(total_percentage, na.rm = TRUE), .groups = "drop") %>%
+#     arrange(desc(total_contribution)) %>%
+#     slice_head(n = 3) %>%
+#     select(partner, partner_country)
+# }) 
+# # %>% bindCache(input$country_select, input$years, input$collab_filter)
 
-  # Top Contributors Table B with improved error handling
-  output$top_contributors_tableB <- render_gt({
-    req(top_contributors())
-    req(nrow(top_contributors()) > 0)
+#   # Top Contributors Table B with improved error handling
+#   output$top_contributors_tableB <- render_gt({
+#     req(top_contributors())
+#     req(nrow(top_contributors()) > 0)
 
-    top_contributors() %>%
-      gt() %>%
-      gt::tab_header(
-        title = "Top 3 Historical Contributors of Country selected",
-        subtitle = "All selected years considered for the Historical top contributors"
-      ) %>%
-      gt::fmt_flag(columns = partner) %>% # Mostrar banderas desde códigos ISO2
-      gt::cols_label(
-        partner = "", # Ocultar título de columna de banderas
-        partner_country = "Country"
-      ) %>%
-      gt::cols_width(
-        partner ~ px(50), # Ancho fijo para columna de bandera
-        partner_country ~ px(200)
-      ) %>%
-      gt::opt_row_striping() %>%
-      gt::tab_options(
-        table.font.size = "14px",
-        heading.title.font.size = "18px"
-      )
-  })
+#     top_contributors() %>%
+#       gt() %>%
+#       gt::tab_header(
+#         title = "Top 3 Historical Contributors of Country selected",
+#         subtitle = "All selected years considered for the Historical top contributors"
+#       ) %>%
+#       gt::fmt_flag(columns = partner) %>% # Mostrar banderas desde códigos ISO2
+#       gt::cols_label(
+#         partner = "", # Ocultar título de columna de banderas
+#         partner_country = "Country"
+#       ) %>%
+#       gt::cols_width(
+#         partner ~ px(50), # Ancho fijo para columna de bandera
+#         partner_country ~ px(200)
+#       ) %>%
+#       gt::opt_row_striping() %>%
+#       gt::tab_options(
+#         table.font.size = "14px",
+#         heading.title.font.size = "18px"
+#       )
+#   })
 
 
   #################
