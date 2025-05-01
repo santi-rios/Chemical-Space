@@ -67,11 +67,8 @@ process_collab_data <- function(ds, iso, year_range = c(1996, 2022),
             between(year, year_range[1], year_range[2])
         )
 
-    # Apply chemical filter if not "All"
-    if (chemical_category != "All") {
-        base_query <- base_query %>%
-            filter(chemical == chemical_category)
-    }
+    base_query <- base_query %>%
+        filter(chemical == chemical_category)
 
     # Collect filtered data
     base_data <- base_query %>%
