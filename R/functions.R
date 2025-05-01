@@ -564,3 +564,256 @@ create_specific_collab_plot <- function(data, countries, country_list, chemical_
         ) %>%
         config(displayModeBar = TRUE)
 }
+
+
+# Fix issues in the map and multi-country search function
+#' Find collaborations between specific countries
+#' 
+#' @param ds Data source
+#' @param countries Vector of country ISO2 codes to search for in collaborations
+#' @param year_range Range of years to filter
+#' @param chemical_category Chemical category to filter by
+#' @param country_list Lookup table for country codes and names
+#' @return Data frame of collaborations involving all specified countries
+#' @export
+find_specific_collaborations <- function(ds, countries, 
+                                        year_range = c(1996, 2022), 
+                                        chemical_category = "All",
+                                        country_list) {
+  if (length(countries) == 0) {
+    return(data.frame())
+  }
+  
+  # Create a proper filter for multiple countries
+  withProgress(message = "Searching for collaborations...", {
+    # First query - filter for records that might contain all countries
+    base_query <- ds %>%
+      filter(
+        is_collab == TRUE,
+        between(year, year_range[1], year_range[2])
+      )
+    
+    # Apply chemical filter if not "All"
+    if (chemical_category != "All") {
+      base_query <- base_query %>%
+        filter(chemical == chemical_category)
+    }
+    
+    # Apply filters one by one to avoid the grepl vector issue
+    for (country_code in countries) {
+      # Use a proper single-value pattern for each iteration
+      pattern <- country_code
+      base_query <- base_query %>%
+        filter(grepl(pattern, iso2c))
+    }
+    
+    # Execute query and collect results
+    base_data <- base_query %>%
+      select(iso2c, year, percentage, chemical) %>%
+      collect()
+    
+    # Early exit if no data
+    if (nrow(base_data) == 0) {
+      return(data.frame())
+    }
+    
+    # Further process to confirm all countries are in each collaboration
+    result <- base_data %>%
+      mutate(
+        # Split the collaboration string
+        partners = strsplit(as.character(iso2c), "-"),
+        # Count number of countries in collaboration
+        collab_size = sapply(partners, length),
+        # Check if all specified countries are included
+        all_match = sapply(partners, function(x) all(countries %in% x)),
+        # Create collab type classification
+        collab_type = case_when(
+          collab_size == 2 ~ "Bilateral",
+          collab_size == 3 ~ "Trilateral",
+          collab_size == 4 ~ "4-country",
+          collab_size >= 5 ~ "5-country+",
+          TRUE ~ "Unknown"
+        )
+      ) %>%
+      filter(all_match) %>%
+      group_by(iso2c, collab_type, year, chemical) %>%
+      summarise(
+        total_percentage = sum(percentage, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    # Ensure all numeric columns are actually numeric
+    result$total_percentage <- as.numeric(result$total_percentage)
+    result$year <- as.numeric(result$year)
+    
+    return(result)
+  })
+}
+#' Create a world map for country selection
+#' 
+#' @param selected_countries Currently selected country ISO codes
+#' @param country_list Country lookup table
+#' @return Leaflet map with selectable countries
+#' @export
+create_selection_map <- function(selected_countries = c(), country_list) {
+  # Load world map data
+  world_map <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+  
+  # Join with our country list to ensure consistent ISO codes
+  world_map <- world_map %>%
+    left_join(country_list, by = c("iso_a2" = "iso2c"))
+  
+  # Create a color palette for selected/unselected countries
+  pal <- colorFactor(
+    palette = c("lightgray", "#3388ff"),
+    domain = c(FALSE, TRUE)
+  )
+  
+  # Create the leaflet map
+  map <- leaflet(world_map) %>%
+    addTiles() %>%
+    setView(lng = 0, lat = 20, zoom = 2) %>%  # Center the map
+    addPolygons(
+      fillColor = ~pal(iso_a2 %in% selected_countries),
+      weight = 1,
+      opacity = 1,
+      color = "white",
+      dashArray = "3",
+      fillOpacity = 0.7,
+      highlight = highlightOptions(
+        weight = 2,
+        color = "#666",
+        dashArray = "",
+        fillOpacity = 0.7,
+        bringToFront = TRUE
+      ),
+      # FIXED: Use the correct column name from rnaturalearth data
+      label = ~name,  # Using the 'name' column from rnaturalearth
+      layerId = ~iso_a2,   # Use ISO code as layer ID for click handling
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"
+      )
+    ) %>%
+    addLegend(
+      position = "bottomright",
+      colors = c("lightgray", "#3388ff"),
+      labels = c("Available", "Selected"),
+      title = "Country Status",
+      opacity = 0.7
+    ) %>%
+    addControl(
+      html = "<div style='padding:5px; background-color:white; opacity:0.8;'>
+              <b>Click countries to select</b><br>Search for collaborations between all selected countries</div>",
+      position = "topright"
+    )
+  
+  return(map)
+}
+
+#' Create specific collaboration plot
+#' 
+#' @param data Processed collaboration data
+#' @param countries Vector of country ISO codes
+#' @param country_list Country lookup table
+#' @param chemical_category Chemical category being displayed
+#' @return A plotly object
+#' @export
+create_specific_collab_plot <- function(data, countries, country_list, chemical_category = "All") {
+  if (nrow(data) == 0) {
+    return(plot_ly() %>% 
+      add_annotations(
+        text = "No collaborations found involving all selected countries.",
+        x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+        showarrow = FALSE, font = list(size = 16)
+      )
+    )
+  }
+  
+  # Get country names for display
+  country_names <- sapply(countries, function(iso) {
+    match_idx <- match(iso, country_list$iso2c)
+    if (!is.na(match_idx)) country_list$country[match_idx] else iso
+  })
+  
+  # Add chemical category to title
+  chemical_text <- if (chemical_category == "All") {
+    "All Chemicals"
+  } else {
+    chemical_category
+  }
+  
+  # Create title text
+  if (length(country_names) > 3) {
+    title_text <- paste0(
+      "Collaborations between ", 
+      paste(country_names[1:2], collapse=", "),
+      " and ", length(country_names) - 2, " other countries"
+    )
+  } else {
+    title_text <- paste("Collaborations between", paste(country_names, collapse=", "))
+  }
+  
+  # Create the visualization
+  p <- ggplot(data, aes(x = year, y = total_percentage)) +
+    geom_line(linewidth = 0.5) +
+    geom_point(
+      aes(
+        size = total_percentage,
+        color = collab_type,
+        text = paste0(
+          "<b>Collaboration:</b> ", iso2c, "<br>",
+          "<b>Type:</b> ", collab_type, "<br>",
+          "<b>Year:</b> ", year, "<br>",
+          "<b>Chemical Type:</b> ", chemical, "<br>",
+          "<b>Percentage:</b> ", scales::percent(total_percentage/100, accuracy = 0.01)
+        )
+      ),
+      alpha = 0.8
+    ) +
+    scale_color_brewer(
+      palette = "Set1",
+      name = "Collaboration Type"
+    ) +
+    scale_radius(range = c(2, 8), name = "") +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 0.01, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15))
+    ) +
+    scale_x_continuous(
+      breaks = scales::pretty_breaks(n = 10)
+    ) +
+    labs(
+      title = paste(title_text, "-", chemical_text),
+      subtitle = paste0(
+        "Found ", nrow(data), " collaboration instances over time"
+      ),
+      x = "Year",
+      y = "% of substances contributed"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(face = "bold", size = 10),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(size = 8, color = "#666666"),
+      legend.key.size = unit(0.5, "lines"),
+      legend.text = element_text(size = 8)
+    )
+  
+  # Convert to plotly with improved tooltip handling
+  ggplotly(p, tooltip = "text") %>%
+    plotly::layout(
+      hoverlabel = list(
+        bgcolor = "white",
+        bordercolor = "black",
+        font = list(family = "Arial", size = 12)
+      ),
+      legend = list(
+        font = list(size = 9),
+        itemsizing = "constant"
+      )
+    ) %>%
+    config(displayModeBar = TRUE)
+}

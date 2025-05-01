@@ -165,7 +165,7 @@ ui <- page_navbar(
           "2. The visualization will update to show only collaborations where ALL selected countries participated together."
         )
       ),
-      layout_columns(
+      verticalLayout(
         card(
           full_screen = TRUE,
           card_header("Country Selection Map"),
