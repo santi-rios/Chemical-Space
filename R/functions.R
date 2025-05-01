@@ -61,6 +61,8 @@ load_country_data <- function(data_path = "./data/data.parquet") {
 #' @export
 # Update the process_collab_data function to handle multiple countries
 
+# Fix the process_collab_data function to handle cc/country_color correctly
+
 process_collab_data <- function(ds, iso, year_range = c(1996, 2022),
                               data_type = "collaborations",
                               collab_types = "Bilateral",
@@ -96,9 +98,13 @@ process_collab_data <- function(ds, iso, year_range = c(1996, 2022),
     # For "both" data type
     if (length(iso) > 1) iso <- iso[1] # Only use first country for "both" mode
     
+    # Filter for both individual and collaboration data
     base_query <- base_query %>%
       filter(
-        grepl(iso, iso2c),
+        # For collaborations, use grepl to match within multi-country strings
+        # For individual, use direct ISO code matching
+        (is_collab == TRUE & grepl(iso, iso2c)) | 
+          (is_collab == FALSE & iso2c == iso),
         between(year, year_range[1], year_range[2])
       )
   }
@@ -132,22 +138,91 @@ process_collab_data <- function(ds, iso, year_range = c(1996, 2022),
         .groups = "drop"
       )
   } else {
-    # For collaborations, use existing logic with modifications
-    # Rest of your existing code for handling collaborations...
+    # Process only collaboration data if we're in collaboration mode
+    if (data_type == "collaborations") {
+      collab_data <- base_data %>% filter(is_collab == TRUE)
+    } else {
+      # For "both" mode, split the data
+      collab_data <- base_data %>% filter(is_collab == TRUE)
+      indiv_data <- base_data %>% filter(is_collab == FALSE)
+    }
     
-    # Existing code for collaboration processing...
-    # (Keep all your existing collaboration processing code here)
-    
-    # End result should include country_color field
-    if ("cc" %in% colnames(base_data)) {
-      result <- result %>% 
-        left_join(
-          base_data %>% 
-            select(iso2c, cc) %>% 
-            distinct(), 
-          by = c("partner_list" = "iso2c")
+    # Only process collaborations if we have any
+    if (nrow(collab_data) > 0) {
+      # Apply collaboration filter if needed
+      if (length(collab_types) > 0 && all(collab_types != "All")) {
+        allowed_counts <- c()
+        
+        for (type in collab_types) {
+          if (type == "Bilateral") allowed_counts <- c(allowed_counts, 2)
+          else if (type == "Trilateral") allowed_counts <- c(allowed_counts, 3)
+          else if (type == "4-country") allowed_counts <- c(allowed_counts, 4)
+          else if (type == "5-country+") allowed_counts <- c(allowed_counts, 5, 6, 7, 8, 9, 10)
+        }
+        
+        collab_data <- collab_data %>%
+          mutate(
+            hyphen_count = str_count(iso2c, "-"),
+            partner_count = hyphen_count + 1
+          ) %>%
+          filter(partner_count %in% allowed_counts) %>%
+          select(-hyphen_count, -partner_count)
+      }
+      
+      # Process collaborations
+      collab_result <- collab_data %>%
+        mutate(
+          # Split the collaboration string
+          partners = strsplit(as.character(iso2c), "-"),
+          # Count number of countries in collaboration
+          collab_size = sapply(partners, length),
+          # Is this a bilateral or multi-country collaboration?
+          collab_type = case_when(
+            collab_size == 2 ~ "Bilateral",
+            collab_size == 3 ~ "Trilateral",
+            collab_size == 4 ~ "4-country",
+            collab_size >= 5 ~ "5-country+",
+            TRUE ~ "Unknown"
+          ),
+          # Extract all partners except the selected country
+          partner_list = sapply(partners, function(x) {
+            paste(setdiff(x, iso), collapse = ", ")
+          }),
+          # Initialize country_color as NA for collaborations
+          country_color = NA_character_
         ) %>%
-        rename(country_color = cc)
+        group_by(partner_list, collab_type, year, chemical, country_color) %>%
+        summarise(
+          total_percentage = sum(percentage, na.rm = TRUE),
+          .groups = "drop"
+        )
+    } else {
+      collab_result <- data.frame() # Empty if no collaboration data
+    }
+    
+    # Process individual data for "both" mode
+    if (data_type == "both" && exists("indiv_data") && nrow(indiv_data) > 0) {
+      indiv_result <- indiv_data %>%
+        mutate(
+          collab_type = "Individual",
+          partner_list = iso2c,
+          country_color = cc
+        ) %>%
+        group_by(partner_list, collab_type, year, chemical, country_color) %>%
+        summarise(
+          total_percentage = sum(percentage, na.rm = TRUE),
+          .groups = "drop"
+        )
+      
+      # Combine results if we have both types
+      if (nrow(collab_result) > 0) {
+        result <- bind_rows(collab_result, indiv_result)
+      } else {
+        result <- indiv_result
+      }
+    } else {
+      # Just use collaboration results
+      result <- collab_result
     }
   }
   
@@ -317,24 +392,25 @@ create_collab_plot <- function(data, country_name, collab_types = NULL,
     )
   
   # For individual data, use the country's own colors if available
-  if (data_type == "individual" && "country_color" %in% colnames(data)) {
-    # Extract the color mapping from the data
-    color_mapping <- unique(data[, c("partner_list", "country_color")])
-    # Remove any NA colors
-    color_mapping <- color_mapping[!is.na(color_mapping$country_color),]
-    
-    if (nrow(color_mapping) > 0) {
-      # Create color mapping
-      color_values <- setNames(color_mapping$country_color, color_mapping$partner_list)
-      p <- p + scale_color_manual(values = color_values, name = "Country")
-    } else {
-      # Fallback to default color scale
-      p <- p + scale_color_viridis_d(option = "turbo", name = "Countries")
-    }
+  # For individual data, use the country's own colors if available
+if (data_type == "individual" && "country_color" %in% colnames(data)) {
+  # Extract the color mapping from the data
+  color_mapping <- unique(data[, c("partner_list", "country_color")])
+  # Remove any NA colors
+  color_mapping <- color_mapping[!is.na(color_mapping$country_color),]
+  
+  if (nrow(color_mapping) > 0) {
+    # Create color mapping
+    color_values <- setNames(color_mapping$country_color, color_mapping$partner_list)
+    p <- p + scale_color_manual(values = color_values, name = "Country")
   } else {
-    # Use default color scale for collaborations
+    # Fallback to default color scale
     p <- p + scale_color_viridis_d(option = "turbo", name = "Countries")
   }
+} else {
+  # Use default color scale for collaborations or when country_color is missing
+  p <- p + scale_color_viridis_d(option = "turbo", name = "Partner Countries")
+}
   
   # Complete the plot
   p <- p +

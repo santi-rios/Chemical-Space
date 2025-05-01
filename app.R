@@ -49,39 +49,40 @@ ui <- page_navbar(
       sidebar = sidebar(
         width = 300,
         title = "Controls",
+        uiOutput("country_select_ui"),
+        # conditionalPanel(
+        #   condition = "input.data_type == 'individual'",
+        #   selectizeInput(
+        #     "country_select", "Select Countries:",
+        #     choices = setNames(country_list$iso2c, country_list$country),
+        #     multiple = TRUE,
+        #     options = list(
+        #       placeholder = "Search for countries",
+        #       plugins = list("remove_button")
+        #     )
+        #   )
+        # ),
+        # conditionalPanel(
+        #   condition = "input.data_type != 'individual'",
+        #   selectizeInput(
+        #     "country_select", "Select Country:",
+        #     choices = setNames(country_list$iso2c, country_list$country),
+        #     multiple = FALSE,
+        #     options = list(
+        #       placeholder = "Search for a country",
+        #       onInitialize = I('function() { this.setValue(""); }')
+        #     )
+        #   )
+        # ),
+        hr(),
         conditionalPanel(
-  condition = "input.data_type == 'individual'",
-  selectizeInput(
-    "country_select", "Select Countries:",
-    choices = setNames(country_list$iso2c, country_list$country),
-    multiple = TRUE,
-    options = list(
-      placeholder = "Search for countries",
-      plugins = list("remove_button")
-    )
-  )
-),
-conditionalPanel(
-  condition = "input.data_type != 'individual'",
-  selectizeInput(
-    "country_select", "Select Country:",
-    choices = setNames(country_list$iso2c, country_list$country),
-    multiple = FALSE,
-    options = list(
-      placeholder = "Search for a country",
-      onInitialize = I('function() { this.setValue(""); }')
-    )
-  )
-),
-hr(),
-conditionalPanel(
-  condition = "input.data_type == 'individual'",
-  selectInput(
-    "region_filter", "Region:",
-    choices = c("All", regions),
-    selected = "All"
-  )
-),
+          condition = "input.data_type == 'individual'",
+          selectInput(
+            "region_filter", "Region:",
+            choices = c("All", regions),
+            selected = "All"
+          )
+        ),
         sliderInput(
           "years", "Year Range:",
           min = 1996, max = 2022,
@@ -212,6 +213,31 @@ conditionalPanel(
 
 # Define server
 server <- function(input, output, session) {
+
+  output$country_select_ui <- renderUI({
+  if (input$data_type == "individual") {
+    selectizeInput(
+      "country_select", "Select Countries:",
+      choices  = setNames(country_list$iso2c, country_list$country),
+      multiple = TRUE,
+      options = list(
+        placeholder     = "Search for countries",
+        plugins         = list("remove_button")
+      )
+    )
+  } else {
+    selectizeInput(
+      "country_select", "Select Country:",
+      choices  = setNames(country_list$iso2c, country_list$country),
+      multiple = FALSE,
+      options = list(
+        placeholder      = "Search for a country",
+        onInitialize     = I('function() { this.setValue(""); }')
+      )
+    )
+  }
+})
+
   #----------------------
   # Country Explorer Tab
   #----------------------
@@ -228,73 +254,77 @@ server <- function(input, output, session) {
 
   # Get the country name for the selected ISO code
   selected_country_name <- reactive({
-  req(input$country_select)
-  
-  if (input$data_type == "individual" && length(input$country_select) > 1) {
-    # Multiple countries selected - get all names
-    country_names <- sapply(input$country_select, function(iso) {
+    req(input$country_select)
+
+    if (input$data_type == "individual" && length(input$country_select) > 1) {
+      # Multiple countries selected - get all names
+      country_names <- sapply(input$country_select, function(iso) {
+        country_match <- match(iso, country_list$iso2c)
+        if (!is.na(country_match)) {
+          country_list$country[country_match]
+        } else {
+          iso
+        }
+      })
+      return(country_names)
+    } else {
+      # Single country - return as before
+      iso <- input$country_select
+      if (length(iso) > 1) iso <- iso[1] # Take first if multiple
+
       country_match <- match(iso, country_list$iso2c)
-      if(!is.na(country_match)) {
+      if (!is.na(country_match)) {
         country_list$country[country_match]
       } else {
         iso
       }
-    })
-    return(country_names)
-  } else {
-    # Single country - return as before
-    iso <- input$country_select
-    if (length(iso) > 1) iso <- iso[1]  # Take first if multiple
-    
-    country_match <- match(iso, country_list$iso2c)
-    if(!is.na(country_match)) {
-      country_list$country[country_match]
-    } else {
-      iso
     }
-  }
-})
+  })
 
   # Process data for selected country with collaboration type filtering
   # Update collaboration_data reactive expression
 
   # Update the collaboration_data reactive expression
 
-# Process data for selected country with collaboration type filtering
-collaboration_data <- reactive({
-  req(input$country_select, input$years, input$chemical_category, input$data_type)
-  
-  # For collaboration mode, require collab_types
-  if (input$data_type != "individual" && length(input$collab_types) == 0) {
-    showNotification("Please select at least one collaboration type", type = "warning")
-    return(data.frame())
-  }
-  
-  # Get region filter if in individual mode
-  region_filter <- if (input$data_type == "individual" && !is.null(input$region_filter)) {
-    input$region_filter
-  } else {
-    NULL
-  }
-  
-  # Show progress indication
-  withProgress(message = "Loading data...", {
-    process_collab_data(
-      ds = ds,
-      iso = input$country_select,
-      year_range = input$years,
-      data_type = input$data_type,
-      collab_types = input$collab_types,
-      chemical_category = input$chemical_category,
-      region_filter = region_filter,
-      country_list = country_list
+  # Process data for selected country with collaboration type filtering
+  collaboration_data <- reactive({
+    req(input$country_select, input$years, input$chemical_category, input$data_type)
+
+    # For collaboration mode, require collab_types
+    if (input$data_type != "individual" && length(input$collab_types) == 0) {
+      showNotification("Please select at least one collaboration type", type = "warning")
+      return(data.frame())
+    }
+
+    # Get region filter if in individual mode
+    region_filter <- if (input$data_type == "individual" && !is.null(input$region_filter)) {
+      input$region_filter
+    } else {
+      NULL
+    }
+
+    # Show progress indication
+    withProgress(message = "Loading data...", {
+      process_collab_data(
+        ds = ds,
+        iso = input$country_select,
+        year_range = input$years,
+        data_type = input$data_type,
+        collab_types = input$collab_types,
+        chemical_category = input$chemical_category,
+        region_filter = region_filter,
+        country_list = country_list
+      )
+    })
+  }) %>%
+    bindCache(
+      input$country_select, input$years, input$collab_types,
+      input$chemical_category, input$data_type, input$region_filter
+    ) %>%
+    bindEvent(
+      input$country_select, input$years, input$collab_types,
+      input$chemical_category, input$data_type, input$region_filter
     )
-  })
-}) %>% 
-  bindCache(input$country_select, input$years, input$collab_types, 
-           input$chemical_category, input$data_type, input$region_filter) %>%
-  bindEvent(input$country_select, input$years, input$collab_types, 
-           input$chemical_category, input$data_type, input$region_filter)
   # Display information about the current view
 
   output$plot_info <- renderUI({
@@ -352,74 +382,74 @@ collaboration_data <- reactive({
   # Create summary table
   # Update the summary_table output rendering
 
-# Create summary table
-output$summary_table <- renderDT({
-  req(collaboration_data())
-  validate(need(nrow(collaboration_data()) > 0, "No collaboration data available."))
+  # Create summary table
+  output$summary_table <- renderDT({
+    req(collaboration_data())
+    validate(need(nrow(collaboration_data()) > 0, "No collaboration data available."))
 
-  # Create summary table with chemical category
-  summary_data <- collaboration_data() %>%
-    group_by(partner_list, collab_type, chemical) %>%
-    summarize(
-      avg_percentage = mean(total_percentage, na.rm = TRUE),
-      max_percentage = max(total_percentage, na.rm = TRUE),
-      years_present = n_distinct(year)
-    ) %>%
-    arrange(desc(avg_percentage)) %>%
-    mutate(
-      avg_percentage = scales::percent(avg_percentage/100, accuracy = 0.01),
-      max_percentage = scales::percent(max_percentage/100, accuracy = 0.01)
-    ) %>%
-    rename(
-      "Partner Countries" = partner_list,
-      "Collaboration Type" = collab_type,
-      "Chemical Category" = chemical,
-      "Average %" = avg_percentage,
-      "Maximum %" = max_percentage,
-      "Years Present" = years_present
-    )
-  
-  # Get unique values for styling
-  collab_types_in_data <- unique(summary_data$`Collaboration Type`)
-  chemical_types_in_data <- unique(summary_data$`Chemical Category`)
-  
-  # Create color vectors with matching lengths
-  collab_colors <- c("#e6f7ff", "#e6ffe6", "#fff7e6", "#ffe6e6", "#f0f0f0")
-  collab_colors <- collab_colors[1:length(collab_types_in_data)]
-  
-  chemical_colors <- c("#ffffff", "#f0f8ff", "#f5fffa", "#fff5f5", "#f8f8f8")
-  # Ensure we have enough colors for all chemical categories
-  if (length(chemical_types_in_data) > length(chemical_colors)) {
-    chemical_colors <- colorRampPalette(chemical_colors)(length(chemical_types_in_data))
-  } else {
-    chemical_colors <- chemical_colors[1:length(chemical_types_in_data)]
-  }
-  
-  # Create the datatable with proper styling
-  datatable(
-    summary_data,
-    options = list(
-      pageLength = 10, 
-      lengthMenu = c(5, 10, 25, 50),
-      searchHighlight = TRUE
-    ),
-    rownames = FALSE
-  ) %>%
-    formatStyle(
-      'Collaboration Type',
-      backgroundColor = styleEqual(
-        collab_types_in_data,
-        collab_colors
+    # Create summary table with chemical category
+    summary_data <- collaboration_data() %>%
+      group_by(partner_list, collab_type, chemical) %>%
+      summarize(
+        avg_percentage = mean(total_percentage, na.rm = TRUE),
+        max_percentage = max(total_percentage, na.rm = TRUE),
+        years_present = n_distinct(year)
+      ) %>%
+      arrange(desc(avg_percentage)) %>%
+      mutate(
+        avg_percentage = scales::percent(avg_percentage / 100, accuracy = 0.01),
+        max_percentage = scales::percent(max_percentage / 100, accuracy = 0.01)
+      ) %>%
+      rename(
+        "Partner Countries" = partner_list,
+        "Collaboration Type" = collab_type,
+        "Chemical Category" = chemical,
+        "Average %" = avg_percentage,
+        "Maximum %" = max_percentage,
+        "Years Present" = years_present
       )
+
+    # Get unique values for styling
+    collab_types_in_data <- unique(summary_data$`Collaboration Type`)
+    chemical_types_in_data <- unique(summary_data$`Chemical Category`)
+
+    # Create color vectors with matching lengths
+    collab_colors <- c("#e6f7ff", "#e6ffe6", "#fff7e6", "#ffe6e6", "#f0f0f0")
+    collab_colors <- collab_colors[1:length(collab_types_in_data)]
+
+    chemical_colors <- c("#ffffff", "#f0f8ff", "#f5fffa", "#fff5f5", "#f8f8f8")
+    # Ensure we have enough colors for all chemical categories
+    if (length(chemical_types_in_data) > length(chemical_colors)) {
+      chemical_colors <- colorRampPalette(chemical_colors)(length(chemical_types_in_data))
+    } else {
+      chemical_colors <- chemical_colors[1:length(chemical_types_in_data)]
+    }
+
+    # Create the datatable with proper styling
+    datatable(
+      summary_data,
+      options = list(
+        pageLength = 10,
+        lengthMenu = c(5, 10, 25, 50),
+        searchHighlight = TRUE
+      ),
+      rownames = FALSE
     ) %>%
-    formatStyle(
-      'Chemical Category',
-      backgroundColor = styleEqual(
-        chemical_types_in_data,
-        chemical_colors
+      formatStyle(
+        "Collaboration Type",
+        backgroundColor = styleEqual(
+          collab_types_in_data,
+          collab_colors
+        )
+      ) %>%
+      formatStyle(
+        "Chemical Category",
+        backgroundColor = styleEqual(
+          chemical_types_in_data,
+          chemical_colors
+        )
       )
-    )
-})
+  })
   #--------------------------
   # Multi-Country Search Tab
   #--------------------------
