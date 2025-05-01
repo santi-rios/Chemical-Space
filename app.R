@@ -49,7 +49,16 @@ ui <- page_navbar(
       sidebar = sidebar(
         width = 300,
         title = "Controls",
-        uiOutput("country_select_ui"),
+        # uiOutput("country_select_ui"),
+        selectizeInput(
+          "country_select", "Select Country:",
+          choices  = NULL,
+          # multiple = FALSE,
+          options = list(
+            placeholder      = "Search for a country"
+            # onInitialize     = I('function() { this.setValue(""); }')
+          )
+        ),
         hr(),
                 radioButtons(
           "data_type", "Data Type:",
@@ -191,29 +200,9 @@ ui <- page_navbar(
 # Define server
 server <- function(input, output, session) {
 
-  output$country_select_ui <- renderUI({
-  if (input$data_type == "individual") {
-    selectizeInput(
-      "country_select", "Select Countries:",
-      choices  = setNames(country_list$iso2c, country_list$country),
-      multiple = TRUE,
-      options = list(
-        placeholder     = "Search for countries",
-        plugins         = list("remove_button")
-      )
-    )
-  } else {
-    selectizeInput(
-      "country_select", "Select Country:",
-      choices  = setNames(country_list$iso2c, country_list$country),
-      multiple = FALSE,
-      options = list(
-        placeholder      = "Search for a country",
-        onInitialize     = I('function() { this.setValue(""); }')
-      )
-    )
-  }
-})
+  # Update country select input with country list
+  updateSelectizeInput(session, "country_select", choices = setNames(country_list$iso2c, country_list$country), server = TRUE)
+
 
   ## as soon as data_type settles to "individual", set region to "All"
   observeEvent(input$data_type, {
