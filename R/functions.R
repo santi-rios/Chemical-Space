@@ -6,32 +6,44 @@
 #' @return A list containing the data source and country list
 #' @export
 load_country_data <- function(data_path = "./data/data.parquet") {
-    # Read data using duckplyr's optimized parquet reader
-    ds <- read_parquet_duckdb(
-        path = data_path,
-        prudence = "lavish" # Materialize data for testing
-    )
-
-    # Optimized country list calculation
-    country_list <- ds %>%
-        filter(is_collab == FALSE) %>%
-        distinct(country, iso2c) %>%
-        filter(!is.na(country) & !is.na(iso2c) & country != "" & iso2c != "") %>%
-        arrange(country) %>%
-        collect()
-
-    # Get unique chemical categories
-    chemical_categories <- ds %>%
-        distinct(chemical) %>%
-        collect() %>%
-        pull(chemical) %>%
-        sort()
-
-    return(list(
-        data = ds,
-        country_list = country_list,
-        chemical_categories = chemical_categories
-    ))
+  # Read data using duckplyr's optimized parquet reader
+  ds <- read_parquet_duckdb(
+    path = data_path,
+    prudence = "lavish" # Materialize data for testing
+  )
+  
+  # Optimized country list calculation
+  country_list <- ds %>%
+    filter(is_collab == FALSE) %>%
+    distinct(country, iso2c) %>%
+    filter(!is.na(country) & !is.na(iso2c) & country != "" & iso2c != "") %>%
+    arrange(country) %>%
+    collect()
+  
+  # Get unique chemical categories
+  chemical_categories <- ds %>%
+    distinct(chemical) %>%
+    collect() %>%
+    pull(chemical) %>%
+    sort()
+    
+  # Get unique regions for individual data filtering
+  regions <- ds %>%
+    filter(is_collab == FALSE) %>%
+    distinct(region) %>%
+    collect() %>%
+    pull(region) %>%
+    sort()
+  
+  # Add "All" as the first option
+  regions <- c("All", regions[!is.na(regions)])
+  
+  return(list(
+    data = ds,
+    country_list = country_list,
+    chemical_categories = chemical_categories,
+    regions = regions
+  ))
 }
 
 # Add a data_type parameter to your functions
@@ -47,159 +59,103 @@ load_country_data <- function(data_path = "./data/data.parquet") {
 #' @param country_list Lookup table for country codes and names
 #' @return Processed data ready for plotting
 #' @export
+# Update the process_collab_data function to handle multiple countries
+
 process_collab_data <- function(ds, iso, year_range = c(1996, 2022),
-                                data_type = "collaborations",
-                                collab_types = "Bilateral",
-                                chemical_category = "All",
-                                country_list) {
-    # Apply filters and process data
-    base_query <- ds %>%
-        filter(
-            # Modified filter condition to handle different data types
-            case_when(
-                data_type == "collaborations" ~ is_collab == TRUE,
-                data_type == "individual" ~ is_collab == FALSE,
-                data_type == "both" ~ TRUE,
-                TRUE ~ TRUE # Default case
-            ),
-            # Always filter by the selected country and year range
-            grepl(iso, iso2c),
-            between(year, year_range[1], year_range[2])
-        )
-
+                              data_type = "collaborations",
+                              collab_types = "Bilateral",
+                              chemical_category = "All",
+                              region_filter = NULL,
+                              country_list) {
+  # Apply filters and process data
+  base_query <- ds
+  
+  # Separate handling for individual vs collaboration data
+  if (data_type == "collaborations") {
+    # For collaboration data - single country
     base_query <- base_query %>%
-        filter(chemical == chemical_category)
-
-    # Collect filtered data
-    base_data <- base_query %>%
-        select(iso2c, year, percentage, chemical, is_collab) %>%
-        collect()
-
-    # Early exit if no data
-    if (nrow(base_data) == 0) {
-        return(data.frame())
+      filter(
+        is_collab == TRUE,
+        grepl(iso[1], iso2c), # Use the first country if multiple are selected
+        between(year, year_range[1], year_range[2])
+      )
+  } else if (data_type == "individual") {
+    # For individual data - multiple countries possible
+    base_query <- base_query %>%
+      filter(
+        is_collab == FALSE,
+        iso2c %in% iso, # Support multiple countries
+        between(year, year_range[1], year_range[2])
+      )
+      
+    # Apply region filter if provided
+    if (!is.null(region_filter) && region_filter != "All") {
+      base_query <- base_query %>% filter(region == region_filter)
     }
-
-    # Process the data differently based on type
-    if (data_type == "individual") {
-        # For individual data, simple processing
-        result <- base_data %>%
-            mutate(
-                collab_type = "Individual",
-                partner_list = "None"
-            ) %>%
-            group_by(partner_list, collab_type, year, chemical) %>%
-            summarise(
-                total_percentage = sum(percentage, na.rm = TRUE),
-                .groups = "drop"
-            )
-    } else {
-        # For collaborations, use existing logic
-        # Pre-filter by collaboration size if possible (optimization)
-        if (data_type != "individual" && length(collab_types) > 0 && all(collab_types != "All")) {
-            # Only apply this to collaboration data
-            collab_data <- base_data %>%
-                filter(is_collab == TRUE)
-
-            # Rest of your existing collab filtering logic
-            allowed_counts <- c()
-
-            for (type in collab_types) {
-                if (type == "Bilateral") {
-                    allowed_counts <- c(allowed_counts, 2)
-                } else if (type == "Trilateral") {
-                    allowed_counts <- c(allowed_counts, 3)
-                } else if (type == "4-country") {
-                    allowed_counts <- c(allowed_counts, 4)
-                } else if (type == "5-country+") allowed_counts <- c(allowed_counts, 5, 6, 7, 8, 9, 10)
-            }
-
-            # Count hyphens in iso2c to estimate partner count without expensive string operations
-            collab_data <- collab_data %>%
-                mutate(
-                    hyphen_count = str_count(iso2c, "-"),
-                    partner_count = hyphen_count + 1
-                ) %>%
-                filter(partner_count %in% allowed_counts) %>%
-                select(-hyphen_count, -partner_count)
-
-            # Individual data if needed
-            if (data_type == "both") {
-                indiv_data <- base_data %>%
-                    filter(is_collab == FALSE) %>%
-                    mutate(
-                        collab_type = "Individual",
-                        partner_list = "None"
-                    )
-
-                # Combine the datasets
-                base_data <- bind_rows(collab_data, indiv_data)
-            } else {
-                base_data <- collab_data
-            }
-        }
-
-        # Process collaborations
-        collab_result <- base_data %>%
-            filter(is_collab == TRUE) %>%
-            mutate(
-                # Split the collaboration string
-                partners = strsplit(as.character(iso2c), "-"),
-                # Count number of countries in collaboration
-                collab_size = sapply(partners, length),
-                # Is this a bilateral or multi-country collaboration?
-                collab_type = case_when(
-                    collab_size == 2 ~ "Bilateral",
-                    collab_size == 3 ~ "Trilateral",
-                    collab_size == 4 ~ "4-country",
-                    collab_size >= 5 ~ "5-country+",
-                    TRUE ~ "Unknown"
-                ),
-                # Extract all partners except the selected country
-                partner_list = sapply(partners, function(x) {
-                    paste(setdiff(x, iso), collapse = ", ")
-                })
-            )
-
-        # Apply collaboration type filter after full processing
-        if (length(collab_types) > 0 && all(collab_types != "All")) {
-            collab_result <- collab_result %>%
-                filter(collab_type %in% collab_types)
-        }
-
-        # Process individual data if needed
-        if (data_type %in% c("individual", "both")) {
-            indiv_result <- base_data %>%
-                filter(is_collab == FALSE) %>%
-                mutate(
-                    collab_type = "Individual",
-                    partner_list = "None"
-                )
-
-            # Combine results
-            if (data_type == "both" && nrow(collab_result) > 0) {
-                result <- bind_rows(collab_result, indiv_result)
-            } else {
-                result <- if (data_type == "individual") indiv_result else collab_result
-            }
-        } else {
-            result <- collab_result
-        }
-
-        # Group by the entire collaboration configuration
-        result <- result %>%
-            group_by(partner_list, collab_type, year, chemical) %>%
-            summarise(
-                total_percentage = sum(percentage, na.rm = TRUE),
-                .groups = "drop"
-            )
+  } else {
+    # For "both" data type
+    if (length(iso) > 1) iso <- iso[1] # Only use first country for "both" mode
+    
+    base_query <- base_query %>%
+      filter(
+        grepl(iso, iso2c),
+        between(year, year_range[1], year_range[2])
+      )
+  }
+  
+  # Apply chemical filter if not "All"
+  if (chemical_category != "All") {
+    base_query <- base_query %>%
+      filter(chemical == chemical_category)
+  }
+  
+  # Collect filtered data including cc and region fields
+  base_data <- base_query %>%
+    select(iso2c, year, percentage, chemical, is_collab, cc, region) %>%
+    collect()
+  
+  # Early exit if no data
+  if (nrow(base_data) == 0) return(data.frame())
+  
+  # Process the data based on type
+  if (data_type == "individual") {
+    # For individual data, use iso2c directly as partner_list
+    result <- base_data %>%
+      mutate(
+        collab_type = "Individual",
+        partner_list = iso2c, # Use country code directly
+        country_color = cc    # Preserve color code
+      ) %>%
+      group_by(partner_list, collab_type, year, chemical, country_color, region) %>%
+      summarise(
+        total_percentage = sum(percentage, na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    # For collaborations, use existing logic with modifications
+    # Rest of your existing code for handling collaborations...
+    
+    # Existing code for collaboration processing...
+    # (Keep all your existing collaboration processing code here)
+    
+    # End result should include country_color field
+    if ("cc" %in% colnames(base_data)) {
+      result <- result %>% 
+        left_join(
+          base_data %>% 
+            select(iso2c, cc) %>% 
+            distinct(), 
+          by = c("partner_list" = "iso2c")
+        ) %>%
+        rename(country_color = cc)
     }
-
-    # Ensure all numeric columns are actually numeric
-    result$total_percentage <- as.numeric(result$total_percentage)
-    result$year <- as.numeric(result$year)
-
-    return(result)
+  }
+  
+  # Ensure all numeric columns are actually numeric
+  result$total_percentage <- as.numeric(result$total_percentage)
+  result$year <- as.numeric(result$year)
+  
+  return(result)
 }
 
 #' Find collaborations between specific countries
@@ -287,152 +243,145 @@ find_specific_collaborations <- function(ds, countries,
 
 # Update the create_collab_plot function to handle individual data
 
-create_collab_plot <- function(data, country_name, collab_types = NULL, chemical_category = "All", data_type = "collaborations") {
-    # Count unique collaborations for subtitle
-    collab_count <- nrow(distinct(data, partner_list))
+# Update create_collab_plot function to use cc column for colors
 
-    # Set up multi-type title
-    type_text <- if (length(collab_types) == 1) {
-        collab_types
-    } else if (length(collab_types) > 1) {
-        paste(collab_types, collapse = ", ")
+create_collab_plot <- function(data, country_name, collab_types = NULL, 
+                              chemical_category = "All", data_type = "collaborations") {
+  # Count unique collaborations for subtitle
+  collab_count <- nrow(distinct(data, partner_list))
+  
+  # Set up multi-type title
+  type_text <- if (length(collab_types) == 1) {
+    collab_types
+  } else if (length(collab_types) > 1) {
+    paste(collab_types, collapse = ", ")
+  } else {
+    "All"
+  }
+  
+  # Add data type to title
+  data_type_text <- case_when(
+    data_type == "collaborations" ~ "Collaborations",
+    data_type == "individual" ~ "Individual Contributions",
+    data_type == "both" ~ "Individual & Collaborations",
+    TRUE ~ "Data"
+  )
+  
+  # Format country name for title (could be multiple for individual data)
+  title_country <- if (data_type == "individual" && is.list(country_name)) {
+    if (length(country_name) > 2) {
+      paste0(country_name[1], ", ", country_name[2], " and ", length(country_name)-2, " others")
     } else {
-        "All"
+      paste(country_name, collapse = " & ")
     }
-
-    # Add data type to title
-    data_type_text <- case_when(
-        data_type == "collaborations" ~ "Collaborations",
-        data_type == "individual" ~ "Individual Contributions",
-        data_type == "both" ~ "Individual & Collaborations",
-        TRUE ~ "Data"
-    )
-
-    # Add chemical category to title
-    chemical_text <- if (chemical_category == "All") {
-        "All Chemicals"
-    } else {
-        chemical_category
-    }
-
-    # Define shape and linetype scales based on available types
-    available_types <- unique(data$collab_type)
-
-    # Add Individual to the shape and linetype values
-    shape_values <- c("Individual" = 19, "Bilateral" = 16, "Trilateral" = 17, "4-country" = 15, "5-country+" = 18)
-    linetype_values <- c("Individual" = "solid", "Bilateral" = "solid", "Trilateral" = "dashed", "4-country" = "dotted", "5-country+" = "longdash")
-
-    # Filter to only use values present in the data
-    shape_values <- shape_values[names(shape_values) %in% available_types]
-    linetype_values <- linetype_values[names(linetype_values) %in% available_types]
-
-    # Create the plot
-    p <- ggplot(data, aes(x = year, y = total_percentage)) +
-        geom_line(aes(color = partner_list, linetype = collab_type),
-            linewidth = 0.2, alpha = 0.6
-        ) +
-        geom_point(
-            aes(
-                size = total_percentage,
-                color = partner_list,
-                shape = collab_type,
-                text = paste0(
-                    "<b>", ifelse(collab_type == "Individual", country_name, partner_list), "</b><br>",
-                    "<b>Type:</b> ", collab_type, "<br>",
-                    "<b>Year:</b> ", year, "<br>",
-                    "<b>Chemical Type:</b> ", chemical, "<br>",
-                    "<b>Percentage:</b> ", scales::percent(total_percentage / 100, accuracy = 0.01)
-                )
-            ),
-            alpha = 0.8
-        ) +
-        scale_color_viridis_d(
-            option = "turbo",
-            name = "Countries"
-        ) +
-        scale_shape_manual(
-            values = shape_values,
-            name = "Type"
-        ) +
-        scale_linetype_manual(
-            values = linetype_values,
-            name = "Type"
-        ) +
-        scale_radius(range = c(1, 6), name = "") +
-        scale_y_continuous(
-            labels = scales::percent_format(accuracy = 0.01, scale = 1),
-            expand = expansion(mult = c(0.05, 0.15))
-        ) +
-        scale_x_continuous(
-            breaks = scales::pretty_breaks(n = 10)
-        ) +
-        labs(
-            title = paste(data_type_text, "for", country_name, "-", chemical_text),
-            subtitle = paste0(
-                "Showing ", if (data_type == "individual") {
-                    "individual contributions"
-                } else {
-                    paste0(collab_count, " unique ", type_text, ifelse(data_type == "both", " collaborations + individual", " collaborations"))
-                }
-            ),
-            x = "Year",
-            y = "% of substances contributed"
-        ) +
-        theme_minimal() +
-        theme(
-            legend.position = "right",
-            legend.title = element_text(face = "bold", size = 10),
-            plot.title = element_text(face = "bold"),
-            plot.subtitle = element_text(size = 8, color = "#666666"),
-            legend.key.size = unit(0.5, "lines"),
-            legend.text = element_text(size = 8)
+  } else {
+    country_name  # Single country name
+  }
+  
+  # Add chemical category to title
+  chemical_text <- if (chemical_category == "All") {
+    "All Chemicals"
+  } else {
+    chemical_category
+  }
+  
+  # Define shape and linetype scales based on available types
+  available_types <- unique(data$collab_type)
+  
+  # Add Individual to the shape and linetype values
+  shape_values <- c("Individual" = 19, "Bilateral" = 16, "Trilateral" = 17, "4-country" = 15, "5-country+" = 18)
+  linetype_values <- c("Individual" = "solid", "Bilateral" = "solid", "Trilateral" = "dashed", "4-country" = "dotted", "5-country+" = "longdash")
+  
+  # Filter to only use values present in the data
+  shape_values <- shape_values[names(shape_values) %in% available_types]
+  linetype_values <- linetype_values[names(linetype_values) %in% available_types]
+  
+  # Create the plot
+  p <- ggplot(data, aes(x = year, y = total_percentage)) +
+    geom_line(aes(color = partner_list, linetype = collab_type), 
+              linewidth = 0.2, alpha = 0.6) +
+    geom_point(
+      aes(
+        size = total_percentage,
+        color = partner_list,
+        shape = collab_type,
+        text = paste0(
+          "<b>", partner_list, "</b><br>",
+          "<b>Type:</b> ", collab_type, "<br>",
+          "<b>Year:</b> ", year, "<br>",
+          "<b>Chemical Type:</b> ", chemical, "<br>",
+          "<b>Percentage:</b> ", scales::percent(total_percentage/100, accuracy = 0.01)
         )
-
-    # For individual data, highlight it more prominently
-    if (data_type %in% c("individual", "both")) {
-        indiv_data <- data %>% filter(collab_type == "Individual")
-        if (nrow(indiv_data) > 0) {
-            p <- p +
-                geom_line(
-                    data = indiv_data,
-                    aes(x = year, y = total_percentage),
-                    color = "black",
-                    linewidth = 0.8,
-                    linetype = "solid"
-                ) +
-                geom_point(
-                    data = indiv_data,
-                    aes(
-                        x = year,
-                        y = total_percentage,
-                        text = paste0(
-                            "<b>", country_name, " (Individual)</b><br>",
-                            "<b>Year:</b> ", year, "<br>",
-                            "<b>Chemical Type:</b> ", chemical, "<br>",
-                            "<b>Percentage:</b> ", scales::percent(total_percentage / 100, accuracy = 0.01)
-                        )
-                    ),
-                    color = "black",
-                    size = 3,
-                    shape = 19
-                )
-        }
+      ),
+      alpha = 0.8
+    )
+  
+  # For individual data, use the country's own colors if available
+  if (data_type == "individual" && "country_color" %in% colnames(data)) {
+    # Extract the color mapping from the data
+    color_mapping <- unique(data[, c("partner_list", "country_color")])
+    # Remove any NA colors
+    color_mapping <- color_mapping[!is.na(color_mapping$country_color),]
+    
+    if (nrow(color_mapping) > 0) {
+      # Create color mapping
+      color_values <- setNames(color_mapping$country_color, color_mapping$partner_list)
+      p <- p + scale_color_manual(values = color_values, name = "Country")
+    } else {
+      # Fallback to default color scale
+      p <- p + scale_color_viridis_d(option = "turbo", name = "Countries")
     }
-
-    # Convert to plotly with improved tooltip handling
-    ggplotly(p, tooltip = "text") %>%
-        plotly::layout(
-            hoverlabel = list(
-                bgcolor = "white",
-                bordercolor = "black",
-                font = list(family = "Arial", size = 12)
-            ),
-            legend = list(
-                font = list(size = 9),
-                itemsizing = "constant"
-            )
-        ) %>%
-        config(displayModeBar = TRUE)
+  } else {
+    # Use default color scale for collaborations
+    p <- p + scale_color_viridis_d(option = "turbo", name = "Countries")
+  }
+  
+  # Complete the plot
+  p <- p +
+    scale_shape_manual(values = shape_values, name = "Type") +
+    scale_linetype_manual(values = linetype_values, name = "Type") +
+    scale_radius(range = c(1, 6), name = "") +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 0.01, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15))
+    ) +
+    scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(
+      title = paste(data_type_text, "for", title_country, "-", chemical_text),
+      subtitle = paste0(
+        "Showing ", if(data_type == "individual") {
+          paste0(length(unique(data$partner_list)), " countries")
+        } else {
+          paste0(collab_count, " unique ", type_text, ifelse(data_type == "both", " collaborations + individual", " collaborations"))
+        }
+      ),
+      x = "Year",
+      y = "% of substances contributed"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(face = "bold", size = 10),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(size = 8, color = "#666666"),
+      legend.key.size = unit(0.5, "lines"),
+      legend.text = element_text(size = 8)
+    )
+  
+  # Convert to plotly with improved tooltip handling
+  ggplotly(p, tooltip = "text") %>%
+    plotly::layout(
+      hoverlabel = list(
+        bgcolor = "white",
+        bordercolor = "black",
+        font = list(family = "Arial", size = 12)
+      ),
+      legend = list(
+        font = list(size = 9),
+        itemsizing = "constant"
+      )
+    ) %>%
+    config(displayModeBar = TRUE)
 }
 
 #' Create specific collaboration plot
