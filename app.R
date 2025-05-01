@@ -50,30 +50,16 @@ ui <- page_navbar(
         width = 300,
         title = "Controls",
         uiOutput("country_select_ui"),
-        # conditionalPanel(
-        #   condition = "input.data_type == 'individual'",
-        #   selectizeInput(
-        #     "country_select", "Select Countries:",
-        #     choices = setNames(country_list$iso2c, country_list$country),
-        #     multiple = TRUE,
-        #     options = list(
-        #       placeholder = "Search for countries",
-        #       plugins = list("remove_button")
-        #     )
-        #   )
-        # ),
-        # conditionalPanel(
-        #   condition = "input.data_type != 'individual'",
-        #   selectizeInput(
-        #     "country_select", "Select Country:",
-        #     choices = setNames(country_list$iso2c, country_list$country),
-        #     multiple = FALSE,
-        #     options = list(
-        #       placeholder = "Search for a country",
-        #       onInitialize = I('function() { this.setValue(""); }')
-        #     )
-        #   )
-        # ),
+        hr(),
+                radioButtons(
+          "data_type", "Data Type:",
+          choices = c(
+            "Collaborations" = "collaborations",
+            "Individual Contributions" = "individual",
+            "Both" = "both"
+          ),
+          selected = "individual"
+        ),
         hr(),
         conditionalPanel(
           condition = "input.data_type == 'individual'",
@@ -88,15 +74,6 @@ ui <- page_navbar(
           min = 1996, max = 2022,
           value = c(1996, 2022),
           step = 1, sep = ""
-        ),
-        radioButtons(
-          "data_type", "Data Type:",
-          choices = c(
-            "Collaborations" = "collaborations",
-            "Individual Contributions" = "individual",
-            "Both" = "both"
-          ),
-          selected = "individual"
         ),
         hr(),
         radioButtons(
@@ -237,6 +214,15 @@ server <- function(input, output, session) {
     )
   }
 })
+
+  ## as soon as data_type settles to "individual", set region to "All"
+  observeEvent(input$data_type, {
+    if (input$data_type == "individual") {
+      updateSelectInput(session,
+                        "region_filter",
+                        selected = "All")
+    }
+  }, ignoreInit = FALSE)
 
   #----------------------
   # Country Explorer Tab
