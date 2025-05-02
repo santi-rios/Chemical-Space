@@ -403,6 +403,7 @@ observeEvent(input$deselect_all, {
   updateSelectizeInput(session, "country_select", selected = character(0))
 })
 
+
   #----------------------
   # Country Explorer Tab
   #----------------------
