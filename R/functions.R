@@ -1,40 +1,40 @@
-# Core data loading and processing functions
-#' Load and prepare country data
+# Helper functions for the Chemical Space Explorer Shiny App
+
+#' Load and prepare initial data
+#'
 #' @param data_path Path to the parquet file
-#' @return A list containing the data source and country list
+#' @return A list containing the data source (ds), country list, chemical categories, and regions
 #' @export
 load_country_data <- function(data_path = "./data/data.parquet") {
   # Read data using duckplyr's optimized parquet reader
   ds <- read_parquet_duckdb(
     path = data_path,
-    prudence = "lavish"
+    prudence = "lavish" # Materialize data for testing/simpler debugging if needed
   )
-  
-  # Optimized country list calculation
+
+  # Optimized country list calculation (including lat/lng/cc for map/plotting)
   country_list <- ds %>%
     filter(is_collab == FALSE) %>%
-    distinct(country, iso2c) %>%
+    distinct(country, iso2c, lat, lng, cc, region) %>% # Added lat, lng, cc, region
     filter(!is.na(country) & !is.na(iso2c) & country != "" & iso2c != "") %>%
     arrange(country) %>%
     collect()
-  
+
   # Get unique chemical categories
   chemical_categories <- ds %>%
     distinct(chemical) %>%
     collect() %>%
     pull(chemical) %>%
     sort()
-    
-  # Get unique regions
+
+  # Get unique regions for individual data filtering
   regions <- ds %>%
-    filter(is_collab == FALSE) %>%
+    filter(is_collab == FALSE, !is.na(region)) %>%
     distinct(region) %>%
     collect() %>%
     pull(region) %>%
     sort()
-  
-  regions <- c("All", regions[!is.na(regions)])
-  
+
   return(list(
     data = ds,
     country_list = country_list,
@@ -43,225 +43,471 @@ load_country_data <- function(data_path = "./data/data.parquet") {
   ))
 }
 
-#' Find collaborating countries and their contribution strengths
-#' @param ds Data source
-#' @param country ISO code of the selected country
-#' @param year_range Year range to consider
-#' @param chemical_category Chemical category filter
-#' @return Data frame of collaborating countries with their contributions
+#' Create the initial Leaflet map
+#'
+#' @param selected_countries Vector of currently selected ISO codes
+#' @param country_list Data frame with country info (iso2c, country, lat, lng, cc)
+#' @return A Leaflet map object
 #' @export
-find_collaborating_countries <- function(ds, country, year_range, chemical_category = "All") {
-  query <- ds %>%
-    filter(
-      is_collab == TRUE,
-      between(year, year_range[1], year_range[2]),
-      grepl(country, iso2c)
-    )
-  
-  if (chemical_category != "All") {
-    query <- query %>% filter(chemical == chemical_category)
-  }
-  
-  # Get collaborations with contribution strengths
-  collabs <- query %>%
-    collect() %>%
-    mutate(
-      partners = strsplit(as.character(iso2c), "-")
-    ) %>%
-    unnest(partners) %>%
-    filter(partners != country) %>%
-    group_by(partners) %>%
-    summarise(
-      total_contribution = sum(percentage, na.rm = TRUE),
-      collaboration_count = n()
-    ) %>%
-    arrange(desc(total_contribution))
-  
-  return(collabs)
-}
-
-#' Create an interactive selection map
-#' @param selected_country Currently selected country ISO code
-#' @param collaborating_countries Data frame of collaborating countries
-#' @param country_list Country lookup table
-#' @return Leaflet map object
-#' @export
-create_selection_map <- function(selected_country = NULL, 
-                               collaborating_countries = NULL,
-                               country_list) {
+create_selection_map <- function(selected_countries = c(), country_list) {
   world_map <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
-  
-  # Join with country list
-  world_map <- world_map %>%
-    left_join(country_list, by = c("iso_a2" = "iso2c"))
-  
-  # Create color palette for different states
+
+  # Join map data with our country list to get consistent ISO codes and metadata
+  # Use iso_a2 from world_map which corresponds to iso2c
+  map_data <- world_map %>%
+      select(iso_a2, name, geometry) %>%
+      left_join(country_list, by = c("iso_a2" = "iso2c")) %>%
+      filter(!is.na(country)) # Keep only countries present in our dataset
+
+  # Define color palette
   pal <- colorFactor(
-    palette = c("#E5E5E5", "#3388ff", "#66c2a5"),  # Unselected, Selected, Collaborating
-    domain = c("none", "selected", "collaborating")
+    palette = c("lightgray", "#3388ff"), # Gray for available, Blue for selected
+    domain = c(FALSE, TRUE),
+    na.color = "transparent" # Don't color polygons not in our data
   )
-  
-  # Determine country states
-  world_map$state <- "none"
-  if (!is.null(selected_country)) {
-    world_map$state[world_map$iso_a2 == selected_country] <- "selected"
-    
-    if (!is.null(collaborating_countries)) {
-      world_map$state[world_map$iso_a2 %in% collaborating_countries$partners] <- "collaborating"
-    }
-  }
-  
-  # Create map
-  map <- leaflet(world_map) %>%
-    addTiles() %>%
-    setView(lng = 0, lat = 20, zoom = 2) %>%
+
+  leaflet(map_data) %>%
+    addTiles(urlTemplate = "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+             attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>') %>%
+    setView(lng = 10, lat = 30, zoom = 2) %>%
     addPolygons(
-      fillColor = ~pal(state),
+      fillColor = ~pal(iso_a2 %in% selected_countries),
       weight = 1,
       opacity = 1,
       color = "white",
       dashArray = "3",
       fillOpacity = 0.7,
-      highlight = highlightOptions(
+      highlightOptions = highlightOptions(
         weight = 2,
         color = "#666",
         dashArray = "",
-        fillOpacity = 0.7,
+        fillOpacity = 0.8,
         bringToFront = TRUE
       ),
-      label = ~name,
-      layerId = ~iso_a2,
+      label = ~paste(country), # Use country name from our joined list
+      layerId = ~iso_a2,      # Use ISO code as layer ID
       labelOptions = labelOptions(
         style = list("font-weight" = "normal", padding = "3px 8px"),
-        textsize = "15px",
+        textsize = "12px",
         direction = "auto"
       )
     ) %>%
     addLegend(
       position = "bottomright",
-      colors = c("#E5E5E5", "#3388ff", "#66c2a5"),
-      labels = c("Available", "Selected", "Collaborating"),
+      colors = c("lightgray", "#3388ff"),
+      labels = c("Available", "Selected"),
       title = "Country Status",
       opacity = 0.7
     )
-  
-  return(map)
 }
 
-#' Process data for visualization
-#' @param ds Data source
-#' @param selected_country Selected country ISO code
-#' @param year_range Year range
-#' @param chemical_category Chemical category
-#' @param region_filter Region filter
-#' @return Processed data for plotting
+#' Update map polygons without redrawing the whole map
+#'
+#' @param map_proxy A leaflet proxy object
+#' @param selected_countries Vector of currently selected ISO codes
+#' @param country_list Data frame with country info
+#' @return Updated leaflet proxy
 #' @export
-process_visualization_data <- function(ds, selected_country, year_range, 
-                                     chemical_category = "All", 
-                                     region_filter = "All") {
-  # Base query for individual contributions
-  base_query <- ds %>%
-    filter(
-      is_collab == FALSE,
-      between(year, year_range[1], year_range[2])
+update_map_polygons <- function(map_proxy, selected_countries, country_list) {
+  world_map <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+  map_data <- world_map %>%
+      select(iso_a2, name, geometry) %>%
+      left_join(country_list, by = c("iso_a2" = "iso2c")) %>%
+      filter(!is.na(country))
+
+  pal <- colorFactor(
+    palette = c("lightgray", "#3388ff"),
+    domain = c(FALSE, TRUE),
+    na.color = "transparent"
+  )
+
+  # Clear existing polygons and add new ones with updated styles
+  map_proxy %>%
+    clearShapes() %>% # Clear previous polygons
+    addPolygons(
+      data = map_data,
+      fillColor = ~pal(iso_a2 %in% selected_countries),
+      weight = 1,
+      opacity = 1,
+      color = "white",
+      dashArray = "3",
+      fillOpacity = 0.7,
+      highlightOptions = highlightOptions(
+        weight = 2,
+        color = "#666",
+        dashArray = "",
+        fillOpacity = 0.8,
+        bringToFront = TRUE
+      ),
+      label = ~paste(country),
+      layerId = ~iso_a2,
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "12px",
+        direction = "auto"
+      )
     )
-  
-  # Apply filters
+}
+
+
+#' Generate UI for displaying selected country information
+#'
+#' @param selected_isos Vector of selected ISO codes
+#' @param country_list Data frame with country info
+#' @return HTML tags for the sidebar
+#' @export
+get_selection_info_ui <- function(selected_isos, country_list) {
+  if (length(selected_isos) == 0) {
+    return(div(class = "alert alert-secondary", "No countries selected. Click on the map."))
+  }
+
+  country_names <- sapply(selected_isos, function(iso) {
+    name <- country_list$country[country_list$iso2c == iso]
+    if (length(name) == 0) iso else name # Fallback to ISO if not found
+  })
+
+  tags$div(
+    h5("Current Selection:", class="mb-2"),
+    tags$ul(
+      class = "list-unstyled",
+      lapply(country_names, function(name) tags$li(icon("flag"), name))
+    ),
+    if (length(selected_isos) > 1) {
+      p(class="small text-muted", "Multiple countries selected. Choose display mode below the plot.")
+    } else {
+       p(class="small text-muted", "Showing individual contribution data.")
+    }
+  )
+}
+
+#' Generate dynamic plot header text
+#'
+#' @param selected_isos Vector of selected ISO codes
+#' @param display_mode Current display mode ("individual", "compare_individuals", "find_collaborations")
+#' @param chemical_category Selected chemical category
+#' @param country_list Data frame with country info
+#' @return HTML tag (h5) for the plot card header
+#' @export
+get_plot_header <- function(selected_isos, display_mode, chemical_category, country_list) {
+  num_selected <- length(selected_isos)
+  chem_text <- if (chemical_category == "All") "All Chemicals" else chemical_category
+
+  title <- "Chemical Contribution Trends" # Default
+
+  if (num_selected == 0) {
+    title <- "Select Countries on the Map"
+  } else if (num_selected == 1) {
+    country_name <- country_list$country[country_list$iso2c == selected_isos[1]]
+    title <- paste("Individual Contribution:", country_name, "-", chem_text)
+  } else { # More than 1 selected
+    if (display_mode == "compare_individuals") {
+      title <- paste("Comparing Individual Contributions -", chem_text)
+    } else if (display_mode == "find_collaborations") {
+      title <- paste("Joint Collaborations Found -", chem_text)
+    }
+  }
+  return(h5(title))
+}
+
+
+#' Fetch and process data based on user selections
+#'
+#' @param ds DuckDB relation (data source)
+#' @param selected_isos Vector of selected ISO codes
+#' @param year_range Vector c(min_year, max_year)
+#' @param chemical_category Selected chemical category
+#' @param display_mode Current display mode ("individual", "compare_individuals", "find_collaborations")
+#' @param region_filter Selected region (or "All")
+#' @param country_list Data frame with country info
+#' @return A data frame ready for plotting/tabling
+#' @export
+get_display_data <- function(ds, selected_isos, year_range, chemical_category,
+                             display_mode, region_filter = "All", country_list) {
+
+  if (length(selected_isos) == 0) return(data.frame())
+
+  base_query <- ds %>%
+    filter(between(year, year_range[1], year_range[2]))
+
+  # Apply chemical filter
   if (chemical_category != "All") {
     base_query <- base_query %>% filter(chemical == chemical_category)
   }
-  
-  if (region_filter != "All") {
-    base_query <- base_query %>% filter(region == region_filter)
+
+  # --- Logic based on display mode ---
+  if (display_mode == "individual" || display_mode == "compare_individuals") {
+    # Filter for individual data of selected countries
+    result_data <- base_query %>%
+      filter(is_collab == FALSE, iso2c %in% selected_isos)
+
+    # Apply region filter if specified
+    if (region_filter != "All") {
+      result_data <- result_data %>% filter(region == region_filter)
+    }
+
+    # Collect necessary columns, including color code 'cc'
+    result_data <- result_data %>%
+      select(iso2c, year, percentage, chemical, cc, country, region) %>% # Ensure 'cc', 'country', 'region' are selected
+      collect() %>%
+      # Ensure correct types and prepare for plotting
+      mutate(
+          plot_group = iso2c, # Group lines/points by country ISO
+          plot_color = cc,    # Use the country's color code
+          tooltip_text = paste0(
+              "<b>", country, "</b> (", iso2c, ")<br>",
+              "<b>Region:</b> ", region, "<br>",
+              "<b>Year:</b> ", year, "<br>",
+              "<b>Chemical:</b> ", chemical, "<br>",
+              "<b>Percentage:</b> ", scales::percent(percentage / 100, accuracy = 0.01)
+          )
+      ) %>%
+      rename(total_percentage = percentage) # Use consistent naming
+
+  } else if (display_mode == "find_collaborations") {
+    # Filter for collaborations involving ALL selected countries
+    collab_query <- base_query %>% filter(is_collab == TRUE)
+
+    # Apply filter for each selected country
+    for (iso in selected_isos) {
+      collab_query <- collab_query %>% filter(grepl(iso, iso2c))
+    }
+
+    # Collect and process collaboration data
+    collab_data <- collab_query %>%
+      select(iso2c, year, percentage, chemical) %>%
+      collect()
+
+    # Further filter to ensure ALL countries are present (grepl might match subsets)
+    if (nrow(collab_data) > 0) {
+        result_data <- collab_data %>%
+            mutate(partners = strsplit(as.character(iso2c), "-")) %>%
+            filter(sapply(partners, function(p) all(selected_isos %in% p))) %>%
+            # Define collaboration type
+            mutate(
+                collab_size = sapply(partners, length),
+                collab_type = case_when(
+                    collab_size == 2 ~ "Bilateral",
+                    collab_size == 3 ~ "Trilateral",
+                    collab_size == 4 ~ "4-country",
+                    collab_size >= 5 ~ "5-country+",
+                    TRUE ~ "Unknown"
+                )
+            ) %>%
+            group_by(iso2c, year, chemical, collab_type) %>%
+            summarise(total_percentage = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
+            # Prepare for plotting
+            mutate(
+                plot_group = iso2c, # Group lines/points by collaboration ID
+                plot_color = collab_type, # Color by collaboration type
+                tooltip_text = paste0(
+                    "<b>Collaboration:</b> ", iso2c, "<br>",
+                    "<b>Type:</b> ", collab_type, "<br>",
+                    "<b>Year:</b> ", year, "<br>",
+                    "<b>Chemical:</b> ", chemical, "<br>",
+                    "<b>Percentage:</b> ", scales::percent(total_percentage / 100, accuracy = 0.01)
+                )
+            )
+    } else {
+        result_data <- data.frame() # No collaborations found
+    }
+  } else {
+    result_data <- data.frame() # Should not happen
   }
-  
-  if (!is.null(selected_country)) {
-    base_query <- base_query %>% filter(iso2c == selected_country)
+
+  # Ensure numeric types
+  if (nrow(result_data) > 0) {
+      result_data$year <- as.numeric(result_data$year)
+      result_data$total_percentage <- as.numeric(result_data$total_percentage)
   }
-  
-  # Return processed data
-  base_query %>%
-    select(country, iso2c, year, chemical, percentage, region) %>%
-    collect()
+
+  return(result_data)
 }
 
-#' Create contributions visualization
-#' @param data Processed data
-#' @param chemical_category Chemical category
-#' @return Plotly visualization
+
+#' Create the main plot based on processed data and display mode
+#'
+#' @param data The data frame returned by get_display_data
+#' @param display_mode Current display mode
+#' @param selected_isos Vector of selected ISO codes (used for titles etc.)
+#' @param country_list Data frame with country info
+#' @return A plotly object
 #' @export
-create_contributions_plot <- function(data, chemical_category = "All") {
-  if (nrow(data) == 0) {
-    return(plot_ly() %>% 
-      add_annotations(
-        text = "No data available",
-        x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-        showarrow = FALSE, font = list(size = 16)
-      )
-    )
+create_main_plot <- function(data, display_mode, selected_isos, country_list) {
+
+  if (!nrow(data) > 0) {
+    return(plotly_empty(type = "scatter", mode = "markers") %>%
+             layout(title = "No data to display for current selection."))
   }
-  
-  p <- ggplot(data, aes(x = year, y = percentage)) +
-    geom_line(aes(color = country), linewidth = 1) +
-    geom_point(
-      aes(
-        text = paste0(
-          "<b>", country, "</b><br>",
-          "Year: ", year, "<br>",
-          "Chemical: ", chemical, "<br>",
-          "Contribution: ", scales::percent(percentage/100, accuracy = 0.01)
-        )
-      ),
-      size = 3
-    ) +
+
+  # Base plot
+  p <- ggplot(data, aes(x = year, y = total_percentage, group = plot_group))
+
+  # --- Aesthetics based on mode ---
+  if (display_mode == "individual" || display_mode == "compare_individuals") {
+    # Use country's own color, group by country
+    p <- p +
+      geom_line(aes(color = plot_group), linewidth = 0.5, alpha = 0.8) +
+      geom_point(aes(color = plot_group, text = tooltip_text, size = total_percentage), alpha = 0.7)
+
+    # Apply manual color scale using 'cc' values
+    country_colors <- data %>% distinct(plot_group, plot_color)
+    color_values <- setNames(country_colors$plot_color, country_colors$plot_group)
+    # Add country names to the legend labels
+    country_names_map <- setNames(country_list$country, country_list$iso2c)
+    legend_labels <- setNames(country_names_map[names(color_values)], names(color_values))
+
+    p <- p + scale_color_manual(values = color_values, name = "Country", labels = legend_labels)
+
+  } else if (display_mode == "find_collaborations") {
+    # Color by collaboration type, group by specific collaboration iso2c
+    p <- p +
+      geom_line(aes(color = plot_color), linewidth = 0.5, alpha = 0.8) + # plot_color is collab_type here
+      geom_point(aes(color = plot_color, shape = plot_color, text = tooltip_text, size = total_percentage), alpha = 0.7) +
+      scale_color_brewer(palette = "Set1", name = "Collaboration Type") +
+      scale_shape_discrete(name = "Collaboration Type")
+  }
+
+  # --- Common plot elements ---
+  p <- p +
+    scale_radius(range = c(1, 6), name = "Contribution %") +
     scale_y_continuous(
-      labels = scales::percent_format(accuracy = 0.01, scale = 1)
+      labels = scales::percent_format(accuracy = 0.01, scale = 1),
+      expand = expansion(mult = c(0.05, 0.15)) # Add padding
     ) +
-    scale_color_viridis_d() +
-    labs(
-      title = paste("Chemical Space Contributions -", chemical_category),
-      x = "Year",
-      y = "Contribution (%)"
-    ) +
-    theme_minimal()
-  
+    scale_x_continuous(breaks = scales::pretty_breaks(n = 8)) +
+    labs(x = "Year", y = "% Contribution") + # Simplified axis labels
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(face = "bold", size = 9),
+      plot.title = element_text(face = "bold", size = 12),
+      plot.subtitle = element_text(size = 9, color = "#666666"),
+      legend.key.size = unit(0.6, "lines"),
+      legend.text = element_text(size = 8)
+    )
+
+  # Convert to plotly
   ggplotly(p, tooltip = "text") %>%
-    layout(hoverlabel = list(bgcolor = "white"))
+    layout(
+      hoverlabel = list(bgcolor = "white", bordercolor = "black", font = list(size = 11)),
+      legend = list(font = list(size = 9), itemsizing = 'constant', traceorder = 'normal')
+    ) %>%
+    config(displayModeBar = TRUE, displaylogo = FALSE)
 }
 
-#' Get top contributors summary
-#' @param ds Data source
-#' @param year_range Year range
-#' @param chemical_category Chemical category
-#' @param region_filter Region filter
-#' @param n Number of top contributors
-#' @return Data frame of top contributors
+
+#' Create a summary data table based on processed data
+#'
+#' @param data The data frame returned by get_display_data
+#' @param display_mode Current display mode
+#' @return A DT datatable object
 #' @export
-get_top_contributors <- function(ds, year_range, chemical_category = "All", 
-                               region_filter = "All", n = 5) {
-  query <- ds %>%
-    filter(
-      is_collab == FALSE,
-      between(year, year_range[1], year_range[2])
-    )
-  
-  if (chemical_category != "All") {
-    query <- query %>% filter(chemical == chemical_category)
+create_summary_table <- function(data, display_mode) {
+
+  if (!nrow(data) > 0) {
+    return(datatable(data.frame(Message = "No data available."), options = list(dom = 't'), rownames = FALSE))
   }
-  
-  if (region_filter != "All") {
-    query <- query %>% filter(region == region_filter)
+
+  if (display_mode == "individual" || display_mode == "compare_individuals") {
+    summary_df <- data %>%
+      group_by(iso2c, country, region, chemical) %>% # Group by country and chemical
+      summarise(
+        avg_percentage = mean(total_percentage, na.rm = TRUE),
+        max_percentage = max(total_percentage, na.rm = TRUE),
+        years_present = n_distinct(year),
+        .groups = "drop"
+      ) %>%
+      arrange(country, desc(avg_percentage)) %>%
+      mutate(
+        avg_percentage = scales::percent(avg_percentage / 100, accuracy = 0.01),
+        max_percentage = scales::percent(max_percentage / 100, accuracy = 0.01)
+      ) %>%
+      select(
+        Country = country,
+        ISO = iso2c,
+        Region = region,
+        `Chemical Category` = chemical,
+        `Avg %` = avg_percentage,
+        `Max %` = max_percentage,
+        `Years Present` = years_present
+      )
+
+  } else if (display_mode == "find_collaborations") {
+    summary_df <- data %>%
+      group_by(iso2c, collab_type, chemical) %>% # Group by collaboration ID and chemical
+      summarise(
+        avg_percentage = mean(total_percentage, na.rm = TRUE),
+        max_percentage = max(total_percentage, na.rm = TRUE),
+        years_present = n_distinct(year),
+        .groups = "drop"
+      ) %>%
+      arrange(desc(avg_percentage)) %>%
+      mutate(
+        avg_percentage = scales::percent(avg_percentage / 100, accuracy = 0.01),
+        max_percentage = scales::percent(max_percentage / 100, accuracy = 0.01)
+      ) %>%
+      select(
+        Collaboration = iso2c,
+        Type = collab_type,
+        `Chemical Category` = chemical,
+        `Avg %` = avg_percentage,
+        `Max %` = max_percentage,
+        `Years Present` = years_present
+      )
+  } else {
+     return(datatable(data.frame(Message = "Invalid display mode."), options = list(dom = 't'), rownames = FALSE))
   }
-  
-  query %>%
-    group_by(country, iso2c) %>%
-    summarise(
-      total_contribution = sum(percentage, na.rm = TRUE),
-      years_active = n_distinct(year),
-      avg_contribution = mean(percentage, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    arrange(desc(total_contribution)) %>%
-    head(n) %>%
-    collect()
+
+  datatable(
+    summary_df,
+    options = list(
+      pageLength = 5,
+      lengthMenu = c(5, 10, 20),
+      searchHighlight = TRUE,
+      scrollX = TRUE # Enable horizontal scrolling if needed
+    ),
+    rownames = FALSE,
+    filter = 'top' # Add column filters
+  )
+}
+
+
+#' Calculate top contributing countries based on filters
+#'
+#' @param ds DuckDB relation
+#' @param year_range Numeric vector c(min_year, max_year)
+#' @param chemical_category String, chemical category filter
+#' @param region_filter String, region filter
+#' @param country_list Data frame with country info
+#' @param top_n Integer, number of top contributors to return
+#' @return Data frame with top N contributors (iso2c, country, avg_percentage)
+#' @export
+calculate_top_contributors <- function(ds, year_range, chemical_category, region_filter = "All", country_list, top_n = 10) {
+
+    query <- ds %>%
+        filter(
+            is_collab == FALSE,
+            between(year, year_range[1], year_range[2])
+        )
+
+    if (chemical_category != "All") {
+        query <- query %>% filter(chemical == chemical_category)
+    }
+
+    if (region_filter != "All") {
+        query <- query %>% filter(region == region_filter)
+    }
+
+    top_data <- query %>%
+        group_by(iso2c) %>%
+        summarise(avg_percentage = mean(percentage, na.rm = TRUE)) %>%
+        collect() %>% # Collect aggregated data
+        filter(!is.na(avg_percentage)) %>%
+        arrange(desc(avg_percentage)) %>%
+        head(top_n) %>%
+        # Join with country_list to get full country names
+        left_join(select(country_list, iso2c, country), by = "iso2c") %>%
+        select(iso2c, country, avg_percentage) # Ensure correct columns
+
+    return(top_data)
 }
