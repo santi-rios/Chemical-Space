@@ -19,11 +19,11 @@ library(stringr)
 library(leaflet)
 library(sf)
 library(rnaturalearth)
-
+library(leaflet.extras)
 # Resolve conflicts
 conflict_prefer("filter", "dplyr", quiet = TRUE)
 conflict_prefer("layout", "plotly", quiet = TRUE)
-conflict_prefer("select", "dplyr", quiet = TRUE)
+conflict_prefer("select", "dplyr", quiet = TRUE) # Add if needed
 theme_set(theme_light())
 
 # Source helper functions
@@ -34,70 +34,48 @@ data_objects <- load_country_data("./data/data.parquet")
 ds <- data_objects$data
 country_list <- data_objects$country_list
 chemical_categories <- data_objects$chemical_categories
-regions <- data_objects$regions
+regions <- data_objects$regions # Now includes "Other" if applicable
+# Get min/max year from the loaded data objects
+min_year_data <- data_objects$min_year
+max_year_data <- data_objects$max_year
 
-# Prepare choices for selectizeInput (Country Name = ISO Code)
-country_choices <- setNames(country_list$iso2c, country_list$country)
 
 # --- UI Definition ---
 ui <- page_sidebar(
   title = "Chemical Space Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
-    # bs_add_dependencies(), # Explicitly load all dependencies
 
   sidebar = sidebar(
-    width = 350, # Increased width slightly
+    width = 300,
     title = "Controls & Filters",
-    # Improved primary country search
-    div(
-      class = "mb-3",
-      tags$label(class="form-label h6", "Select Countries:"), # Clearer label
-      tags$div(
-        class = "input-group",
-        tags$span(class="input-group-text bg-primary text-white", icon("search")), # Highlighted icon
-        selectizeInput(
-          "country_search", NULL,
-          choices = country_choices,
-          selected = NULL,
-          multiple = TRUE,
-          options = list(
-            placeholder = 'Type to search and select countries...',
-            plugins = list('remove_button'),
-            maxItems = 5 # Allow multiple selections
-          ),
-          width = "100%"
-        )
-      ),
-      helpText("Search and select countries to analyze their chemical space data. The map will highlight your selections.")
-    ),
+    uiOutput("selection_info_ui"),
+    hr(),
     actionButton(
       "clear_selection", "Clear Selection",
       icon = icon("trash-alt"),
-      class = "btn-outline-danger btn-sm mb-2", # Adjusted margin
+      class = "btn-outline-danger btn-sm mb-3",
       width = "100%"
     ),
-    hr(),
-    uiOutput("selection_info_ui"), # Moved selection info below search/clear
-    hr(),
-    h5("Data Filters", class="mb-2"),
     sliderInput(
       "years", "Year Range:",
-      min = 1996, max = 2022,
-      value = c(1996, 2022),
+      min = min_year_data, # Use value from loaded data
+      max = max_year_data, # Use value from loaded data
+      # Set default value safely within the actual data range
+      value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
       step = 1, sep = ""
+      # JS Error Note: If slider errors persist ($x.noUiSlider), check bslib/shiny versions,
+      # try removing bootswatch theme temporarily, or check browser console for details.
     ),
     radioButtons(
       "chemical_category", "Chemical Category:",
       choices = chemical_categories,
       selected = "All"
     ),
-    # Conditional UI for region filter
+    # Conditional UI for region filter (when 1 or more countries selected for individual comparison)
     uiOutput("region_filter_ui"),
     hr(class="my-3"),
     h5("Top Contributors", class="mb-2"),
-    helpText("Top individual contributors based on current filters (avg % contribution)."),
-    actionButton("select_top_5", "Select Top 5", class = "btn-primary btn-sm mb-2", width="100%"),
-    helpText("Click name to add to selection:"),
+    helpText("Top individual contributors based on current filters (avg % contribution). Click to select."),
     uiOutput("top_contributors_ui")
   ), # End sidebar
 
@@ -107,13 +85,10 @@ ui <- page_sidebar(
     row_heights = c(1, 1), # Adjust relative heights if needed
     card(
       full_screen = TRUE,
-      card_header("Country Selection Map"),
-      # Added spinner to map as well
-      withSpinner(leafletOutput("selection_map", height = "400px")),
-      div(
-        class = "text-muted small p-2 text-center",
-        "The map shows your selected countries. Use the search box above to select or change countries."
-      )
+      card_header("Country Selection Map (Filterable by Region)"), # Updated header
+      # JS Error Note: If map errors persist (m is not a constructor), it might be linked
+      # to the slider error or leaflet/dependency loading issues. Check console.
+      leafletOutput("selection_map", height = "400px")
     ),
     card(
       full_screen = TRUE,
@@ -123,8 +98,7 @@ ui <- page_sidebar(
       withSpinner(plotlyOutput("main_plot", height = "400px")),
       hr(),
       h5("Data Summary Table"),
-      # Added spinner
-      withSpinner(DTOutput("summary_table"))
+      DTOutput("summary_table")
     )
   ), # End layout_columns
 
@@ -141,79 +115,252 @@ server <- function(input, output, session) {
   # --- Reactive Values ---
   selected_countries <- reactiveVal(c()) # Stores ISO codes of selected countries
   display_mode <- reactiveVal("compare_individuals") # Default mode for >1 selection
-  primary_country <- reactiveVal(NULL)       # Stores the primary country ISO
-  collaborator_countries <- reactiveVal(c()) # Stores collaborating countries
 
-  # --- Search Box as Primary Input ---
-  # Simplified search box observer - main driver of all updates
-  observeEvent(input$country_search, {
-    countries <- input$country_search
-    selected_countries(countries)
-    
-    # If exactly one country selected, find collaborators
-    if (length(countries) == 1) {
-      iso <- countries[1]
-      primary_country(iso)
-      withProgress(message = "Finding collaborators...", {
-        collabs <- find_collaborating_countries(ds, iso, input$years, input$chemical_category)
-        collaborator_countries(collabs)
-      })
-    } else {
-      # Multiple or zero countries - clear primary/collaborator highlighting
-      primary_country(NULL)
-      collaborator_countries(c())
-    }
-  }, ignoreNULL = FALSE) # Handle NULL for initial load and clearing
+  # --- Map Interaction ---
 
-  # Clear selection button - only updates reactive values, not map clicks
-  observeEvent(input$clear_selection, {
-    updateSelectizeInput(session, "country_search", selected = c())
-    # The search box observer will handle the rest
-  })
-
-  # --- Map Visualization (Passive) ---
-  # Map is now only for visualization, no longer captures clicks for data selection
+  # Render initial map
   output$selection_map <- renderLeaflet({
-    create_selection_map(c(), country_list) # Start with empty selection
+    # Pass the full list of regions for group creation
+    create_selection_map(selected_countries(), country_list, regions)
   })
-  
-  # Update map highlighting based on search box selection
+
+  # Handle map clicks
+  observeEvent(input$selection_map_shape_click, {
+    clicked_iso <- input$selection_map_shape_click$id
+    current_selection <- selected_countries()
+
+    if (clicked_iso %in% current_selection) {
+      selected_countries(setdiff(current_selection, clicked_iso))
+    } else {
+      selected_countries(c(current_selection, clicked_iso))
+    }
+  })
+
+  # Update map highlighting when selection changes
   observe({
     countries <- selected_countries()
-    primary <- primary_country()
-    collabs <- collaborator_countries()
-    
-    # If we have a primary country, highlight it and its collaborators
-    if (!is.null(primary) && primary != "") {
-      leafletProxy("selection_map") %>%
-        update_map_polygons_with_collabs(primary, collabs, country_list)
-    } 
-    # Otherwise just highlight all selected countries equally
-    else {
-      leafletProxy("selection_map") %>%
-        update_map_polygons(countries, country_list)
+    leafletProxy("selection_map") %>%
+      # Pass regions list for group recreation if needed by the function
+      update_map_polygons(countries, country_list, regions)
+
+    # Re-apply region filtering after polygons are potentially redrawn
+    # This ensures the correct layers remain visible/hidden
+    current_region_filter <- input$region_filter
+    if (!is.null(current_region_filter)) {
+        proxy <- leafletProxy("selection_map")
+        if (current_region_filter == "All") {
+            proxy %>% showGroup(regions) # Show all groups
+        } else {
+            proxy %>%
+                hideGroup(setdiff(regions, current_region_filter)) %>% # Hide others
+                showGroup(current_region_filter) # Show selected
+        }
     }
   })
+
+  # Clear selection button
+  observeEvent(input$clear_selection, {
+    selected_countries(c())
+  })
+
+  # --- Region Filter Map Control ---
+  observeEvent(input$region_filter, {
+      req(input$region_filter) # Ensure it's not NULL
+      proxy <- leafletProxy("selection_map")
+
+      if (input$region_filter == "All") {
+          proxy %>% showGroup(regions) # Show all region groups
+      } else {
+          # Hide all regions first, then show the selected one
+          # This handles switching between regions cleanly
+          proxy %>%
+              hideGroup(regions) %>% # Hide all
+              showGroup(input$region_filter) # Show only the selected one
+      }
+  }, ignoreNULL = TRUE, ignoreInit = TRUE) # Ignore initial NULL state
 
   # --- Dynamic UI Elements ---
-  # (Keep the existing UI reactive elements)
 
-  # --- Rest of the logic ---
-  # (Keep your existing data processing, plot creation, etc.)
+  # Display selected countries info
+  output$selection_info_ui <- renderUI({
+    countries <- selected_countries()
+    get_selection_info_ui(countries, country_list) # Use helper function
+  })
 
-  # --- Select Top 5 button ---
-  # Modify to work with search box as primary input
-  observeEvent(input$select_top_5, {
-    top_data <- top_contributors_data()
-    if (nrow(top_data) >= 5) {
-      top5_isos <- top_data$iso2c[1:5]
-      
-      # Always update through the search box input
-      updateSelectizeInput(session, "country_search", selected = top5_isos[1])
-      # The search box observer will handle the rest
+  # Show/hide region filter
+  output$region_filter_ui <- renderUI({
+    # Show always for now, as it controls map visibility
+    # Or revert to conditional logic if map filtering isn't desired when showing collaborations
+    # show_filter <- length(selected_countries()) == 1 ||
+    #                (length(selected_countries()) > 1 && display_mode() == "compare_individuals")
+    # if (show_filter) { ... }
+
+    # Let's keep it always visible to filter the map layers
+    tagList(
+      hr(),
+      selectInput(
+        "region_filter", "Filter Map by Region:", # Updated label
+        choices = c("All", regions), # Use dynamic regions list
+        selected = "All"
+      )
+    )
+  })
+
+  # Show/hide display mode selection
+  output$display_mode_ui <- renderUI({
+    if (length(selected_countries()) > 1) {
+      radioButtons(
+        "display_mode_select", "Display Mode:",
+        choices = c(
+          "Compare Individual Contributions" = "compare_individuals",
+          "Find Joint Collaborations" = "find_collaborations"
+        ),
+        selected = display_mode(),
+        inline = TRUE
+      )
+    } else {
+      NULL
     }
   })
-}
+
+  # Update display_mode reactive value when radio button changes
+  observeEvent(input$display_mode_select, {
+    display_mode(input$display_mode_select)
+  })
+
+  # Dynamic plot header
+  output$plot_header_ui <- renderUI({
+    countries <- selected_countries()
+    mode <- display_mode()
+    chem <- input$chemical_category
+    get_plot_header(countries, mode, chem, country_list) # Use helper function
+  })
+
+  # --- Top Contributors ---
+  top_contributors_data <- reactive({
+      req(input$years, input$chemical_category)
+      # Region filter input now directly controls this via the UI element
+      current_region_filter <- req(input$region_filter) # Make sure it's available
+
+      calculate_top_contributors(
+          ds = ds,
+          year_range = input$years,
+          chemical_category = input$chemical_category,
+          region_filter = current_region_filter, # Use the input value
+          country_list = country_list,
+          top_n = 10
+      )
+  }) %>% bindCache(input$years, input$chemical_category, input$region_filter) # Add region_filter to cache key
+
+  output$top_contributors_ui <- renderUI({
+      top_data <- top_contributors_data()
+      if (nrow(top_data) > 0) {
+          buttons <- lapply(1:nrow(top_data), function(i) {
+              country_iso <- top_data$iso2c[i]
+              country_name <- top_data$country[i]
+              avg_perc <- scales::percent(top_data$avg_percentage[i] / 100, accuracy = 0.1)
+              actionButton(paste0("select_top_", country_iso),
+                           HTML(paste0(i, ". ", country_name, " (", avg_perc, ")")),
+                           class = "btn-link btn-sm d-block text-start",
+                           style = "text-decoration: none; padding: 1px 5px;") # Minimal styling
+          })
+          tagList(buttons)
+      } else {
+          p("No contributor data.")
+      }
+  })
+
+  # Observe clicks on top contributor buttons
+  observe({
+      top_data <- top_contributors_data()
+      lapply(top_data$iso2c, function(iso) {
+          observeEvent(input[[paste0("select_top_", iso)]], {
+              current_selection <- selected_countries()
+              if (!(iso %in% current_selection)) {
+                  selected_countries(c(current_selection, iso))
+              }
+              # Optionally, could also make it toggle or switch selection
+              # selected_countries(iso) # Select only this one
+          })
+      })
+  })
+
+
+  # --- Data Processing ---
+  processed_data <- reactive({
+    countries <- selected_countries()
+    req(length(countries) > 0, input$years, input$chemical_category) # Require at least one selection
+
+    mode <- if (length(countries) == 1) "individual" else display_mode()
+    # Use region filter only if it's relevant for the current mode and available
+    current_region_filter_for_data <- if (mode %in% c("compare_individuals", "individual")) {
+        req(input$region_filter)
+    } else {
+        "All" # Collaborations don't use region filter for data processing
+    }
+
+    withProgress(message = "Processing data...", {
+      get_display_data(
+        ds = ds,
+        selected_isos = countries,
+        year_range = input$years,
+        chemical_category = input$chemical_category,
+        display_mode = mode,
+        region_filter = current_region_filter_for_data, # Pass the relevant filter
+        country_list = country_list
+      )
+    })
+  }) %>% bindCache(
+      # Cache key needs to combine relevant inputs
+      paste(sort(selected_countries()), collapse="-"),
+      input$years,
+      input$chemical_category,
+      display_mode(),
+      # Include region filter only if relevant for data processing cache key
+      if (display_mode() %in% c("individual", "compare_individuals")) input$region_filter else "All"
+      )
+
+  # --- Outputs ---
+
+  # Main Plot
+  output$main_plot <- renderPlotly({
+    validate(
+        need(length(selected_countries()) > 0, "Click on the map to select a country.")
+    )
+    data_to_plot <- processed_data()
+    validate(
+        need(nrow(data_to_plot) > 0, "No data available for the current selection and filters.")
+    )
+
+    mode <- if (length(selected_countries()) == 1) "individual" else display_mode()
+
+    create_main_plot(
+        data = data_to_plot,
+        display_mode = mode,
+        selected_isos = selected_countries(),
+        country_list = country_list
+    )
+  })
+
+  # Summary Table
+  output$summary_table <- renderDT({
+      validate(
+          need(length(selected_countries()) > 0, "Select countries to see summary data.")
+      )
+      data_to_summarize <- processed_data()
+      validate(
+          need(nrow(data_to_summarize) > 0, "No data available for the current selection.")
+      )
+
+      mode <- if (length(selected_countries()) == 1) "individual" else display_mode()
+
+      create_summary_table(
+          data = data_to_summarize,
+          display_mode = mode
+      )
+  })
+
+} # End server
 
 # Run the app
 shinyApp(ui, server)
