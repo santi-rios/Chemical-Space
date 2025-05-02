@@ -109,11 +109,9 @@ process_collab_data <- function(ds, iso, year_range = c(1996, 2022),
       )
   }
   
-  # Apply chemical filter if not "All"
-  if (chemical_category != "All") {
-    base_query <- base_query %>%
-      filter(chemical == chemical_category)
-  }
+  # Always apply the chemical filter, even for "All"
+base_query <- base_query %>%
+  filter(chemical == chemical_category)
   
   # Collect filtered data including cc and region fields
   base_data <- base_query %>%
@@ -343,15 +341,19 @@ create_collab_plot <- function(data, country_name, collab_types = NULL,
   )
   
   # Format country name for title (could be multiple for individual data)
-  title_country <- if (data_type == "individual" && is.list(country_name)) {
-    if (length(country_name) > 2) {
-      paste0(country_name[1], ", ", country_name[2], " and ", length(country_name)-2, " others")
-    } else {
-      paste(country_name, collapse = " & ")
-    }
+  title_country <- if (data_type == "individual" && length(country_name) > 1) {
+  if (length(country_name) > 2) {
+    title_country <- paste0(
+      country_name[1], ", ", country_name[2],
+      " and ", length(country_name) - 2, " others"
+    )
   } else {
-    country_name  # Single country name
+    title_country <- paste(country_name, collapse = " & ")
   }
+} else {
+  # single-country case, or collaboration mode
+  title_country <- country_name[1]
+}
   
   # Add chemical category to title
   chemical_text <- if (chemical_category == "All") {

@@ -53,7 +53,7 @@ ui <- page_navbar(
         selectizeInput(
           "country_select", "Select Country:",
           choices  = NULL,
-          # multiple = FALSE,
+          multiple = TRUE,
           options = list(
             placeholder      = "Search for a country"
             # onInitialize     = I('function() { this.setValue(""); }')
@@ -201,7 +201,13 @@ ui <- page_navbar(
 server <- function(input, output, session) {
 
   # Update country select input with country list
-  updateSelectizeInput(session, "country_select", choices = setNames(country_list$iso2c, country_list$country), server = TRUE)
+  updateSelectizeInput(
+    session, 
+    "country_select", 
+    choices = setNames(country_list$iso2c, country_list$country),
+    selected = c("CN", "US", "DE", "JP", "FR"), 
+    server = TRUE
+    )
 
 
   ## as soon as data_type settles to "individual", set region to "All"
@@ -216,16 +222,6 @@ server <- function(input, output, session) {
   #----------------------
   # Country Explorer Tab
   #----------------------
-
-  # Toggle all collaboration types
-  observeEvent(input$select_all, {
-    all_types <- c("Bilateral", "Trilateral", "4-country", "5-country+")
-    if (length(input$collab_types) < length(all_types)) {
-      updateCheckboxGroupInput(session, "collab_types", selected = all_types)
-    } else {
-      updateCheckboxGroupInput(session, "collab_types", selected = "Bilateral")
-    }
-  })
 
   # Get the country name for the selected ISO code
   selected_country_name <- reactive({
