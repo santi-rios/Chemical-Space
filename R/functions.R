@@ -288,9 +288,9 @@ get_display_data <- function(ds, selected_isos, year_range, chemical_category,
     filter(between(year, year_range[1], year_range[2]))
 
   # Apply chemical filter
-  if (chemical_category != "All") {
+  # if (chemical_category != "All") {
     base_query <- base_query %>% filter(chemical == chemical_category)
-  }
+  # }
 
   # --- Logic based on display mode ---
   if (display_mode == "individual" || display_mode == "compare_individuals") {
@@ -309,7 +309,7 @@ get_display_data <- function(ds, selected_isos, year_range, chemical_category,
       collect() %>%
       # Ensure correct types and prepare for plotting
       mutate(
-          plot_group = iso2c, # Group lines/points by country ISO
+          plot_group = country, # Group lines/points by country ISO
           plot_color = cc,    # Use the country's color code
           tooltip_text = paste0(
               "<b>", country, "</b> (", iso2c, ")<br>",
@@ -332,7 +332,7 @@ get_display_data <- function(ds, selected_isos, year_range, chemical_category,
 
     # Collect and process collaboration data
     collab_data <- collab_query %>%
-      select(iso2c, year, percentage, chemical) %>%
+      select(iso2c, country, year, percentage, chemical) %>%
       collect()
 
     # Further filter to ensure ALL countries are present (grepl might match subsets)
@@ -351,14 +351,14 @@ get_display_data <- function(ds, selected_isos, year_range, chemical_category,
                     TRUE ~ "Unknown"
                 )
             ) %>%
-            group_by(iso2c, year, chemical, collab_type) %>%
+            group_by(iso2c, year, chemical, collab_type, country) %>%
             summarise(total_percentage = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
             # Prepare for plotting
             mutate(
                 plot_group = iso2c, # Group lines/points by collaboration ID
                 plot_color = collab_type, # Color by collaboration type
                 tooltip_text = paste0(
-                    "<b>Collaboration:</b> ", iso2c, "<br>",
+                    "<b>Collaboration:</b> ", country, "<br>",
                     "<b>Type:</b> ", collab_type, "<br>",
                     "<b>Year:</b> ", year, "<br>",
                     "<b>Chemical:</b> ", chemical, "<br>",
