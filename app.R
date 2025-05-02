@@ -40,7 +40,34 @@ ui <- page_navbar(
   title = "Chemical Space Collaboration Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
   id = "nav",
+  uiOutput("country_select_ui"),
 
+# Then add the action buttons for individual mode
+conditionalPanel(
+  condition = "input.data_type == 'individual'",
+  div(
+    class = "btn-group d-flex mb-3",
+    style = "margin-top: 10px;",
+    actionButton(
+      "plot_top_10", "Top 10",
+      icon = icon("chart-bar"),
+      class = "btn-outline-primary btn-sm",
+      width = "33%"
+    ),
+    actionButton(
+      "plot_all", "All Countries",
+      icon = icon("globe"),
+      class = "btn-outline-success btn-sm",
+      width = "33%"
+    ),
+    actionButton(
+      "deselect_all", "Clear",
+      icon = icon("times"),
+      class = "btn-outline-danger btn-sm",
+      width = "34%"
+    )
+  )
+),
   # First tab - Country explorer (original view)
   nav_panel(
     title = "Country Explorer",
@@ -199,16 +226,16 @@ ui <- page_navbar(
 
 # Define server
 server <- function(input, output, session) {
-
-  # Update country select input with country list
-  updateSelectizeInput(
-    session, 
-    "country_select", 
-    choices = setNames(country_list$iso2c, country_list$country),
-    selected = c("CN", "US", "DE", "JP", "FR"), 
-    server = TRUE
+    # Initialize the choices in selectizeInput during startup
+  observe({
+    updateSelectizeInput(
+      session,
+      "country_select",
+      choices = setNames(country_list$iso2c, country_list$country),
+      server = TRUE
     )
-
+  }) 
+  # %>% bindEvent(once = TRUE) # Run only once at startup
 
   ## as soon as data_type settles to "individual", set region to "All"
   observeEvent(input$data_type, {
@@ -218,6 +245,163 @@ server <- function(input, output, session) {
                         selected = "All")
     }
   }, ignoreInit = FALSE)
+
+# Top countries for individual data mode
+top_individual_countries <- reactive({
+  # Apply filters to get top countries by percentage
+  query <- ds %>%
+    filter(
+      is_collab == FALSE,
+      between(year, input$years[1], input$years[2])
+    )
+  
+  # Apply region filter if needed
+  if (!is.null(input$region_filter) && input$region_filter != "All") {
+    query <- query %>% filter(region == input$region_filter)
+  }
+  
+  # Apply chemical filter if needed
+  if (!is.null(input$chemical_category) && input$chemical_category != "All") {
+    query <- query %>% filter(chemical == input$chemical_category)
+  }
+  
+  # Aggregate and find top countries
+  query %>%
+    group_by(iso2c) %>%
+    summarize(
+      total_percentage = sum(percentage, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    collect() %>%
+    arrange(desc(total_percentage)) %>%
+    head(10) %>%
+    pull(iso2c)
+})
+
+# Top country for collaboration mode
+top_collab_country <- reactive({
+  # Find the country with the most collaborations under current filters
+  query <- ds %>%
+    filter(
+      is_collab == TRUE,
+      between(year, input$years[1], input$years[2])
+    )
+  
+  # Apply chemical filter if needed
+  if (!is.null(input$chemical_category) && input$chemical_category != "All") {
+    query <- query %>% filter(chemical == input$chemical_category)
+  }
+  
+  # Count collaborations per country
+  countries_df <- query %>%
+    collect() %>%
+    # Split collaboration strings into individual countries
+    mutate(countries = strsplit(as.character(iso2c), "-")) %>%
+    # Unnest to get one row per country in each collaboration
+    unnest(countries) %>%
+    # Count occurrences
+    count(countries) %>%
+    arrange(desc(n))
+  
+  # Return top country or CN (China) as fallback
+  if (nrow(countries_df) > 0) {
+    return(countries_df$countries[1])
+  } else {
+    return("CN")  # Default to China if no data
+  }
+})
+
+# Create a dynamic UI for the country selector
+output$country_select_ui <- renderUI({
+  if (input$data_type == "individual") {
+    selectizeInput(
+      "country_select", "Select Countries:",
+      choices = setNames(country_list$iso2c, country_list$country),
+      multiple = TRUE,
+      options = list(
+        placeholder = "Search for countries",
+        plugins = list("remove_button")
+      )
+    )
+  } else {
+    selectizeInput(
+      "country_select", "Select Country:",
+      choices = setNames(country_list$iso2c, country_list$country),
+      multiple = FALSE,
+      options = list(
+        placeholder = "Search for a country"
+      )
+    )
+  }
+})
+
+# Update the country selection when filters change
+observe({
+  # If data hasn't loaded, exit
+  if (is.null(input$country_select) || is.null(input$data_type)) return()
+  
+  # Get current data type and determine what to do
+  if (input$data_type == "individual") {
+    # For individual mode - select top 10
+    top_countries <- top_individual_countries()
+    updateSelectizeInput(session, "country_select", selected = top_countries)
+  } else {
+    # For collaboration modes - select top 1
+    top_country <- top_collab_country()
+    updateSelectizeInput(session, "country_select", selected = top_country)
+  }
+}) %>% 
+  # Only run this when one of these inputs changes
+  bindEvent(
+    input$data_type,         # Mode change
+    input$years,             # Year range
+    input$chemical_category, # Chemical filter
+    input$region_filter      # Region filter (for individual mode)
+  )
+
+# Add action buttons for individual mode
+# These will go in the UI, but we'll implement the handlers here
+observeEvent(input$plot_top_10, {
+  req(input$data_type == "individual")
+  updateSelectizeInput(session, "country_select", selected = top_individual_countries())
+})
+
+observeEvent(input$plot_all, {
+  req(input$data_type == "individual")
+  
+  # Get all countries under current filters, limited to max 50 for performance
+  query <- ds %>%
+    filter(
+      is_collab == FALSE,
+      between(year, input$years[1], input$years[2])
+    )
+  
+  if (!is.null(input$region_filter) && input$region_filter != "All") {
+    query <- query %>% filter(region == input$region_filter)
+  }
+  
+  if (!is.null(input$chemical_category) && input$chemical_category != "All") {
+    query <- query %>% filter(chemical == input$chemical_category)
+  }
+  
+  all_countries <- query %>%
+    group_by(iso2c) %>%
+    summarize(
+      total_percentage = sum(percentage, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    collect() %>%
+    arrange(desc(total_percentage)) %>%
+    head(50) %>% # Limit to 50 for performance
+    pull(iso2c)
+  
+  updateSelectizeInput(session, "country_select", selected = all_countries)
+})
+
+observeEvent(input$deselect_all, {
+  req(input$data_type == "individual")
+  updateSelectizeInput(session, "country_select", selected = character(0))
+})
 
   #----------------------
   # Country Explorer Tab
