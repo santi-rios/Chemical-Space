@@ -81,7 +81,7 @@ create_selection_map <- function(selected_countries = c(), country_list) {
       color = "white",
       dashArray = "3",
       fillOpacity = 0.7,
-      highlightOptions = highlightOptions(
+      highlight = highlightOptions(
         weight = 2,
         color = "#666",
         dashArray = "",
@@ -89,7 +89,7 @@ create_selection_map <- function(selected_countries = c(), country_list) {
         bringToFront = TRUE
       ),
       label = ~paste(country), # Use country name from our joined list
-      layerId = ~iso_a2,      # Use ISO code as layer ID
+      # Remove layerId to disable click selection
       labelOptions = labelOptions(
         style = list("font-weight" = "normal", padding = "3px 8px"),
         textsize = "12px",
@@ -630,4 +630,112 @@ calculate_top_contributors <- function(ds, year_range, chemical_category, region
         select(iso2c, country, avg_percentage)
 
     return(top_data)
+}
+
+# Add these functions at the end of the file
+
+#' Find countries that collaborate with a given primary country
+#'
+#' @param ds DuckDB relation (data source)
+#' @param primary_iso ISO code of the primary country
+#' @param year_range Vector c(min_year, max_year)
+#' @param chemical_category Selected chemical category
+#' @return Vector of ISO codes for countries that collaborate with the primary country
+#' @export
+find_collaborating_countries <- function(ds, primary_iso, year_range, 
+                                        chemical_category = "All") {
+  # Base query with year filter
+  collab_query <- ds %>%
+    filter(
+      is_collab == TRUE,
+      between(year, year_range[1], year_range[2])
+    )
+  
+  # Apply chemical filter if specified
+  if (chemical_category != "All") {
+    collab_query <- collab_query %>% filter(chemical == chemical_category)
+  }
+  
+  # Find collaborations containing the primary country
+  collab_data <- collab_query %>%
+    filter(grepl(primary_iso, iso2c)) %>%
+    select(iso2c, percentage) %>%
+    collect()
+  
+  if (nrow(collab_data) == 0) {
+    return(c())  # No collaborations found
+  }
+  
+  # Extract collaborating countries from the iso2c strings (which contain hyphens)
+  collab_countries <- unique(unlist(lapply(collab_data$iso2c, function(iso_str) {
+    # Split by hyphen and remove primary country
+    countries <- strsplit(iso_str, "-")[[1]]
+    setdiff(countries, primary_iso)
+  })))
+  
+  return(collab_countries)
+}
+
+#' Update map with primary country and collaborator highlighting
+#'
+#' @param map_proxy A leaflet proxy object
+#' @param primary_iso ISO code of primary country
+#' @param collab_isos Vector of ISO codes for collaborating countries
+#' @param country_list Data frame with country info
+#' @return Updated leaflet proxy
+#' @export
+update_map_polygons_with_collabs <- function(map_proxy, primary_iso, collab_isos, country_list) {
+  # This function redraws polygons with three types of highlighting:
+  # - Primary country: Strong highlight
+  # - Collaborating countries: Medium highlight
+  # - Other countries: Light/no highlight
+  world_map <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+  map_data <- world_map %>%
+      select(iso_a2, name_long, geometry) %>%
+      left_join(country_list, by = c("iso_a2" = "iso2c")) %>%
+      filter(!is.na(country)) # Ensure we only work with countries in our list
+
+  # Create a color factor with three states
+  pal <- colorFactor(
+    palette = c("lightgray", "#99c2ff", "#0066ff"), # Light gray, Light blue, Strong blue
+    domain = c("none", "collab", "primary"),
+    na.color = "transparent"
+  )
+
+  # Determine status for each country
+  map_data$status <- ifelse(map_data$iso_a2 == primary_iso, "primary",
+                           ifelse(map_data$iso_a2 %in% collab_isos, "collab", "none"))
+
+  map_proxy %>%
+    clearShapes() %>% # Clear previous polygons
+    addPolygons(
+      data = map_data,
+      fillColor = ~pal(status),
+      weight = ifelse(map_data$status == "primary", 2, 1),
+      opacity = 1,
+      color = "white",
+      dashArray = "3",
+      fillOpacity = ifelse(map_data$status == "primary", 0.8, 0.7),
+      highlightOptions = highlightOptions(
+        weight = 3,
+        color = "#666",
+        dashArray = "",
+        fillOpacity = 0.9,
+        bringToFront = TRUE
+      ),
+      label = ~paste(country),
+      layerId = ~iso_a2,
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "12px",
+        direction = "auto"
+      )
+    ) %>%
+    addLegend(
+      position = "bottomright",
+      colors = c("#0066ff", "#99c2ff", "lightgray"),
+      labels = c("Primary Country", "Collaborators", "Other Countries"),
+      title = "Country Status",
+      opacity = 0.7
+    )
 }
