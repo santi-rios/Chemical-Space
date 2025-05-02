@@ -1,29 +1,15 @@
-# Chemical Space Collaboration Explorer
-# 2025-05-01
-# Optimized by Santiago Garcia Rios
-
-# Load required packages
 library(shiny)
 library(bslib)
-library(shinycssloaders)
+library(leaflet)
 library(plotly)
-library(ggplot2)
-library(conflicted)
-library(duckplyr)
 library(dplyr)
-library(tidyr)
-library(purrr)
-library(scales)
+library(duckplyr)
+library(ggplot2)
 library(DT)
-library(gt)
-library(stringr)
-library(leaflet) # For interactive maps
-library(sf) # For spatial data handling
-library(rnaturalearth) # For world map data
-
-# Resolve conflicts
-conflict_prefer("filter", "dplyr", quiet = TRUE)
-theme_set(theme_light())
+library(scales)
+library(sf)
+library(rnaturalearth)
+library(shinycssloaders)
 
 # Source helper functions
 source("R/functions.R")
@@ -35,820 +21,232 @@ country_list <- data_objects$country_list
 chemical_categories <- data_objects$chemical_categories
 regions <- data_objects$regions
 
-# Create UI with tabsets for different views
-ui <- page_navbar(
-  title = "Chemical Space Collaboration Explorer",
+# UI Definition
+ui <- page_fluid(
   theme = bs_theme(version = 5, bootswatch = "flatly"),
-  id = "nav",
-  uiOutput("country_select_ui"),
-
-# Then add the action buttons for individual mode
-conditionalPanel(
-  condition = "input.data_type == 'individual'",
+  
+  # Title bar with info button
   div(
-    class = "btn-group d-flex mb-3",
-    style = "margin-top: 10px;",
-    actionButton(
-      "plot_top_10", "Top 10",
-      icon = icon("chart-bar"),
-      class = "btn-outline-primary btn-sm",
-      width = "33%"
-    ),
-    actionButton(
-      "plot_all", "All Countries",
-      icon = icon("globe"),
-      class = "btn-outline-success btn-sm",
-      width = "33%"
-    ),
-    actionButton(
-      "deselect_all", "Clear",
-      icon = icon("times"),
-      class = "btn-outline-danger btn-sm",
-      width = "34%"
-    )
-  )
-),
-  # First tab - Country explorer (original view)
-  nav_panel(
-    title = "Country Explorer",
-    icon = icon("chart-line"),
-    page_sidebar(
-      sidebar = sidebar(
-        width = 300,
-        title = "Controls",
-        # uiOutput("country_select_ui"),
-        selectizeInput(
-          "country_select", "Select Country:",
-          choices  = NULL,
-          multiple = TRUE,
-          options = list(
-            placeholder      = "Search for a country"
-            # onInitialize     = I('function() { this.setValue(""); }')
-          )
-        ),
-        hr(),
-                radioButtons(
-          "data_type", "Data Type:",
-          choices = c(
-            "Collaborations" = "collaborations",
-            "Individual Contributions" = "individual",
-            "Both" = "both"
-          ),
-          selected = "individual"
-        ),
-        hr(),
-        conditionalPanel(
-          condition = "input.data_type == 'individual'",
-          selectInput(
-            "region_filter", "Region:",
-            choices = c("All", regions),
-            selected = "All"
-          )
-        ),
-        sliderInput(
-          "years", "Year Range:",
-          min = 1996, max = 2022,
-          value = c(1996, 2022),
-          step = 1, sep = ""
-        ),
-        hr(),
-        radioButtons(
-          "chemical_category", "Chemical Category:",
-          choices = chemical_categories,
-          selected = "All"
-        ),
-        hr(),
-        conditionalPanel(
-          condition = "input.data_type != 'individual'",
-          checkboxGroupInput(
-            "collab_types", "Collaboration Types:",
-            choices = c(
-              "Bilateral" = "Bilateral",
-              "Trilateral" = "Trilateral",
-              "4-country" = "4-country",
-              "5 or more countries" = "5-country+"
-            ),
-            selected = "Bilateral"
-          ),
-          actionButton(
-            "select_all", "View All Types",
-            icon = icon("check-double"),
-            class = "btn-outline-primary btn-sm",
-            width = "100%"
-          )
-        ),
-        hr(),
-        helpText(
-          HTML("<strong>About the data:</strong><br>"),
-          "Each point represents a unique collaboration configuration involving the selected country.",
-          HTML("<br><br><strong>Performance tip:</strong> Select fewer collaboration types for faster loading and clearer visualization.")
-        )
-      ),
-      verticalLayout(
-        card(
-          full_screen = TRUE,
-          card_header("Collaboration Visualization"),
-          uiOutput("plot_info"),
-          withSpinner(plotlyOutput("collab_plot", height = "500px"))
-        ),
-        card(
-          full_screen = TRUE,
-          card_header("Collaboration Summary"),
-          DTOutput("summary_table")
-        )
-      )
-    )
+    class = "d-flex justify-content-between align-items-center bg-light p-2",
+    h2("Chemical Space Explorer", class = "m-0"),
+    actionButton("show_info", "About", icon = icon("info-circle"), 
+                class = "btn-outline-primary")
   ),
-
-  # Second tab - Map-based country selection for specific collaborations
-  nav_panel(
-    title = "Multi-Country Search",
-    icon = icon("globe"),
-    page_sidebar(
-      sidebar = sidebar(
-        width = 300,
-        title = "Selected Countries",
+  
+  # Main layout
+  fluidRow(
+    # Left column - Map and controls
+    column(
+      width = 5,
+      card(
+        full_screen = TRUE,
+        height = "600px",
+        card_header("Interactive Country Selection"),
+        withSpinner(leafletOutput("selection_map", height = "400px")),
+        
+        # Essential controls below map
         div(
-          style = "padding: 10px 0;",
-          p("Click countries on the map to select/deselect them. The visualization will show collaborations involving ALL selected countries."),
-          hr()
-        ),
-        uiOutput("selected_countries_ui"),
-        hr(),
-        actionButton(
-          "clear_selection", "Clear Selection",
-          icon = icon("trash-alt"),
-          class = "btn-outline-danger btn-sm",
-          width = "100%"
-        ),
-        hr(),
-        sliderInput(
-          "map_years", "Year Range:",
-          min = 1996, max = 2022,
-          value = c(1996, 2022),
-          step = 1, sep = ""
-        ),
-        radioButtons(
-          "map_chemical_category", "Chemical Category:",
-          choices = chemical_categories,
-          selected = "All"
-        ),
-        hr(),
-        helpText(
-          HTML("<strong>How to use:</strong><br>"),
-          "1. Click countries on the map to select them",
-          HTML("<br>"),
-          "2. The visualization will update to show only collaborations where ALL selected countries participated together."
-        )
-      ),
-      verticalLayout(
-        card(
-          full_screen = TRUE,
-          card_header("Country Selection Map"),
-          leafletOutput("selection_map", height = "400px")
-        ),
-        card(
-          full_screen = TRUE,
-          card_header("Multi-Country Collaboration Results"),
-          withSpinner(plotlyOutput("specific_collab_plot", height = "400px")),
-          hr(),
-          DTOutput("specific_collab_table")
+          class = "mt-3",
+          fluidRow(
+            column(6, 
+                  selectInput("chemical_filter", "Chemical Category:",
+                            choices = c("All", chemical_categories),
+                            selected = "All")
+            ),
+            column(6,
+                  selectInput("region_filter", "Region Filter:",
+                            choices = regions,
+                            selected = "All")
+            )
+          ),
+          sliderInput("year_range", "Year Range:",
+                     min = 1996, max = 2022,
+                     value = c(1996, 2022),
+                     step = 1, sep = "")
         )
       )
+    ),
+    
+    # Right column - Visualizations
+    column(
+      width = 7,
+      # Top contributors card
+      uiOutput("top_contributors_ui"),
+      
+      # Main visualization card
+      card(
+        full_screen = TRUE,
+        card_header(
+          div(
+            class = "d-flex justify-content-between align-items-center",
+            h4("Contribution Analysis", class = "m-0"),
+            div(
+              class = "btn-group",
+              actionButton("show_individual", "Individual Data", 
+                         class = "btn-sm btn-outline-primary active"),
+              actionButton("show_collabs", "Collaborations",
+                         class = "btn-sm btn-outline-primary")
+            )
+          )
+        ),
+        withSpinner(plotlyOutput("main_plot", height = "400px"))
+      )
     )
-  ),
-  footer = div(
-    style = "text-align: center; padding: 10px; background: #f8f9fa;",
-    "Source: Bermúdez-Montaña, M., et al. (2025). China's rise in the chemical space and the decline of US influence.",
-    a("Working Paper", href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6")
   )
 )
 
-# Define server
+# Server Definition
 server <- function(input, output, session) {
-    # Initialize the choices in selectizeInput during startup
-  observe({
-    updateSelectizeInput(
-      session,
-      "country_select",
-      choices = setNames(country_list$iso2c, country_list$country),
-      server = TRUE
-    )
-  }) 
-  # %>% bindEvent(once = TRUE) # Run only once at startup
-
-  ## as soon as data_type settles to "individual", set region to "All"
-  observeEvent(input$data_type, {
-    if (input$data_type == "individual") {
-      updateSelectInput(session,
-                        "region_filter",
-                        selected = "All")
-    }
-  }, ignoreInit = FALSE)
-
-# Top countries for individual data mode
-top_individual_countries <- reactive({
-  # Apply filters to get top countries by percentage
-  query <- ds %>%
-    filter(
-      is_collab == FALSE,
-      between(year, input$years[1], input$years[2])
-    )
-  
-  # Apply region filter if needed
-  if (!is.null(input$region_filter) && input$region_filter != "All") {
-    query <- query %>% filter(region == input$region_filter)
-  }
-  
-  # Apply chemical filter if needed
-  if (!is.null(input$chemical_category) && input$chemical_category != "All") {
-    query <- query %>% filter(chemical == input$chemical_category)
-  }
-  
-  # Aggregate and find top countries
-  query %>%
-    group_by(iso2c) %>%
-    summarize(
-      total_percentage = sum(percentage, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    collect() %>%
-    arrange(desc(total_percentage)) %>%
-    head(10) %>%
-    pull(iso2c)
-})
-
-# Top country for collaboration mode
-top_collab_country <- reactive({
-  # Find the country with the most collaborations under current filters
-  query <- ds %>%
-    filter(
-      is_collab == TRUE,
-      between(year, input$years[1], input$years[2])
-    )
-  
-  # Apply chemical filter if needed
-  if (!is.null(input$chemical_category) && input$chemical_category != "All") {
-    query <- query %>% filter(chemical == input$chemical_category)
-  }
-  
-  # Count collaborations per country
-  countries_df <- query %>%
-    collect() %>%
-    # Split collaboration strings into individual countries
-    mutate(countries = strsplit(as.character(iso2c), "-")) %>%
-    # Unnest to get one row per country in each collaboration
-    unnest(countries) %>%
-    # Count occurrences
-    count(countries) %>%
-    arrange(desc(n))
-  
-  # Return top country or CN (China) as fallback
-  if (nrow(countries_df) > 0) {
-    return(countries_df$countries[1])
-  } else {
-    return("CN")  # Default to China if no data
-  }
-})
-
-# Create a dynamic UI for the country selector
-output$country_select_ui <- renderUI({
-  if (input$data_type == "individual") {
-    selectizeInput(
-      "country_select", "Select Countries:",
-      choices = setNames(country_list$iso2c, country_list$country),
-      multiple = TRUE,
-      options = list(
-        placeholder = "Search for countries",
-        plugins = list("remove_button")
-      )
-    )
-  } else {
-    selectizeInput(
-      "country_select", "Select Country:",
-      choices = setNames(country_list$iso2c, country_list$country),
-      multiple = FALSE,
-      options = list(
-        placeholder = "Search for a country"
-      )
-    )
-  }
-})
-
-# Update the country selection when filters change
-observe({
-  # If data hasn't loaded, exit
-  if (is.null(input$country_select) || is.null(input$data_type)) return()
-  
-  # Get current data type and determine what to do
-  if (input$data_type == "individual") {
-    # For individual mode - select top 10
-    top_countries <- top_individual_countries()
-    updateSelectizeInput(session, "country_select", selected = top_countries)
-  } else {
-    # For collaboration modes - select top 1
-    top_country <- top_collab_country()
-    updateSelectizeInput(session, "country_select", selected = top_country)
-  }
-}) %>% 
-  # Only run this when one of these inputs changes
-  bindEvent(
-    input$data_type,         # Mode change
-    input$years,             # Year range
-    input$chemical_category, # Chemical filter
-    input$region_filter      # Region filter (for individual mode)
+  # Reactive values
+  rv <- reactiveValues(
+    selected_country = NULL,
+    view_mode = "individual"
   )
-
-# Add action buttons for individual mode
-# These will go in the UI, but we'll implement the handlers here
-observeEvent(input$plot_top_10, {
-  req(input$data_type == "individual")
-  updateSelectizeInput(session, "country_select", selected = top_individual_countries())
-})
-
-observeEvent(input$plot_all, {
-  req(input$data_type == "individual")
   
-  # Get all countries under current filters, limited to max 50 for performance
-  query <- ds %>%
-    filter(
-      is_collab == FALSE,
-      between(year, input$years[1], input$years[2])
-    )
-  
-  if (!is.null(input$region_filter) && input$region_filter != "All") {
-    query <- query %>% filter(region == input$region_filter)
-  }
-  
-  if (!is.null(input$chemical_category) && input$chemical_category != "All") {
-    query <- query %>% filter(chemical == input$chemical_category)
-  }
-  
-  all_countries <- query %>%
-    group_by(iso2c) %>%
-    summarize(
-      total_percentage = sum(percentage, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    collect() %>%
-    arrange(desc(total_percentage)) %>%
-    head(50) %>% # Limit to 50 for performance
-    pull(iso2c)
-  
-  updateSelectizeInput(session, "country_select", selected = all_countries)
-})
-
-observeEvent(input$deselect_all, {
-  req(input$data_type == "individual")
-  updateSelectizeInput(session, "country_select", selected = character(0))
-})
-
-
-  #----------------------
-  # Country Explorer Tab
-  #----------------------
-
-  # Get the country name for the selected ISO code
-  selected_country_name <- reactive({
-    req(input$country_select)
-
-    if (input$data_type == "individual" && length(input$country_select) > 1) {
-      # Multiple countries selected - get all names
-      country_names <- sapply(input$country_select, function(iso) {
-        country_match <- match(iso, country_list$iso2c)
-        if (!is.na(country_match)) {
-          country_list$country[country_match]
-        } else {
-          iso
-        }
-      })
-      return(country_names)
-    } else {
-      # Single country - return as before
-      iso <- input$country_select
-      if (length(iso) > 1) iso <- iso[1] # Take first if multiple
-
-      country_match <- match(iso, country_list$iso2c)
-      if (!is.na(country_match)) {
-        country_list$country[country_match]
-      } else {
-        iso
-      }
-    }
-  })
-
-  # Process data for selected country with collaboration type filtering
-  # Update collaboration_data reactive expression
-
-  # Update the collaboration_data reactive expression
-
-  # Process data for selected country with collaboration type filtering
-  collaboration_data <- reactive({
-    req(input$country_select, input$years, input$chemical_category, input$data_type)
-
-    # For collaboration mode, require collab_types
-    if (input$data_type != "individual" && length(input$collab_types) == 0) {
-      showNotification("Please select at least one collaboration type", type = "warning")
-      return(data.frame())
-    }
-
-    # Get region filter if in individual mode
-    region_filter <- if (input$data_type == "individual" && !is.null(input$region_filter)) {
-      input$region_filter
-    } else {
-      NULL
-    }
-
-    # Show progress indication
-    withProgress(message = "Loading data...", {
-      process_collab_data(
-        ds = ds,
-        iso = input$country_select,
-        year_range = input$years,
-        data_type = input$data_type,
-        collab_types = input$collab_types,
-        chemical_category = input$chemical_category,
-        region_filter = region_filter,
-        country_list = country_list
-      )
-    })
-  }) %>%
-    bindCache(
-      input$country_select, input$years, input$collab_types,
-      input$chemical_category, input$data_type, input$region_filter
-    ) %>%
-    bindEvent(
-      input$country_select, input$years, input$collab_types,
-      input$chemical_category, input$data_type, input$region_filter
-    )
-  # Display information about the current view
-
-  output$plot_info <- renderUI({
-    req(collaboration_data())
-
-    if (nrow(collaboration_data()) == 0) {
-      return(div(
-        class = "alert alert-warning",
-        "No collaboration data available for the selected criteria."
-      ))
-    }
-
-    # Count the different types of collaborations
-    collab_counts <- collaboration_data() %>%
-      count(collab_type) %>%
-      arrange(desc(n))
-
-    # Create the info text with counts for each type
-    type_info <- paste(
-      collab_counts$collab_type,
-      " (", collab_counts$n, ")",
-      sep = "",
-      collapse = ", "
-    )
-
-    div(
-      class = "alert alert-info",
-      HTML(paste0(
-        "<strong>Data summary:</strong> Found ", nrow(distinct(collaboration_data(), partner_list)),
-        " unique collaboration configurations for ", selected_country_name(),
-        " with selected filters.<br>",
-        "<strong>Chemical category:</strong> ", input$chemical_category, "<br>",
-        "<strong>Collaboration types:</strong> ", type_info
-      ))
-    )
-  })
-
-  # Create collaboration plot
-  output$collab_plot <- renderPlotly({
-    req(collaboration_data())
-    validate(need(
-      nrow(collaboration_data()) > 0,
-      "No data available for this country with the selected filters."
-    ))
-
-    create_collab_plot(
-      collaboration_data(),
-      selected_country_name(),
-      input$collab_types,
-      input$chemical_category,
-      input$data_type
-    )
-  })
-
-  # Create summary table
-  # Update the summary_table output rendering
-
-  # Create summary table
-  output$summary_table <- renderDT({
-    req(collaboration_data())
-    validate(need(nrow(collaboration_data()) > 0, "No collaboration data available."))
-
-    # Create summary table with chemical category
-    summary_data <- collaboration_data() %>%
-      group_by(partner_list, collab_type, chemical) %>%
-      summarize(
-        avg_percentage = mean(total_percentage, na.rm = TRUE),
-        max_percentage = max(total_percentage, na.rm = TRUE),
-        years_present = n_distinct(year)
-      ) %>%
-      arrange(desc(avg_percentage)) %>%
-      mutate(
-        avg_percentage = scales::percent(avg_percentage / 100, accuracy = 0.01),
-        max_percentage = scales::percent(max_percentage / 100, accuracy = 0.01)
-      ) %>%
-      rename(
-        "Partner Countries" = partner_list,
-        "Collaboration Type" = collab_type,
-        "Chemical Category" = chemical,
-        "Average %" = avg_percentage,
-        "Maximum %" = max_percentage,
-        "Years Present" = years_present
-      )
-
-    # Get unique values for styling
-    collab_types_in_data <- unique(summary_data$`Collaboration Type`)
-    chemical_types_in_data <- unique(summary_data$`Chemical Category`)
-
-    # Create color vectors with matching lengths
-    collab_colors <- c("#e6f7ff", "#e6ffe6", "#fff7e6", "#ffe6e6", "#f0f0f0")
-    collab_colors <- collab_colors[1:length(collab_types_in_data)]
-
-    chemical_colors <- c("#ffffff", "#f0f8ff", "#f5fffa", "#fff5f5", "#f8f8f8")
-    # Ensure we have enough colors for all chemical categories
-    if (length(chemical_types_in_data) > length(chemical_colors)) {
-      chemical_colors <- colorRampPalette(chemical_colors)(length(chemical_types_in_data))
-    } else {
-      chemical_colors <- chemical_colors[1:length(chemical_types_in_data)]
-    }
-
-    # Create the datatable with proper styling
-    datatable(
-      summary_data,
-      options = list(
-        pageLength = 10,
-        lengthMenu = c(5, 10, 25, 50),
-        searchHighlight = TRUE
-      ),
-      rownames = FALSE
-    ) %>%
-      formatStyle(
-        "Collaboration Type",
-        backgroundColor = styleEqual(
-          collab_types_in_data,
-          collab_colors
-        )
-      ) %>%
-      formatStyle(
-        "Chemical Category",
-        backgroundColor = styleEqual(
-          chemical_types_in_data,
-          chemical_colors
-        )
-      )
-  })
-  #--------------------------
-  # Multi-Country Search Tab
-  #--------------------------
-
-  # Store selected countries
-  selected_countries <- reactiveVal(c())
-
-  # Clear country selection
-  observeEvent(input$clear_selection, {
-    selected_countries(c())
-  })
-
-  # Display selected countries in the sidebar
-  output$selected_countries_ui <- renderUI({
-    countries <- selected_countries()
-
-    if (length(countries) == 0) {
-      return(div(
-        class = "alert alert-secondary",
-        "No countries selected yet. Click countries on the map to select them."
-      ))
-    }
-
-    # Get country names for display
-    country_names <- sapply(countries, function(iso) {
-      match_idx <- match(iso, country_list$iso2c)
-      if (!is.na(match_idx)) {
-        country_list$country[match_idx]
-      } else {
-        iso
-      }
-    })
-
-    # Create UI elements
-    tags$div(
-      lapply(seq_along(countries), function(i) {
-        div(
-          class = "d-flex justify-content-between align-items-center mb-2",
-          tags$span(country_names[i], style = "font-weight: bold;"),
-          actionButton(
-            inputId = paste0("remove_", countries[i]),
-            label = NULL,
-            icon = icon("times"),
-            class = "btn-sm btn-outline-danger",
-            style = "padding: 0px 5px; margin-left: 5px;"
-          )
-        )
-      }),
-      hr(),
-      div(
-        class = if (length(countries) < 2) "alert alert-warning" else "alert alert-info",
-        if (length(countries) < 2) {
-          "Select at least 2 countries to see collaborations."
-        } else {
-          paste0(
-            "Showing ", input$map_chemical_category, " collaborations between all ",
-            length(countries), " selected countries."
-          )
-        }
-      )
-    )
-  })
-
-  # Handle clicks on the map
-  observeEvent(input$selection_map_shape_click, {
-    # Get the clicked country ISO code
-    clicked_iso <- input$selection_map_shape_click$id
-
-    # Update the selected countries
-    current <- selected_countries()
-
-    if (clicked_iso %in% current) {
-      # Remove if already selected
-      selected_countries(setdiff(current, clicked_iso))
-    } else {
-      # Add if not already selected
-      selected_countries(c(current, clicked_iso))
-    }
-  })
-
-  # Handle remove buttons for each country
-  observe({
-    # Get current selected countries
-    countries <- selected_countries()
-
-    # Check for any remove button clicks
-    lapply(countries, function(iso) {
-      button_id <- paste0("remove_", iso)
-      observeEvent(input[[button_id]],
-        {
-          selected_countries(setdiff(countries, iso))
-        },
-        ignoreInit = TRUE
-      )
-    })
-  })
-
-  # Create the selection map
+  # Create initial map
   output$selection_map <- renderLeaflet({
-    create_selection_map(selected_countries(), country_list)
+    create_selection_map(country_list = country_list)
   })
-
-  # Update map when selections change
-  observe({
-    countries <- selected_countries()
-
-    # Only update the map if it exists
-    if (!is.null(input$selection_map_zoom)) {
-      # Get world map data
-      world_data <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
-
-      leafletProxy("selection_map") %>%
-        clearShapes() %>%
-        addPolygons(
-          data = world_data,
-          fillColor = ~ colorFactor(c("lightgray", "#3388ff"), c(FALSE, TRUE))(iso_a2 %in% countries),
-          weight = 1,
-          opacity = 1,
-          color = "white",
-          dashArray = "3",
-          fillOpacity = 0.7,
-          highlight = highlightOptions(
-            weight = 2,
-            color = "#666",
-            dashArray = "",
-            fillOpacity = 0.7,
-            bringToFront = TRUE
-          ),
-          # FIXED: Use the correct column name
-          label = ~name,
-          layerId = ~iso_a2,
-          labelOptions = labelOptions(
-            style = list("font-weight" = "normal", padding = "3px 8px"),
-            textsize = "15px",
-            direction = "auto"
+  
+  # Handle map clicks
+  observeEvent(input$selection_map_shape_click, {
+    clicked <- input$selection_map_shape_click$id
+    
+    if (clicked == rv$selected_country) {
+      # Deselect if clicking same country
+      rv$selected_country <- NULL
+      collaborating_countries <- NULL
+    } else {
+      # Select new country and find collaborators
+      rv$selected_country <- clicked
+      collaborating_countries <- find_collaborating_countries(
+        ds,
+        clicked,
+        input$year_range,
+        input$chemical_filter
+      )
+    }
+    
+    # Update map
+    leafletProxy("selection_map") %>%
+      clearShapes() %>%
+      addPolygons(
+        data = create_selection_map(
+          selected_country = rv$selected_country,
+          collaborating_countries = collaborating_countries,
+          country_list = country_list
+        )$x$calls[[2]]$args[[1]]
+      )
+  })
+  
+  # Update view mode
+  observeEvent(input$show_individual, {
+    rv$view_mode <- "individual"
+    updateButton(session, "show_individual", class = "btn-sm btn-outline-primary active")
+    updateButton(session, "show_collabs", class = "btn-sm btn-outline-primary")
+  })
+  
+  observeEvent(input$show_collabs, {
+    rv$view_mode <- "collaborations"
+    updateButton(session, "show_collabs", class = "btn-sm btn-outline-primary active")
+    updateButton(session, "show_individual", class = "btn-sm btn-outline-primary")
+  })
+  
+  # Render main visualization
+  output$main_plot <- renderPlotly({
+    req(rv$selected_country)
+    
+    if (rv$view_mode == "individual") {
+      # Get individual country data
+      data <- process_visualization_data(
+        ds,
+        rv$selected_country,
+        input$year_range,
+        input$chemical_filter,
+        input$region_filter
+      )
+      
+      create_contributions_plot(data, input$chemical_filter)
+    } else {
+      # Get collaboration data
+      collaborating_countries <- find_collaborating_countries(
+        ds,
+        rv$selected_country,
+        input$year_range,
+        input$chemical_filter
+      )
+      
+      if (nrow(collaborating_countries) == 0) {
+        plot_ly() %>%
+          add_annotations(
+            text = "No collaborations found for the selected criteria",
+            x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+            showarrow = FALSE, font = list(size = 16)
           )
-        )
+      } else {
+        plot_ly(collaborating_countries) %>%
+          add_bars(
+            x = ~reorder(partners, total_contribution),
+            y = ~total_contribution,
+            text = ~paste(
+              "Country:", partners,
+              "<br>Total Contribution:", round(total_contribution, 2), "%",
+              "<br>Number of Collaborations:", collaboration_count
+            ),
+            hoverinfo = "text"
+          ) %>%
+          layout(
+            title = "Collaboration Strength",
+            xaxis = list(title = "Collaborating Countries"),
+            yaxis = list(title = "Total Contribution (%)")
+          )
+      }
     }
   })
-
-  # Get data for specific country combinations
-  specific_collab_data <- reactive({
-    countries <- selected_countries()
-
-    # Need at least 2 countries for a collaboration
-    req(length(countries) >= 2, input$map_chemical_category)
-
-    find_specific_collaborations(
-      ds = ds,
-      countries = countries,
-      year_range = input$map_years,
-      chemical_category = input$map_chemical_category,
-      country_list = country_list
+  
+  # Show top contributors
+  output$top_contributors_ui <- renderUI({
+    # Only show when no country is selected
+    req(is.null(rv$selected_country))
+    
+    top_data <- get_top_contributors(
+      ds,
+      input$year_range,
+      input$chemical_filter,
+      input$region_filter
     )
-  }) %>%
-    bindCache(
-      reactive(paste(sort(selected_countries()), collapse = "-")),
-      input$map_years, input$map_chemical_category
-    ) %>%
-    bindEvent(selected_countries(), input$map_years, input$map_chemical_category)
-
-  # Create visualization for specific collaborations
-  output$specific_collab_plot <- renderPlotly({
-    countries <- selected_countries()
-
-    # Need at least 2 countries
-    validate(need(length(countries) >= 2, "Select at least 2 countries to see their collaborations."))
-
-    data <- specific_collab_data()
-    validate(need(!is.null(data), "Error processing collaboration data."))
-
-    create_specific_collab_plot(data, countries, country_list, input$map_chemical_category)
+    
+    card(
+      card_header("Top Contributors"),
+      div(
+        class = "p-2",
+        renderTable({
+          top_data %>%
+            select(
+              Country = country,
+              `Total Contribution (%)` = total_contribution,
+              `Years Active` = years_active,
+              `Average Contribution (%)` = avg_contribution
+            ) %>%
+            mutate(
+              across(ends_with("(%)"), ~round(., 2))
+            )
+        })
+      )
+    )
   })
-
-  # Create table for specific collaborations
-  output$specific_collab_table <- renderDT({
-    countries <- selected_countries()
-
-    # Need at least 2 countries
-    validate(need(length(countries) >= 2, "Select at least 2 countries to see their collaborations."))
-
-    data <- specific_collab_data()
-    validate(need(!is.null(data), "Error processing collaboration data."))
-
-    if (nrow(data) == 0) {
-      return(datatable(
-        data.frame(Message = "No collaborations found involving all selected countries."),
-        options = list(dom = "t"),
-        rownames = FALSE
-      ))
-    }
-
-    # Create summary table
-    result_table <- data %>%
-      group_by(iso2c, collab_type, chemical) %>%
-      summarize(
-        avg_percentage = mean(total_percentage, na.rm = TRUE),
-        max_percentage = max(total_percentage, na.rm = TRUE),
-        first_year = min(year),
-        last_year = max(year),
-        years_active = n_distinct(year)
-      ) %>%
-      arrange(desc(avg_percentage)) %>%
-      mutate(
-        avg_percentage = scales::percent(avg_percentage / 100, accuracy = 0.01),
-        max_percentage = scales::percent(max_percentage / 100, accuracy = 0.01),
-        period = paste0(first_year, " - ", last_year)
-      ) %>%
-      select(
-        "Collaboration" = iso2c,
-        "Type" = collab_type,
-        "Chemical" = chemical,
-        "Average %" = avg_percentage,
-        "Maximum %" = max_percentage,
-        "Period" = period,
-        "Years Active" = years_active
-      )
-
-    datatable(
-      result_table,
-      options = list(
-        pageLength = 5,
-        lengthMenu = c(5, 10, 25),
-        searchHighlight = TRUE
-      ),
-      rownames = FALSE
-    ) %>%
-      formatStyle(
-        "Type",
-        backgroundColor = styleEqual(
-          c("Bilateral", "Trilateral", "4-country", "5-country+"),
-          c("#e6f7ff", "#e6ffe6", "#fff7e6", "#ffe6e6")
-        )
-      ) %>%
-      formatStyle(
-        "Chemical",
-        backgroundColor = styleEqual(
-          chemical_categories,
-          c("#ffffff", "#f0f8ff", "#f5fffa", "#fff5f5")
-        )
-      )
+  
+  # Info modal
+  observeEvent(input$show_info, {
+    showModal(modalDialog(
+      title = "About Chemical Space Explorer",
+      "This application visualizes country contributions to the chemical space across different years and categories. 
+      Select countries on the map to explore their individual contributions and collaborations.",
+      size = "m",
+      easyClose = TRUE
+    ))
   })
 }
 
-# Run the app
-shinyApp(ui, server)
+# Run the application
+shinyApp(ui = ui, server = server)
