@@ -422,12 +422,13 @@ create_main_plot <- function(data, display_mode, selected_isos, country_list) {
       geom_line(aes(color = plot_color), linewidth = 0.5, alpha = 0.8) + # plot_color is collab_type here
       geom_point(aes(color = plot_color, shape = plot_color, text = tooltip_text, size = total_percentage), alpha = 0.7) +
       scale_color_brewer(palette = "Set1", name = "Collaboration Type") +
-      scale_shape_discrete(name = "Collaboration Type")
+      scale_shape_discrete(name = "Collaboration Type") +
+      guides(color = "none")
   }
 
   # --- Common plot elements ---
   p <- p +
-    scale_radius(range = c(1, 6), name = "Contribution %") +
+    scale_radius(range = c(1, 6), name = "") +
     scale_y_continuous(
       labels = scales::percent_format(accuracy = 0.01, scale = 1),
       expand = expansion(mult = c(0.05, 0.15)) # Add padding
