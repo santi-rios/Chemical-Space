@@ -207,54 +207,59 @@ ui <- page_navbar( # Changed from page_sidebar
 # --- Server Logic ---
 server <- function(input, output, session) {
   # --- Reactive Values ---
-  selected_countries <- reactiveVal(c()) # Stores ISO codes of selected countries
+  selected_countries_immediate <- reactiveVal(c()) # Stores ISO codes immediately on click
+
+  # --- Debounced Reactive for Selected Countries ---
+  # This reactive will wait 1000ms (1 second) after the last change to
+  # selected_countries_immediate before updating its own value.
+  selected_countries <- debounce(selected_countries_immediate, 1000)
+
   display_mode <- reactiveVal("compare_individuals") # Default mode for >1 selection
 
   # --- Map Interaction ---
 
-  # Render initial map
+  # Render initial map - Use the debounced value for initial state if needed,
+  # but immediate might be better for instant feedback on first load.
+  # Let's use immediate for initial load, proxy updates will use it too.
   output$selection_map <- renderLeaflet({
-    # Pass the full list of regions for group creation
-    create_selection_map(selected_countries(), country_list, regions)
+    create_selection_map(selected_countries_immediate(), country_list, regions)
   })
 
-  # Handle map clicks
+  # Handle map clicks - Update the IMMEDIATE reactive value
   observeEvent(input$selection_map_shape_click, {
     clicked_iso <- input$selection_map_shape_click$id
-    current_selection <- selected_countries()
+    current_selection <- selected_countries_immediate() # Use immediate value
 
     if (clicked_iso %in% current_selection) {
-      selected_countries(setdiff(current_selection, clicked_iso))
+      selected_countries_immediate(setdiff(current_selection, clicked_iso)) # Update immediate
     } else {
-      selected_countries(c(current_selection, clicked_iso))
+      selected_countries_immediate(c(current_selection, clicked_iso)) # Update immediate
     }
   })
 
-  # Update map highlighting when selection changes
+  # Update map highlighting - Use the IMMEDIATE value for instant visual feedback
   observe({
-    countries <- selected_countries()
+    countries <- selected_countries_immediate() # Use immediate for map styling
     leafletProxy("selection_map") %>%
-      # Pass regions list for group recreation if needed by the function
       update_map_polygons(countries, country_list, regions)
 
-    # Re-apply region filtering after polygons are potentially redrawn
-    # This ensures the correct layers remain visible/hidden
+    # Re-apply region filtering (this uses input$region_filter directly, which is fine)
     current_region_filter <- input$region_filter
     if (!is.null(current_region_filter)) {
       proxy <- leafletProxy("selection_map")
       if (current_region_filter == "All") {
-        proxy %>% showGroup(regions) # Show all groups
+        proxy %>% showGroup(regions)
       } else {
         proxy %>%
-          hideGroup(setdiff(regions, current_region_filter)) %>% # Hide others
-          showGroup(current_region_filter) # Show selected
+          hideGroup(setdiff(regions, current_region_filter)) %>%
+          showGroup(current_region_filter)
       }
     }
   })
 
-  # Clear selection button
+  # Clear selection button - Update the IMMEDIATE value
   observeEvent(input$clear_selection, {
-    selected_countries(c())
+    selected_countries_immediate(c()) # Update immediate
   })
 
   # --- Region Filter Map Control ---
@@ -279,9 +284,10 @@ server <- function(input, output, session) {
 
   # --- Dynamic UI Elements ---
 
-  # Display selected countries info
+  # Display selected countries info - Use the DEBOUNCED value
   output$selection_info_ui <- renderUI({
-    countries <- selected_countries()
+    countries <- selected_countries() # Use debounced value
+    req(countries) # Wait until debounced value is ready
     get_selection_info_ui(countries, country_list) # Use helper function
   })
 
@@ -304,9 +310,11 @@ server <- function(input, output, session) {
     )
   })
 
-  # Show/hide display mode selection
+  # Show/hide display mode selection - Use the DEBOUNCED value
   output$display_mode_ui <- renderUI({
-    if (length(selected_countries()) > 1) {
+    countries <- selected_countries() # Use debounced value
+    req(countries)
+    if (length(countries) > 1) {
       radioButtons(
         "display_mode_select", "Display Mode:",
         choices = c(
@@ -326,9 +334,10 @@ server <- function(input, output, session) {
     display_mode(input$display_mode_select)
   })
 
-  # Dynamic plot header
+  # Dynamic plot header - Use the DEBOUNCED value
   output$plot_header_ui <- renderUI({
-    countries <- selected_countries()
+    countries <- selected_countries() # Use debounced value
+    req(countries)
     mode <- display_mode()
     chem <- input$chemical_category
     get_plot_header(countries, mode, chem, country_list) # Use helper function
@@ -369,14 +378,14 @@ server <- function(input, output, session) {
     }
   })
 
-  # Observe clicks on top contributor buttons
+  # Observe clicks on top contributor buttons - Update the IMMEDIATE value
   observe({
     top_data <- top_contributors_data()
     lapply(top_data$iso2c, function(iso) {
       observeEvent(input[[paste0("select_top_", iso)]], {
-        current_selection <- selected_countries()
+        current_selection <- selected_countries_immediate() # Use immediate
         if (!(iso %in% current_selection)) {
-          selected_countries(c(current_selection, iso))
+          selected_countries_immediate(c(current_selection, iso)) # Update immediate
         }
         # Optionally, could also make it toggle or switch selection
         # selected_countries(iso) # Select only this one
@@ -386,8 +395,9 @@ server <- function(input, output, session) {
 
 
   # --- Data Processing ---
+  # Use the DEBOUNCED selected_countries reactive here
   processed_data <- reactive({
-    countries <- selected_countries()
+    countries <- selected_countries() # Use debounced value
     req(length(countries) > 0, input$years, input$chemical_category) # Require at least one selection
 
     mode <- if (length(countries) == 1) "individual" else display_mode()
@@ -401,7 +411,7 @@ server <- function(input, output, session) {
     withProgress(message = "Processing data...", {
       get_display_data(
         ds = ds,
-        selected_isos = countries,
+        selected_isos = countries, # Pass debounced value
         year_range = input$years,
         chemical_category = input$chemical_category,
         display_mode = mode,
@@ -411,7 +421,7 @@ server <- function(input, output, session) {
     })
   }) %>% bindCache(
     # Cache key needs to combine relevant inputs
-    paste(sort(selected_countries()), collapse = "-"),
+    paste(sort(selected_countries()), collapse = "-"), # Use debounced value
     input$years,
     input$chemical_category,
     display_mode(),
@@ -421,12 +431,13 @@ server <- function(input, output, session) {
 
   # --- Outputs ---
 
-  # Main Plot
+  # Main Plot - Depends on processed_data, which uses the debounced selection
   output$main_plot <- renderPlotly({
+    # Validate using the debounced selection
     validate(
       need(length(selected_countries()) > 0, "Click on the map to select a country.")
     )
-    data_to_plot <- processed_data()
+    data_to_plot <- processed_data() # This now uses debounced data
     validate(
       need(nrow(data_to_plot) > 0, "No data available for the current selection and filters.")
     )
@@ -436,14 +447,15 @@ server <- function(input, output, session) {
     create_main_plot(
       data = data_to_plot,
       display_mode = mode,
-      selected_isos = selected_countries(),
+      selected_isos = selected_countries(), # Pass debounced value
       country_list = country_list
     )
   })
 
   # --- NEW: Contribution Map Plot ---
   output$contributionMapPlot <- renderPlotly({
-    countries <- selected_countries()
+    countries <- selected_countries() # Use debounced value
+    req(countries) # Wait for debounced value
     mode <- if (length(countries) == 1) "individual" else display_mode()
 
     # Only show map for individual/compare modes
@@ -468,12 +480,11 @@ server <- function(input, output, session) {
   })
   # --- End NEW Plot ---
 
-  # Summary Table
+  # Summary Table - Depends on processed_data
   output$summary_table <- renderDT({
-    validate(
-      need(length(selected_countries()) > 0, "Select countries to see summary data.")
-    )
-    data_to_summarize <- processed_data()
+    countries <- selected_countries() # Use debounced value
+    validate(need(length(countries) > 0, "Select countries to see summary data."))
+    data_to_summarize <- processed_data() # Uses debounced data
     validate(
       need(nrow(data_to_summarize) > 0, "No data available for the current selection.")
     )
