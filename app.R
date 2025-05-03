@@ -41,83 +41,132 @@ max_year_data <- data_objects$max_year
 
 
 # --- UI Definition ---
-ui <- page_sidebar(
+ui <- page_navbar( # Changed from page_sidebar
   title = "Chemical Space Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
+  # Main application sidebar (for selection info and top contributors)
   sidebar = sidebar(
     width = 300,
-    title = "Controls & Filters",
+    title = "Selection & Top Contributors", # Updated title
     uiOutput("selection_info_ui"),
-    hr(),
-    actionButton(
-      "clear_selection", "Clear Selection",
-      icon = icon("trash-alt"),
-      class = "btn-outline-danger btn-sm mb-3",
-      width = "100%"
-    ),
-    sliderInput(
-      "years", "Year Range:",
-      min = min_year_data, # Use value from loaded data
-      max = max_year_data, # Use value from loaded data
-      # Set default value safely within the actual data range
-      value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
-      step = 1, sep = ""
-      # JS Error Note: If slider errors persist ($x.noUiSlider), check bslib/shiny versions,
-      # try removing bootswatch theme temporarily, or check browser console for details.
-    ),
-    radioButtons(
-      "chemical_category", "Chemical Category:",
-      choices = chemical_categories,
-      selected = "All"
-    ),
-    # Conditional UI for region filter (when 1 or more countries selected for individual comparison)
-    uiOutput("region_filter_ui"),
     hr(class = "my-3"),
     h5("Top Contributors", class = "mb-2"),
     helpText("Top individual contributors based on current filters (avg % contribution). Click to select."),
     uiOutput("top_contributors_ui")
-  ), # End sidebar
+  ),
 
-  # Main Panel Layout
-  layout_columns(
-    col_widths = c(12, 12), # Map takes full width initially, then plot below
-    row_heights = c(1, 1), # Adjust relative heights if needed
+  # --- Explorer Tab ---
+  nav_panel(
+    title = "Explorer",
+    # Layout for Map+Filters Card and Plot+Table Card
+    layout_columns(
+      col_widths = 12, # Make cards stack vertically
+      row_heights = c(1, 1.2), # Give slightly more relative height to plot/table area
+      # --- Map and Filters Card ---
+      card(
+        full_screen = TRUE,
+        card_header("Country Selection & Filters"), # Updated header
+        layout_sidebar( # Use layout_sidebar inside the card
+          border = FALSE, # Optional: remove border between map and its sidebar
+          border_radius = FALSE, # Optional: remove border radius
+          # Sidebar for Map Filters
+          sidebar = sidebar(
+            position = "right", # Position filters sidebar to the right of the map
+            width = 275, # Adjust width as needed
+            # Moved filter elements here
+            actionButton(
+              "clear_selection", "Clear Selection",
+              icon = icon("trash-alt"),
+              class = "btn-outline-danger btn-sm mb-3",
+              width = "100%"
+            ),
+            sliderInput(
+              "years", "Year Range:",
+              min = min_year_data,
+              max = max_year_data,
+              value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
+              step = 1, sep = ""
+            ),
+            radioButtons(
+              "chemical_category", "Chemical Category:",
+              choices = chemical_categories,
+              selected = "All"
+            ),
+            uiOutput("region_filter_ui") # Filter Map by Region
+          ),
+          # Main content area for the map
+          leafletOutput("selection_map", height = "450px") # Adjusted height slightly
+        ) # End layout_sidebar for map card
+      ), # End Map and Filters Card
+
+      # --- Plot and Table Card ---
+      navset_card_tab(
+        # Removed fixed height to allow better adaptation
+        full_screen = TRUE,
+        title = uiOutput("plot_header_ui"), # Dynamic header as title
+        nav_panel(
+          "Main Plot",
+          card_title("Interactive Plot"),
+          uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
+          # Ensure plot fills available space, consider min-height if needed
+          withSpinner(plotlyOutput("main_plot", height = "400px")) # Keep plot height relative or fixed
+        ),
+        nav_panel(
+          "Data Table",
+          card_title("Data Summary Table"),
+          DTOutput("summary_table")
+        )
+      ) # End Plot and Table Card
+    ) # End layout_columns for Explorer tab
+  ), # End Explorer nav_panel
+
+  # --- About Shiny Tab ---
+  nav_panel(
+    title = "About Shiny",
+    # Placeholder card with image
     card(
+      # Removed fixed height to let content dictate size
+      # height = 300,
       full_screen = TRUE,
-      card_header("Country Selection Map (Filterable by Region)"), # Updated header
-      # JS Error Note: If map errors persist (m is not a constructor), it might be linked
-      # to the slider error or leaflet/dependency loading issues. Check console.
-      leafletOutput("selection_map", height = "400px")
-    ),
-    navset_card_tab(
-      height = 450,
-      full_screen = TRUE,
-      title = uiOutput("plot_header_ui"), # Dynamic header as title
-      nav_panel(
-        "Main Plot",
-        # Optionally, give a title inside this tab
-        card_title("Interactive Plot"),
-        uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
-        withSpinner(plotlyOutput("main_plot", height = "400px"))
+      card_image(
+        # Make sure you have a "shiny-hex.svg" file in your app's www directory
+        # or replace with a valid web URL
+        file = "https://raw.githubusercontent.com/rstudio/shiny/main/man/figures/logo.png", # Example web URL
+        alt = "Shiny's hex sticker",
+        height = "150px", # Control image height
+        width = "auto", # Let width adjust
+        class = "mx-auto" # Center image if needed
+        # href = "https://github.com/rstudio/shiny" # Link removed for simplicity, add if needed
       ),
-      nav_panel(
-        "Data Table",
-        card_title("Data Summary Table"),
-        DTOutput("summary_table")
-      ),
-      nav_panel(
-        shiny::icon("circle-info"),
-        markdown("Learn more about [htmlwidgets](http://www.htmlwidgets.org/)")
+      card_body(
+        fill = FALSE,
+        card_title("Shiny for R"),
+        p(
+          class = "fw-light text-muted",
+          "This application is built using the Shiny web framework for R."
+        )
       )
     )
-  ), # End layout_columns
+  ), # End About Shiny nav_panel
 
+  # --- Legal & Privacy Tab ---
+  nav_panel(
+    title = "Legal & Privacy",
+    card( # Wrap content in a card for consistent look
+      card_title("Legal Notice & Privacy Policy"),
+      p("Placeholder for Legal Notice content."),
+      p("Placeholder for Privacy Policy content.")
+      # Add detailed text here later
+    )
+  ), # End Legal & Privacy nav_panel
+
+  # --- Footer ---
   footer = div(
     style = "text-align: center; padding: 10px; background: #f8f9fa;",
     "Source: Bermúdez-Montaña, M., et al. (2025). China's rise in the chemical space and the decline of US influence.",
     a("Working Paper", href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6")
   )
-) # End page_sidebar
+) # End page_navbar
 
 # --- Server Logic ---
 server <- function(input, output, session) {
