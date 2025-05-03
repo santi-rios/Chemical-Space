@@ -44,7 +44,6 @@ max_year_data <- data_objects$max_year
 ui <- page_sidebar(
   title = "Chemical Space Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
-
   sidebar = sidebar(
     width = 300,
     title = "Controls & Filters",
@@ -73,8 +72,8 @@ ui <- page_sidebar(
     ),
     # Conditional UI for region filter (when 1 or more countries selected for individual comparison)
     uiOutput("region_filter_ui"),
-    hr(class="my-3"),
-    h5("Top Contributors", class="mb-2"),
+    hr(class = "my-3"),
+    h5("Top Contributors", class = "mb-2"),
     helpText("Top individual contributors based on current filters (avg % contribution). Click to select."),
     uiOutput("top_contributors_ui")
   ), # End sidebar
@@ -90,15 +89,26 @@ ui <- page_sidebar(
       # to the slider error or leaflet/dependency loading issues. Check console.
       leafletOutput("selection_map", height = "400px")
     ),
-    card(
+    navset_card_tab(
+      height = 450,
       full_screen = TRUE,
-      card_header(uiOutput("plot_header_ui")), # Dynamic header
-      # Conditional UI for display mode (when >1 country selected)
-      uiOutput("display_mode_ui"),
-      withSpinner(plotlyOutput("main_plot", height = "400px")),
-      hr(),
-      h5("Data Summary Table"),
-      DTOutput("summary_table")
+      title = uiOutput("plot_header_ui"), # Dynamic header as title
+      nav_panel(
+        "Main Plot",
+        # Optionally, give a title inside this tab
+        card_title("Interactive Plot"),
+        uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
+        withSpinner(plotlyOutput("main_plot", height = "400px"))
+      ),
+      nav_panel(
+        "Data Table",
+        card_title("Data Summary Table"),
+        DTOutput("summary_table")
+      ),
+      nav_panel(
+        shiny::icon("circle-info"),
+        markdown("Learn more about [htmlwidgets](http://www.htmlwidgets.org/)")
+      )
     )
   ), # End layout_columns
 
@@ -111,7 +121,6 @@ ui <- page_sidebar(
 
 # --- Server Logic ---
 server <- function(input, output, session) {
-
   # --- Reactive Values ---
   selected_countries <- reactiveVal(c()) # Stores ISO codes of selected countries
   display_mode <- reactiveVal("compare_individuals") # Default mode for >1 selection
@@ -147,14 +156,14 @@ server <- function(input, output, session) {
     # This ensures the correct layers remain visible/hidden
     current_region_filter <- input$region_filter
     if (!is.null(current_region_filter)) {
-        proxy <- leafletProxy("selection_map")
-        if (current_region_filter == "All") {
-            proxy %>% showGroup(regions) # Show all groups
-        } else {
-            proxy %>%
-                hideGroup(setdiff(regions, current_region_filter)) %>% # Hide others
-                showGroup(current_region_filter) # Show selected
-        }
+      proxy <- leafletProxy("selection_map")
+      if (current_region_filter == "All") {
+        proxy %>% showGroup(regions) # Show all groups
+      } else {
+        proxy %>%
+          hideGroup(setdiff(regions, current_region_filter)) %>% # Hide others
+          showGroup(current_region_filter) # Show selected
+      }
     }
   })
 
@@ -164,20 +173,24 @@ server <- function(input, output, session) {
   })
 
   # --- Region Filter Map Control ---
-  observeEvent(input$region_filter, {
+  observeEvent(input$region_filter,
+    {
       req(input$region_filter) # Ensure it's not NULL
       proxy <- leafletProxy("selection_map")
 
       if (input$region_filter == "All") {
-          proxy %>% showGroup(regions) # Show all region groups
+        proxy %>% showGroup(regions) # Show all region groups
       } else {
-          # Hide all regions first, then show the selected one
-          # This handles switching between regions cleanly
-          proxy %>%
-              hideGroup(regions) %>% # Hide all
-              showGroup(input$region_filter) # Show only the selected one
+        # Hide all regions first, then show the selected one
+        # This handles switching between regions cleanly
+        proxy %>%
+          hideGroup(regions) %>% # Hide all
+          showGroup(input$region_filter) # Show only the selected one
       }
-  }, ignoreNULL = TRUE, ignoreInit = TRUE) # Ignore initial NULL state
+    },
+    ignoreNULL = TRUE,
+    ignoreInit = TRUE
+  ) # Ignore initial NULL state
 
   # --- Dynamic UI Elements ---
 
@@ -238,51 +251,52 @@ server <- function(input, output, session) {
 
   # --- Top Contributors ---
   top_contributors_data <- reactive({
-      req(input$years, input$chemical_category)
-      # Region filter input now directly controls this via the UI element
-      current_region_filter <- req(input$region_filter) # Make sure it's available
+    req(input$years, input$chemical_category)
+    # Region filter input now directly controls this via the UI element
+    current_region_filter <- req(input$region_filter) # Make sure it's available
 
-      calculate_top_contributors(
-          ds = ds,
-          year_range = input$years,
-          chemical_category = input$chemical_category,
-          region_filter = current_region_filter, # Use the input value
-          country_list = country_list,
-          top_n = 10
-      )
+    calculate_top_contributors(
+      ds = ds,
+      year_range = input$years,
+      chemical_category = input$chemical_category,
+      region_filter = current_region_filter, # Use the input value
+      country_list = country_list,
+      top_n = 10
+    )
   }) %>% bindCache(input$years, input$chemical_category, input$region_filter) # Add region_filter to cache key
 
   output$top_contributors_ui <- renderUI({
-      top_data <- top_contributors_data()
-      if (nrow(top_data) > 0) {
-          buttons <- lapply(1:nrow(top_data), function(i) {
-              country_iso <- top_data$iso2c[i]
-              country_name <- top_data$country[i]
-              avg_perc <- scales::percent(top_data$avg_percentage[i] / 100, accuracy = 0.1)
-              actionButton(paste0("select_top_", country_iso),
-                           HTML(paste0(i, ". ", country_name, " (", avg_perc, ")")),
-                           class = "btn-link btn-sm d-block text-start",
-                           style = "text-decoration: none; padding: 1px 5px;") # Minimal styling
-          })
-          tagList(buttons)
-      } else {
-          p("No contributor data.")
-      }
+    top_data <- top_contributors_data()
+    if (nrow(top_data) > 0) {
+      buttons <- lapply(1:nrow(top_data), function(i) {
+        country_iso <- top_data$iso2c[i]
+        country_name <- top_data$country[i]
+        avg_perc <- scales::percent(top_data$avg_percentage[i] / 100, accuracy = 0.1)
+        actionButton(paste0("select_top_", country_iso),
+          HTML(paste0(i, ". ", country_name, " (", avg_perc, ")")),
+          class = "btn-link btn-sm d-block text-start",
+          style = "text-decoration: none; padding: 1px 5px;"
+        ) # Minimal styling
+      })
+      tagList(buttons)
+    } else {
+      p("No contributor data.")
+    }
   })
 
   # Observe clicks on top contributor buttons
   observe({
-      top_data <- top_contributors_data()
-      lapply(top_data$iso2c, function(iso) {
-          observeEvent(input[[paste0("select_top_", iso)]], {
-              current_selection <- selected_countries()
-              if (!(iso %in% current_selection)) {
-                  selected_countries(c(current_selection, iso))
-              }
-              # Optionally, could also make it toggle or switch selection
-              # selected_countries(iso) # Select only this one
-          })
+    top_data <- top_contributors_data()
+    lapply(top_data$iso2c, function(iso) {
+      observeEvent(input[[paste0("select_top_", iso)]], {
+        current_selection <- selected_countries()
+        if (!(iso %in% current_selection)) {
+          selected_countries(c(current_selection, iso))
+        }
+        # Optionally, could also make it toggle or switch selection
+        # selected_countries(iso) # Select only this one
       })
+    })
   })
 
 
@@ -294,9 +308,9 @@ server <- function(input, output, session) {
     mode <- if (length(countries) == 1) "individual" else display_mode()
     # Use region filter only if it's relevant for the current mode and available
     current_region_filter_for_data <- if (mode %in% c("compare_individuals", "individual")) {
-        req(input$region_filter)
+      req(input$region_filter)
     } else {
-        "All" # Collaborations don't use region filter for data processing
+      "All" # Collaborations don't use region filter for data processing
     }
 
     withProgress(message = "Processing data...", {
@@ -311,55 +325,54 @@ server <- function(input, output, session) {
       )
     })
   }) %>% bindCache(
-      # Cache key needs to combine relevant inputs
-      paste(sort(selected_countries()), collapse="-"),
-      input$years,
-      input$chemical_category,
-      display_mode(),
-      # Include region filter only if relevant for data processing cache key
-      if (display_mode() %in% c("individual", "compare_individuals")) input$region_filter else "All"
-      )
+    # Cache key needs to combine relevant inputs
+    paste(sort(selected_countries()), collapse = "-"),
+    input$years,
+    input$chemical_category,
+    display_mode(),
+    # Include region filter only if relevant for data processing cache key
+    if (display_mode() %in% c("individual", "compare_individuals")) input$region_filter else "All"
+  )
 
   # --- Outputs ---
 
   # Main Plot
   output$main_plot <- renderPlotly({
     validate(
-        need(length(selected_countries()) > 0, "Click on the map to select a country.")
+      need(length(selected_countries()) > 0, "Click on the map to select a country.")
     )
     data_to_plot <- processed_data()
     validate(
-        need(nrow(data_to_plot) > 0, "No data available for the current selection and filters.")
+      need(nrow(data_to_plot) > 0, "No data available for the current selection and filters.")
     )
 
     mode <- if (length(selected_countries()) == 1) "individual" else display_mode()
 
     create_main_plot(
-        data = data_to_plot,
-        display_mode = mode,
-        selected_isos = selected_countries(),
-        country_list = country_list
+      data = data_to_plot,
+      display_mode = mode,
+      selected_isos = selected_countries(),
+      country_list = country_list
     )
   })
 
   # Summary Table
   output$summary_table <- renderDT({
-      validate(
-          need(length(selected_countries()) > 0, "Select countries to see summary data.")
-      )
-      data_to_summarize <- processed_data()
-      validate(
-          need(nrow(data_to_summarize) > 0, "No data available for the current selection.")
-      )
+    validate(
+      need(length(selected_countries()) > 0, "Select countries to see summary data.")
+    )
+    data_to_summarize <- processed_data()
+    validate(
+      need(nrow(data_to_summarize) > 0, "No data available for the current selection.")
+    )
 
-      mode <- if (length(selected_countries()) == 1) "individual" else display_mode()
+    mode <- if (length(selected_countries()) == 1) "individual" else display_mode()
 
-      create_summary_table(
-          data = data_to_summarize,
-          display_mode = mode
-      )
+    create_summary_table(
+      data = data_to_summarize,
+      display_mode = mode
+    )
   })
-
 } # End server
 
 # Run the app
