@@ -46,10 +46,13 @@ article_data <- data_objects$article_data
 ui <- page_navbar( # Changed from page_sidebar
   title = "Chemical Space Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
+  fillable = FALSE,
+  navbar_options = navbar_options(position = "static-top", collapsible = FALSE),
   # Main application sidebar (for selection info and top contributors)
   sidebar = sidebar(
     width = 300,
     title = "Selection & Top Contributors", # Updated title
+    open = "desktop",
     uiOutput("selection_info_ui"),
     hr(class = "my-3"),
     h5("Top Contributors", class = "mb-2"),
@@ -67,8 +70,9 @@ ui <- page_navbar( # Changed from page_sidebar
       # --- Map and Filters Card ---
       card(
         full_screen = TRUE,
-        card_header("Country Selection & Filters"), # Updated header
+        card_header("Country Selection & Filters 🌎"), # Updated header
         layout_sidebar( # Use layout_sidebar inside the card
+          open = "desktop", # Open on desktop
           border = FALSE, # Optional: remove border between map and its sidebar
           border_radius = FALSE, # Optional: remove border radius
           # Sidebar for Map Filters
@@ -76,25 +80,25 @@ ui <- page_navbar( # Changed from page_sidebar
             position = "right", # Position filters sidebar to the right of the map
             width = 275, # Adjust width as needed
             # Moved filter elements here
-            actionButton(
-              "clear_selection", "Clear Selection",
-              icon = icon("trash-alt"),
-              class = "btn-outline-danger btn-sm mb-3",
-              width = "100%"
-            ),
             sliderInput(
-              "years", "Year Range:",
+              "years", "Year Range 📅:",
               min = min_year_data,
               max = max_year_data,
               value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
               step = 1, sep = ""
             ),
             radioButtons(
-              "chemical_category", "Chemical Category:",
+              "chemical_category", "Chemical Category 🧪:",
               choices = chemical_categories,
               selected = "All"
             ),
-            uiOutput("region_filter_ui") # Filter Map by Region
+            uiOutput("region_filter_ui"), # Filter Map by Region
+            actionButton(
+              "clear_selection", "Clear Selection",
+              icon = icon("trash-alt"),
+              class = "btn-outline-danger btn-sm mb-3",
+              width = "100%"
+            )
           ),
           # Main content area for the map
           leafletOutput("selection_map", height = "450px") # Adjusted height slightly
@@ -104,7 +108,9 @@ ui <- page_navbar( # Changed from page_sidebar
       # --- Plot and Table Card ---
       navset_card_tab(
         full_screen = TRUE,
-        title = uiOutput("plot_header_ui"), # Dynamic header as title
+        title = uiOutput("plot_header_ui"), # Dynamic header as title        
+        # --- Main Plot Panel ---
+        # This panel will show the main plot and the contribution map
         nav_panel(
           "Main Plot",
           card_title("Interactive Time Series Plot"), # Added specific title
