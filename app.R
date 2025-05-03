@@ -38,7 +38,9 @@ regions <- data_objects$regions # Now includes "Other" if applicable
 # Get min/max year from the loaded data objects
 min_year_data <- data_objects$min_year
 max_year_data <- data_objects$max_year
-
+# --- NEW: Get pre-loaded article data ---
+article_data <- data_objects$article_data
+# --- End NEW ---
 
 # --- UI Definition ---
 ui <- page_navbar( # Changed from page_sidebar
@@ -125,6 +127,34 @@ ui <- page_navbar( # Changed from page_sidebar
       ) # End Plot and Table Card
     ) # End layout_columns for Explorer tab
   ), # End Explorer nav_panel
+
+  # --- NEW: Article Figures Tab ---
+  nav_panel(
+    title = "Article Figures",
+    helpText("These plots replicate key figures from the source article and are based on a static dataset."),
+    layout_columns(
+      col_widths = c(6, 6, 6, 6), # Arrange plots in 2x2 grid
+      row_heights = c(1, 1),      # Equal height rows
+      card(
+        card_header("GDP Growth Rate"),
+        withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
+      ),
+      card(
+        card_header("Number of Researchers"),
+        withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
+      ),
+      card(
+        card_header("Chemical Space Expansion"),
+        withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
+      ),
+      card(
+        card_header("China-US Contributions"),
+        withSpinner(plotlyOutput("articleChinaUsPlot", height = "350px"))
+      )
+      # Add more cards here if needed for other figures like "Country Participation"
+    )
+  ),
+  # --- End NEW Tab ---
 
   # --- About Shiny Tab ---
   nav_panel(
@@ -455,6 +485,36 @@ server <- function(input, output, session) {
       display_mode = mode
     )
   })
+
+  # --- NEW: Article Figure Outputs ---
+  output$articleGdpPlot <- renderPlotly({
+    req(nrow(article_data) > 0)
+    df <- article_data %>% filter(source == "Annual growth rate of the GDP")
+    create_article_plot_simple(df, "Annual growth rate of the GDP", "GDP Growth Rate (%)")
+  })
+
+  output$articleResearchersPlot <- renderPlotly({
+    req(nrow(article_data) > 0)
+    df <- article_data %>% filter(source == "Number of Researchers")
+    create_article_plot_simple(df, "Number of Researchers", "Researchers")
+  })
+
+  output$articleCsExpansionPlot <- renderPlotly({
+    req(nrow(article_data) > 0)
+    df <- article_data %>% filter(source == "Expansion of the CS")
+    create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances")
+  })
+
+  output$articleChinaUsPlot <- renderPlotly({
+    req(nrow(article_data) > 0)
+    df <- article_data %>% filter(source == "China-US in the CS")
+    create_article_plot_simple(df, "China-US in the CS", "Contribution Share (%)")
+  })
+
+  # Add more renderPlotly calls here if you add more plots (e.g., for "Country participation in the CS")
+
+  # --- End NEW Outputs ---
+
 } # End server
 
 # Run the app

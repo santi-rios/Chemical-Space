@@ -43,13 +43,23 @@ load_country_data <- function(data_path = "./data/data.parquet") {
     ) %>%
     collect()
 
+  # --- Load Static Article Data ---
+  # Assuming columns like source, year_x, country_x, percentage_x exist
+  # Adjust column names if they are different in your parquet file
+  article_data_raw <- ds %>%
+    # Use the correct column names from your parquet file here
+    select(source, year = year_x, country = country_x, value = percentage_x) %>%
+    filter(!is.na(value) & !is.na(source) & source != "") %>% # Filter out rows with missing essential data
+    collect() # Collect this relatively small, static dataset
+
   return(list(
     data = ds,
     country_list = country_list,
     chemical_categories = chemical_categories,
-    regions = regions, # Use regions derived from the processed country_list
+    regions = regions,
     min_year = year_range_data$min_year,
-    max_year = year_range_data$max_year
+    max_year = year_range_data$max_year,
+    article_data = article_data_raw # Add the collected article data
   ))
 }
 
@@ -693,4 +703,167 @@ create_contribution_map_plot <- function(processed_data_df,
       margin = list(b = 50, t = 40, l = 10, r = 10) # Adjust margins
     ) %>%
     config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+
+# --- NEW: Simplified Plotting Function for Article Data ---
+
+#' Create Simplified Plot for Static Article Data
+#'
+#' Generates a Plotly line/dot plot for the pre-loaded article data.
+#' Handles basic formatting and dual-axis for specific sources.
+#'
+#' @param article_df Data frame containing the static article data for a specific source.
+#' @param source_title Character. The 'source' identifier (e.g., "Annual growth rate of the GDP").
+#' @param y_title Character. Label for the Y-axis.
+#' @return A plotly object.
+#' @import plotly dplyr scales RColorBrewer
+#' @export
+create_article_plot_simple <- function(article_df, source_title, y_title) {
+
+  if (!nrow(article_df) > 0) {
+    return(plotly_empty(type = "scatter", mode = "markers") %>% layout(title = "No data for this figure."))
+  }
+
+  # --- Define Consistent Colors ---
+  # (Adapted from your previous code)
+  country_colors <- c(
+    "China" = "#c5051b", "China alone" = "#c56a75", "China w/o US" = "#9b2610",
+    "France" = "#0a3161", "Germany" = "#000000", "India" = "#ff671f",
+    "Japan" = "#000091", "Russia" = "#d51e9b", "USA alone" = "#3b5091",
+    "USA w/o China" = "#006341", "United Kingdom" = "#74acdf", "United States" = "#002852",
+    "All substances" = "#4879a7", "Organic Chemicals" = "#ff6d45",
+    "Organometallics" = "#55713e", "Rare-Earths" = "#800525",
+    "CN-US collab/CN" = "#6d2f56", "CN-US collab/US" = "#ff8888"
+  )
+
+  # Assign colors, generating new ones if needed
+  available_items <- unique(article_df$country)
+  plot_colors <- country_colors[names(country_colors) %in% available_items]
+  missing_items <- setdiff(available_items, names(plot_colors))
+  if (length(missing_items) > 0) {
+    extra_colors <- suppressWarnings( # Suppress warnings if fewer than 3 needed
+        colorRampPalette(RColorBrewer::brewer.pal(max(3, length(missing_items)), "Set2"))(length(missing_items))
+    )
+    names(extra_colors) <- missing_items
+    plot_colors <- c(plot_colors, extra_colors)
+  }
+
+
+  # --- Data Prep & Formatting based on Source ---
+  y_format <- "" # Default tick format
+  hover_format <- ".2f" # Default hover format
+  y_range <- NULL # Default y-axis range
+
+  plot_data <- article_df %>%
+      mutate(
+          # Apply scaling/transformations based on source
+          plot_value = case_when(
+              source_title == "Number of Researchers" ~ value / 1e6, # Show in millions
+              source_title == "China-US in the CS" & !(country %in% c("CN-US collab/CN", "CN-US collab/US")) ~ value / 100, # Convert % to decimal for main countries
+              source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ value, # Use raw value
+              TRUE ~ value # Default (e.g., GDP growth rate is already %)
+          ),
+          # Format for tooltips
+          formatted_value_str = case_when(
+              source_title == "Number of Researchers" ~ scales::comma(value, accuracy = 1),
+              source_title == "Annual growth rate of the GDP" ~ paste0(scales::comma(value, accuracy = 0.1), "%"),
+              source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ scales::comma(value, accuracy = 1),
+              source_title == "China-US in the CS" ~ scales::percent(plot_value, accuracy = 0.1), # Use plot_value (decimal)
+              TRUE ~ scales::percent(value / 100, accuracy = 0.1) # Default percentage formatting
+          ),
+          tooltip_text = paste0(
+              "<b>", country, "</b><br>",
+              "Year: ", year, "<br>",
+              "Value: ", formatted_value_str
+          )
+      )
+
+  # Adjust titles and formats
+  if (source_title == "Number of Researchers") {
+    y_title <- paste0(y_title, " (Millions)")
+    y_format <- ".2f"
+  } else if (source_title == "Annual growth rate of the GDP") {
+    y_title <- y_title # Already includes %
+    y_format <- ".1f"
+  } else if (source_title %in% c("Expansion of the CS", "Country participation in the CS")) {
+    y_format <- ",.0f" # Comma separated integer
+  } else if (source_title == "China-US in the CS") {
+     y_format <- ".0%" # Percentage format for axes
+     # Ranges defined later in dual-axis logic
+  } else {
+     y_format <- ".1%" # Default percentage
+  }
+
+
+  # --- Plotting Logic ---
+  p <- plot_ly(data = plot_data)
+
+  # Special Dual-Axis for China-US
+  if (source_title == "China-US in the CS") {
+    main_countries <- c("China", "United States")
+    main_data <- filter(plot_data, country %in% main_countries)
+    collab_data <- filter(plot_data, !country %in% main_countries)
+
+    p <- p %>%
+      add_trace(
+        data = main_data, x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
+        type = 'scatter', mode = 'lines+markers', yaxis = "y1", name = ~country,
+        marker = list(size = 8, opacity = 0.8), line = list(width = 2),
+        hoverinfo = 'text', text = ~tooltip_text
+      ) %>%
+      add_trace(
+        data = collab_data, x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
+        type = 'scatter', mode = 'lines+markers', yaxis = "y2", name = ~country,
+        marker = list(size = 7, opacity = 0.8), line = list(width = 2, dash = 'dot'),
+        hoverinfo = 'text', text = ~tooltip_text
+      ) %>%
+      layout(
+        yaxis = list(title = paste0(y_title, " (Main)"), tickformat = y_format, range = c(0.6, 1.0), side = 'left'),
+        yaxis2 = list(title = "Collaboration Share", tickformat = y_format, range = c(0, 0.2), overlaying = "y", side = 'right'),
+        legend = list(orientation = 'h', y = -0.15)
+      )
+
+  } else {
+    # Standard Plot for other sources
+    p <- p %>%
+      add_trace(
+        x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
+        type = 'scatter', mode = 'lines+markers', name = ~country,
+        marker = list(size = 8, opacity = 0.8), line = list(width = 2),
+        hoverinfo = 'text', text = ~tooltip_text
+      ) %>%
+      layout(
+        yaxis = list(title = y_title, tickformat = y_format, range = y_range, autorange = if(is.null(y_range)) TRUE else FALSE),
+        legend = list(orientation = 'h', y = -0.15)
+      )
+  }
+
+  # --- Common Layout Elements ---
+  p <- p %>% layout(
+    title = list(text = paste("Figure:", source_title), font = list(size = 14)),
+    xaxis = list(title = "Year", gridcolor = "#e8e8e8"),
+    yaxis = list(gridcolor = "#e8e8e8"), # Base yaxis settings
+    hovermode = "closest",
+    hoverlabel = list(bgcolor = "white", font = list(size = 11)),
+    plot_bgcolor = "#f8f9fa",
+    paper_bgcolor = "#ffffff",
+    margin = list(l = 60, r = 40, b = 80, t = 50) # Adjust margins
+  )
+
+  # Add GDP Annotations if applicable
+  if (source_title == "Annual growth rate of the GDP") {
+    p <- p %>% layout(
+      shapes = list(
+        list(type = "line", x0 = 2007.5, x1 = 2007.5, y0 = 0, y1 = 1, yref = "paper", line = list(color = "grey", dash = "dash", width = 1)),
+        list(type = "line", x0 = 2019.5, x1 = 2019.5, y0 = 0, y1 = 1, yref = "paper", line = list(color = "grey", dash = "dash", width = 1))
+      ),
+      annotations = list(
+        list(x = 2007.5, y = 1.0, yref = "paper", text = "Financial Crisis", showarrow = FALSE, xanchor = 'left', font = list(size = 10, color = "grey")),
+        list(x = 2019.5, y = 1.0, yref = "paper", text = "COVID-19", showarrow = FALSE, xanchor = 'left', font = list(size = 10, color = "grey"))
+      )
+    )
+  }
+
+  p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
 }
