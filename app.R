@@ -101,19 +101,25 @@ ui <- page_navbar( # Changed from page_sidebar
 
       # --- Plot and Table Card ---
       navset_card_tab(
-        # Removed fixed height to allow better adaptation
         full_screen = TRUE,
         title = uiOutput("plot_header_ui"), # Dynamic header as title
         nav_panel(
           "Main Plot",
-          card_title("Interactive Plot"),
+          card_title("Interactive Time Series Plot"), # Added specific title
           uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
-          # Ensure plot fills available space, consider min-height if needed
-          withSpinner(plotlyOutput("main_plot", height = "400px")) # Keep plot height relative or fixed
+          withSpinner(plotlyOutput("main_plot", height = "400px"))
         ),
+        # --- NEW: Contribution Map Panel ---
+        nav_panel(
+          "Contribution Map",
+          card_title("Average Contribution Map"), # Added specific title
+          helpText("Shows the average contribution percentage over the selected period for the currently displayed countries."),
+          withSpinner(plotlyOutput("contributionMapPlot", height = "400px")) # New plot output
+        ),
+        # --- End NEW Panel ---
         nav_panel(
           "Data Table",
-          card_title("Data Summary Table"),
+          card_title("Data Summary Table"), # Added specific title
           DTOutput("summary_table")
         )
       ) # End Plot and Table Card
@@ -404,6 +410,33 @@ server <- function(input, output, session) {
       country_list = country_list
     )
   })
+
+  # --- NEW: Contribution Map Plot ---
+  output$contributionMapPlot <- renderPlotly({
+    countries <- selected_countries()
+    mode <- if (length(countries) == 1) "individual" else display_mode()
+
+    # Only show map for individual/compare modes
+    validate(
+      need(length(countries) > 0, "Select countries on the map."),
+      need(mode %in% c("individual", "compare_individuals"), "Map is available only when viewing individual country data.")
+    )
+
+    data_for_map <- processed_data() # Use the already processed & cached data
+
+    validate(
+      need(nrow(data_for_map) > 0, "No data available to generate map.")
+    )
+
+    # Generate the map plot using the new function
+    create_contribution_map_plot(
+      processed_data_df = data_for_map
+      # Optional: Add dynamic title/label if needed
+      # main_title = paste("Avg Contribution:", input$chemical_category),
+      # fill_label = "Avg %"
+    )
+  })
+  # --- End NEW Plot ---
 
   # Summary Table
   output$summary_table <- renderDT({

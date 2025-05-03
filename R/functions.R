@@ -570,3 +570,127 @@ calculate_top_contributors <- function(ds, year_range, chemical_category, region
 
     return(top_data)
 }
+
+#' Create Static Contribution Map Plot
+#'
+#' Generates a choropleth map showing the average contribution percentage
+#' over the selected period for the countries present in the input data.
+#'
+#' @param processed_data_df Data frame output from get_display_data (must contain iso2c, country, region, year, total_percentage).
+#' @param fill_label Character. Legend title for fill variable.
+#' @param main_title Character. Main plot title.
+#' @return A plotly object showing the static world map plot.
+#' @import ggplot2 dplyr sf rnaturalearth scales plotly
+#' @export
+create_contribution_map_plot <- function(processed_data_df,
+                                         fill_label = "Average Contribution (%)",
+                                         main_title = "Average Contribution Over Selected Period") {
+
+  if (!nrow(processed_data_df) > 0 || !"total_percentage" %in% names(processed_data_df)) {
+    return(plotly_empty(type = "scatter", mode = "markers") %>%
+             layout(title = "No data for map."))
+  }
+
+  # Calculate average percentage and best/worst year per country
+  map_summary_data <- processed_data_df %>%
+    group_by(iso2c, country, region) %>%
+    summarise(
+      avg_percentage = mean(total_percentage, na.rm = TRUE),
+      best_year = year[which.max(total_percentage)],
+      worst_year = year[which.min(total_percentage)],
+      .groups = "drop"
+    ) %>%
+    filter(!is.na(avg_percentage)) # Ensure we have a value to plot
+
+  if (!nrow(map_summary_data) > 0) {
+    return(plotly_empty(type = "scatter", mode = "markers") %>%
+             layout(title = "No average data to display on map."))
+  }
+
+  # --- Discrete Color Scale Logic (adapted from example) ---
+  max_val <- max(map_summary_data$avg_percentage, na.rm = TRUE)
+  ceiling_val <- ceiling(max_val / 5) * 5 # Round up to nearest 5
+
+  if (ceiling_val <= 0) ceiling_val <- 5 # Handle case where max is 0 or negative
+
+  if (ceiling_val <= 5) {
+    breaks <- seq(0, ceiling_val, by = 1)
+    label_fmt <- "%.1f-%.1f"
+  } else if (ceiling_val <= 20) {
+    breaks <- seq(0, ceiling_val, by = 2.5)
+    label_fmt <- "%.1f-%.1f"
+  } else {
+    breaks <- seq(0, ceiling_val, by = 5)
+    label_fmt <- "%.0f-%.0f"
+  }
+  # Ensure breaks cover the max value if ceiling logic was imperfect
+  if (max(breaks) < max_val) breaks <- c(breaks, max(breaks) + (breaks[2]-breaks[1]))
+
+  labels <- character(length(breaks) - 1)
+  for (i in 1:(length(breaks) - 1)) {
+    labels[i] <- sprintf(label_fmt, breaks[i], breaks[i+1])
+  }
+  # --- End Color Scale Logic ---
+
+  # Get world map data
+  world_map_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
+      select(iso_a2, name_long, geometry) # Use iso_a2 for joining
+
+  # Join map data with summary data
+  plot_data_sf <- world_map_sf %>%
+    left_join(map_summary_data, by = c("iso_a2" = "iso2c")) %>%
+    mutate(
+      formatted_value = ifelse(!is.na(avg_percentage),
+                              scales::percent(avg_percentage / 100, accuracy = 0.01),
+                              "No data"),
+      # Create discrete fill variable using custom breaks
+      fill_discrete = cut(
+        avg_percentage,
+        breaks = breaks,
+        labels = labels,
+        include.lowest = TRUE,
+        right = FALSE # Intervals like [0, 5), [5, 10)
+      ),
+      tooltip_text = paste0(
+        "<b>", name_long, "</b> (", iso_a2, ")<br>",
+        "Avg Contribution: ", formatted_value, "<br>",
+        "Region: ", coalesce(region, "N/A"), "<br>",
+        "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
+        "Worst Year: ", coalesce(as.character(worst_year), "N/A")
+      )
+    )
+
+  # Create plot using geom_sf
+  p <- ggplot(plot_data_sf) +
+    geom_sf(aes(fill = fill_discrete, text = tooltip_text),
+            color = "black", size = 0.1) + # Use geom_sf
+    # Use a discrete color scale (Brewer or Viridis)
+    scale_fill_brewer(
+      palette = "YlGnBu", # Example Brewer palette
+      # palette = "Viridis", # Alternative Viridis palette (requires viridisLite/viridis)
+      direction = 1,
+      name = fill_label,
+      na.value = "grey85", # Color for countries with no data
+      drop = FALSE # Keep all levels in the legend
+    ) +
+    labs(title = main_title) +
+    theme_void() + # Minimal theme
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.title = element_text(size = 9, face = "bold"),
+      legend.text = element_text(size = 8),
+      legend.key.size = unit(0.8, "lines"),
+      panel.background = element_rect(fill = "aliceblue", colour = NA) # Light blue background
+    ) +
+    guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1)) # Center legend title
+
+  # Convert to plotly
+  ggplotly(p, tooltip = "text") %>%
+    layout(
+      legend = list(orientation = "h", y = -0.05, x = 0.5, xanchor = "center"),
+      margin = list(b = 50, t = 40, l = 10, r = 10) # Adjust margins
+    ) %>%
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
