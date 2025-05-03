@@ -63,6 +63,8 @@ load_country_data <- function(data_path = "./data/data.parquet") {
   ))
 }
 
+# ... (load_country_data function) ...
+
 #' Create the initial Leaflet map
 #'
 #' @param selected_countries Vector of currently selected ISO codes
@@ -75,18 +77,19 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
 
   # Join map data with our country list to get consistent ISO codes and metadata
   # Use iso_a2 from world_map which corresponds to iso2c
+  # Ensure 'cc' column is present and has a fallback for safety
   map_data <- world_map %>%
-      select(iso_a2, name_long, geometry) %>% # Use name_long for potentially better matching
+      select(iso_a2, name_long, geometry) %>%
       left_join(country_list, by = c("iso_a2" = "iso2c")) %>%
       filter(!is.na(country)) %>% # Keep only countries present in our dataset
-      mutate(region = factor(region, levels = available_regions)) # Ensure region is a factor with all levels
+      mutate(
+          region = factor(region, levels = available_regions),
+          # Provide a default color if 'cc' is missing for some reason
+          cc = ifelse(is.na(cc) | cc == "", "#808080", cc) # Default to gray if cc is missing
+      )
 
-  # Define color palette
-  pal <- colorFactor(
-    palette = c("lightgray", "#3388ff"), # Gray for available, Blue for selected
-    domain = c(FALSE, TRUE),
-    na.color = "transparent" # Don't color polygons not in our data
-  )
+  # Define the 'available' color
+  available_color <- "lightgray"
 
   # Create map
   map <- leaflet(map_data) %>%
@@ -101,7 +104,9 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
           map <- map %>% addPolygons(
               data = region_data,
               group = reg, # Assign polygon to its region group
-              fillColor = ~pal(iso_a2 %in% selected_countries),
+              # --- Updated fillColor logic ---
+              fillColor = ~ifelse(iso_a2 %in% selected_countries, cc, available_color),
+              # --- End Updated fillColor logic ---
               weight = 1,
               opacity = 1,
               color = "white",
@@ -109,7 +114,7 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
               fillOpacity = 0.7,
               highlightOptions = highlightOptions(
                   weight = 2,
-                  color = "#666",
+                  color = "#666", # Highlight border color
                   dashArray = "",
                   fillOpacity = 0.8,
                   bringToFront = TRUE
@@ -132,13 +137,15 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
         options = layersControlOptions(collapsed = TRUE, autoZIndex = TRUE),
         position = "topright"
     ) %>%
+    # --- Simplified Legend ---
     addLegend(
       position = "bottomright",
-      colors = c("lightgray", "#3388ff"),
-      labels = c("Available", "Selected"),
+      colors = c(available_color), # Only show available color
+      labels = c("Available"),     # Only show available label
       title = "Country Status",
       opacity = 0.7
     ) %>%
+    # --- End Simplified Legend ---
     # Search should target the groups (regions)
     addSearchFeatures(
       targetGroups = available_regions, # Search within the region groups
@@ -146,13 +153,14 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
         propertyName = "label", # Search the label (country name)
         zoom = 5, # Zoom closer on search result
         openPopup = FALSE, # Don't need popup, highlight is enough
-        # firstTip = "Search for a country...", # Placeholder text
         autoCollapse = TRUE,
         hideMarkerOnCollapse = TRUE,
         textPlaceholder = "Search country..." # Placeholder text
       )
     )
 }
+
+# ... (create_selection_map function) ...
 
 #' Update map polygons without redrawing the whole map
 #'
@@ -163,25 +171,22 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
 #' @return Updated leaflet proxy
 #' @export
 update_map_polygons <- function(map_proxy, selected_countries, country_list, available_regions) {
-  # This function redraws polygons, which might interfere slightly with
-  # show/hide group state if not managed carefully.
-  # However, it's simpler than updating styles individually per polygon.
-  # The region filtering logic in app.R will handle showing/hiding groups.
+  # This function redraws polygons. The region filtering logic in app.R
+  # should handle showing/hiding groups correctly afterwards.
 
   world_map <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
   map_data <- world_map %>%
       select(iso_a2, name_long, geometry) %>%
       left_join(country_list, by = c("iso_a2" = "iso2c")) %>%
       filter(!is.na(country)) %>%
-      mutate(region = factor(region, levels = available_regions))
+      mutate(
+          region = factor(region, levels = available_regions),
+          cc = ifelse(is.na(cc) | cc == "", "#808080", cc) # Default color
+      )
 
-  pal <- colorFactor(
-    palette = c("lightgray", "#3388ff"),
-    domain = c(FALSE, TRUE),
-    na.color = "transparent"
-  )
+  available_color <- "lightgray"
 
-  # Clear existing polygons first
+  # Clear existing shapes first to avoid layering issues
   map_proxy %>% clearShapes()
 
   # Re-add polygons by region group with updated styles
@@ -191,7 +196,9 @@ update_map_polygons <- function(map_proxy, selected_countries, country_list, ava
           map_proxy %>% addPolygons(
               data = region_data,
               group = reg, # Assign polygon to its region group
-              fillColor = ~pal(iso_a2 %in% selected_countries),
+              # --- Use the same updated fillColor logic ---
+              fillColor = ~ifelse(iso_a2 %in% selected_countries, cc, available_color),
+              # --- End updated logic ---
               weight = 1,
               opacity = 1,
               color = "white",
@@ -214,9 +221,10 @@ update_map_polygons <- function(map_proxy, selected_countries, country_list, ava
           )
       }
   }
-  # Note: We might need to re-apply show/hide logic after this, see app.R
   return(map_proxy)
 }
+
+# ... (rest of functions.R) ...
 
 #' Generate UI for displaying selected country information
 #'
