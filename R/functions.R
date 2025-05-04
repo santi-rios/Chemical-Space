@@ -734,28 +734,27 @@ create_contribution_map_plot <- function(processed_data_df,
   # ... (rest of functions.R) ...
 
 
-# --- NEW: Simplified Plotting Function for Article Data ---
-
 #' Create Simplified Plot for Static Article Data
 #'
-#' Generates a Plotly line/dot plot for the pre-loaded article data.
+#' Generates a Plotly line/dot plot for the pre-loaded article data,
+#' optionally animated by year.
 #' Handles basic formatting and dual-axis for specific sources.
 #' Corrects line drawing issues by sorting data.
 #'
 #' @param article_df Data frame containing the static article data for a specific source.
 #' @param source_title Character. The 'source' identifier (e.g., "Annual growth rate of the GDP").
 #' @param y_title Character. Label for the Y-axis.
+#' @param animate Logical. Should the plot be animated by year? Defaults to FALSE.
 #' @return A plotly object.
 #' @import plotly dplyr scales RColorBrewer
 #' @export
-create_article_plot_simple <- function(article_df, source_title, y_title) {
+create_article_plot_simple <- function(article_df, source_title, y_title, animate = FALSE) { # Added animate argument
 
   if (!nrow(article_df) > 0) {
     return(plotly_empty(type = "scatter", mode = "markers") %>% layout(title = "No data for this figure."))
   }
 
   # --- Define Consistent Colors ---
-  # (Adapted from your previous code)
   country_colors <- c(
     "China" = "#c5051b", "China alone" = "#c56a75", "China w/o US" = "#9b2610",
     "France" = "#0a3161", "Germany" = "#000000", "India" = "#ff671f",
@@ -766,45 +765,38 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
     "CN-US collab/CN" = "#6d2f56", "CN-US collab/US" = "#ff8888"
   )
 
-  # Assign colors, generating new ones if needed
   available_items <- unique(article_df$country)
   plot_colors <- country_colors[names(country_colors) %in% available_items]
   missing_items <- setdiff(available_items, names(plot_colors))
   if (length(missing_items) > 0) {
-    extra_colors <- suppressWarnings( # Suppress warnings if fewer than 3 needed
+    extra_colors <- suppressWarnings(
         colorRampPalette(RColorBrewer::brewer.pal(max(3, length(missing_items)), "Set2"))(length(missing_items))
     )
     names(extra_colors) <- missing_items
     plot_colors <- c(plot_colors, extra_colors)
   }
 
-
   # --- Data Prep & Formatting based on Source ---
-  y_format <- "" # Default tick format
-  hover_format <- ".2f" # Default hover format
-  y_range <- NULL # Default y-axis range
+  y_format <- ""
+  hover_format <- ".2f"
+  y_range <- NULL
 
   plot_data <- article_df %>%
       mutate(
-          # Apply scaling/transformations based on source
           plot_value = case_when(
-              source_title == "Number of Researchers" ~ value / 1e6, # Show in millions
-              # Corrected logic for China-US: Apply /100 only to main countries for y1 axis
+              source_title == "Number of Researchers" ~ value / 1e6,
               source_title == "China-US in the CS" & country %in% c("China", "United States") ~ value / 100,
-              # Keep collab values as they are (presumably already 0-1 scale for y2 axis)
               source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ value,
-              source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ value, # Use raw value
-              TRUE ~ value # Default (e.g., GDP growth rate is already %)
+              source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ value,
+              TRUE ~ value
           ),
-          # Format for tooltips
           formatted_value_str = case_when(
               source_title == "Number of Researchers" ~ scales::comma(value, accuracy = 1),
               source_title == "Annual growth rate of the GDP" ~ paste0(scales::comma(value, accuracy = 0.1), "%"),
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ scales::comma(value, accuracy = 1),
-              # For China-US, format based on original value (assuming it was %) or plot_value if needed
-              source_title == "China-US in the CS" & country %in% c("China", "United States") ~ scales::percent(value / 100, accuracy = 0.1), # Format original % value
-              source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ scales::percent(value, accuracy = 0.1), # Format collab value (assuming 0-1)
-              TRUE ~ scales::percent(value / 100, accuracy = 0.1) # Default percentage formatting
+              source_title == "China-US in the CS" & country %in% c("China", "United States") ~ scales::percent(value / 100, accuracy = 0.1),
+              source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ scales::percent(value, accuracy = 0.1),
+              TRUE ~ scales::percent(value / 100, accuracy = 0.1)
           ),
           tooltip_text = paste0(
               "<b>", country, "</b><br>",
@@ -812,79 +804,80 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
               "Value: ", formatted_value_str
           )
       ) %>%
-      # *** ADDED: Sort data by country and year to ensure correct line plotting ***
-      arrange(country, year)
+      arrange(country, year) # IMPORTANT: Keep sorting for lines
 
   # Adjust titles and formats
   if (source_title == "Number of Researchers") {
     y_title <- paste0(y_title, " (Millions)")
     y_format <- ".2f"
   } else if (source_title == "Annual growth rate of the GDP") {
-    y_title <- y_title # Already includes %
+    y_title <- y_title
     y_format <- ".1f"
   } else if (source_title %in% c("Expansion of the CS", "Country participation in the CS")) {
-    y_format <- ",.0f" # Comma separated integer for counts
-    y_title <- y_title # Use the title passed to the function (e.g., "Number of Countries")
+    y_format <- ",.0f"
+    y_title <- y_title
   } else if (source_title == "China-US in the CS") {
-     y_format <- ".0%" # Percentage format for axes
-     # Ranges defined later in dual-axis logic
+     y_format <- ".0%"
   } else {
-     # Assuming other plots are percentages not already divided by 100
-     y_format <- ".1%" # Default percentage format for axis
-     # Need to adjust plot_value if the input 'value' is like 25 for 25%
-     # Let's assume for now other plots have 'value' already as decimal (0.25) or handle it in plot_value calc
-     # Re-checking plot_value: TRUE ~ value. If value is 25, plot_value is 25.
-     # Re-checking formatted_value_str: TRUE ~ scales::percent(value / 100, accuracy=0.1) - This is correct for tooltip.
-     # Re-checking y_format: .1% - This expects values like 0.25 to show as 25.0%
-     # --> If input 'value' for generic percentages is like 25, we need to adjust plot_value
+     y_format <- ".1%"
+     # Adjust plot_value if input 'value' is like 25 for 25%
      plot_data <- plot_data %>%
        mutate(plot_value = if_else(
          !source_title %in% c("Number of Researchers", "China-US in the CS", "Expansion of the CS", "Country participation in the CS", "Annual growth rate of the GDP"),
-         value / 100, # Convert percentage points (e.g., 25) to decimal (0.25) for plotting
-         plot_value # Keep previously calculated plot_value otherwise
+         value / 100,
+         plot_value
        ))
-
   }
 
-
   # --- Plotting Logic ---
-  p <- plot_ly(data = plot_data) # Use the sorted plot_data
+  # Initialize plot WITHOUT frame argument here
+  p <- plot_ly(data = plot_data)
+
+  # Define frame aesthetic if animating
+  frame_aes <- if (animate) ~year else NULL
 
   # Special Dual-Axis for China-US
   if (source_title == "China-US in the CS") {
     main_countries <- c("China", "United States")
-    # Data is already sorted, filtering preserves order within groups
     main_data <- filter(plot_data, country %in% main_countries)
     collab_data <- filter(plot_data, !country %in% main_countries)
 
     p <- p %>%
       add_trace(
         data = main_data, x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
-        type = 'scatter', mode = 'lines+markers', yaxis = "y1", name = ~country,
-        marker = list(size = 8, opacity = 0.8), line = list(width = 2),
+        type = 'scatter', mode = 'lines+markers', yaxis = "y1",
+        # Use name argument explicitly for legend
+        name = ~country,
+        # Add frame aesthetic here
+        frame = frame_aes,
+        marker = list(size = 8, opacity = 0.8), line = list(width = 2, simplify = FALSE), # simplify=FALSE might help lines
         hoverinfo = 'text', text = ~tooltip_text
       ) %>%
       add_trace(
         data = collab_data, x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
-        type = 'scatter', mode = 'lines+markers', yaxis = "y2", name = ~country,
-        marker = list(size = 7, opacity = 0.8), line = list(width = 2, dash = 'dot'),
+        type = 'scatter', mode = 'lines+markers', yaxis = "y2",
+        name = ~country,
+        frame = frame_aes,
+        marker = list(size = 7, opacity = 0.8), line = list(width = 2, dash = 'dot', simplify = FALSE),
         hoverinfo = 'text', text = ~tooltip_text
       ) %>%
       layout(
-        # Ensure yaxis uses the correct title passed to the function
         yaxis = list(title = y_title, tickformat = y_format, range = c(0.6, 1.0), side = 'left'),
         yaxis2 = list(title = "Collaboration Share", tickformat = y_format, range = c(0, 0.2), overlaying = "y", side = 'right'),
         legend = list(orientation = 'h', y = -0.15)
       )
 
   } else {
-    # Standard Plot for other sources (including "Country participation in the CS")
+    # Standard Plot for other sources
     p <- p %>%
       add_trace(
-        # Data is already sorted overall by country, then year
         x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
-        type = 'scatter', mode = 'lines+markers', name = ~country,
-        marker = list(size = 8, opacity = 0.8), line = list(width = 2),
+        type = 'scatter', mode = 'lines+markers',
+        # Use name argument explicitly for legend
+        name = ~country,
+        # Add frame aesthetic here
+        frame = frame_aes,
+        marker = list(size = 8, opacity = 0.8), line = list(width = 2, simplify = FALSE), # simplify=FALSE might help lines
         hoverinfo = 'text', text = ~tooltip_text
       ) %>%
       layout(
@@ -897,17 +890,16 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
   p <- p %>% layout(
     title = list(text = paste("Figure:", source_title), font = list(size = 14)),
     xaxis = list(title = "Year", gridcolor = "#e8e8e8"),
-    # Apply base y-axis settings here; specific settings (like title, format) are applied above
+    # Base y-axis settings (specifics applied above)
     yaxis = list(gridcolor = "#e8e8e8"),
     hovermode = "closest",
     hoverlabel = list(bgcolor = "white", font = list(size = 11)),
     plot_bgcolor = "#f8f9fa",
     paper_bgcolor = "#ffffff",
-    margin = list(l = 60, r = if(source_title == "China-US in the CS") 80 else 40, # More space for dual axis label
-                  b = 80, t = 50) # Adjust margins
+    margin = list(l = 60, r = if(source_title == "China-US in the CS") 80 else 40, b = 80, t = 50)
   )
 
-  # Add GDP Annotations if applicable
+  # Add GDP Annotations if applicable (static, won't animate)
   if (source_title == "Annual growth rate of the GDP") {
     p <- p %>% layout(
       shapes = list(
@@ -919,6 +911,22 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
         list(x = 2019.5, y = 1.0, yref = "paper", text = "COVID-19", showarrow = FALSE, xanchor = 'left', font = list(size = 10, color = "grey"))
       )
     )
+  }
+
+  # --- Add Animation Controls if requested ---
+  if (animate) {
+    p <- p %>%
+      animation_opts(
+        frame = 100,        # Duration of each frame transition (ms)
+        transition = 50,   # Duration of the transition animation (ms)
+        redraw = FALSE      # Avoid full redraw if possible
+      ) %>%
+      animation_slider(
+        currentvalue = list(prefix = "Year: ", font = list(color="darkgrey"))
+      ) %>%
+      animation_button(
+        x = 0, xanchor = "left", y = -0.1, yanchor = "bottom" # Adjust button position if needed
+      )
   }
 
   # Apply final config

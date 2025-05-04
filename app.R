@@ -692,31 +692,31 @@ server <- function(input, output, session) {
   output$countrycsPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Country participation in the CS")
-    create_article_plot_simple(df, "Country participation in the CS", "Number of New Substances")
+    create_article_plot_simple(df, "Country participation in the CS", "Number of New Substances", animate = FALSE)
   })
 
   output$articleGdpPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Annual growth rate of the GDP")
-    create_article_plot_simple(df, "Annual growth rate of the GDP", "GDP Growth Rate (%)")
+    create_article_plot_simple(df, "Annual growth rate of the GDP", "GDP Growth Rate (%)", animate = FALSE)
   })
 
   output$articleResearchersPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Number of Researchers")
-    create_article_plot_simple(df, "Number of Researchers", "Researchers")
+    create_article_plot_simple(df, "Number of Researchers", "Researchers", animate = FALSE)
   })
 
   output$articleCsExpansionPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Expansion of the CS")
-    create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances")
+    create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances", animate = FALSE)
   })
 
   output$articleChinaUsPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "China-US in the CS")
-    create_article_plot_simple(df, "China-US in the CS", "Contribution Share (%)")
+    create_article_plot_simple(df, "China-US in the CS", "Contribution Share (%)", animate = FALSE)
   })
 
 
