@@ -274,10 +274,10 @@ get_plot_header <- function(selected_isos, display_mode, chemical_category, coun
     title <- "Select Countries on the Map"
   } else if (num_selected == 1) {
     country_name <- country_list$country[country_list$iso2c == selected_isos[1]]
-    title <- paste("Individual Contribution:", country_name, "-", chem_text)
+    title <- paste("Countrywise expansion of the chemical space:", country_name, "-", chem_text)
   } else { # More than 1 selected
     if (display_mode == "compare_individuals") {
-      title <- paste("Comparing Individual Contributions -", chem_text)
+      title <- paste("Comparing Countrywise expansion of the chemical space -", chem_text)
     } else if (display_mode == "find_collaborations") {
       title <- paste("Joint Collaborations Found -", chem_text)
     }

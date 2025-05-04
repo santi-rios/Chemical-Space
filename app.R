@@ -79,6 +79,10 @@ ui <- page_navbar(
       # --- Map Card ---
       card(
         full_screen = TRUE,
+        tooltip(
+          bsicons::bs_icon("question-circle"),
+          "Click on a country to select it. Click again to deselect. Data will be shown for the selected countries."
+        ),
         card_header("Country Selection Map 🌎"),
         leafletOutput("selection_map", height = "450px") # Increased height slightly
         # Removed footer for cleaner look
@@ -95,8 +99,12 @@ ui <- page_navbar(
             value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
             step = 1, sep = ""
           ),
+          tooltip(
+            bsicons::bs_icon("question-circle"),
+            "Chemical Space was divided into three subspaces: Organic, Organometallic, and Rare-Earths. Plots default to 'All' subspaces.",
+          ),
           radioButtons(
-            "chemical_category", "Chemical Category 🧪:",
+            "chemical_category", "Chemical Space Category 🧪:",
             choices = chemical_categories,
             selected = "All"
           ),
@@ -135,6 +143,13 @@ ui <- page_navbar(
         title = "Data Table",
         value = "data_table", # Added value
         DTOutput("summary_table")
+      ),
+      card_footer(
+          "About these percentages. ",
+          popover(
+          a("Learn more", href = "#"),
+          markdown("These percentages represent the total proportion of chemical space discovered through individual country participation or collaborations between the selected countries. Higher percentages indicate stronger and more productive scientific partnerships in terms of novel chemical discoveries."),
+          )
       )
     ), # End navset_card_pill
 
@@ -148,8 +163,12 @@ ui <- page_navbar(
   # --- Article Figures Tab ---
   nav_panel(
     title = "Article Figures",
-    # ... (Article Figures content remains the same) ...
-     helpText("These plots replicate key figures from the source article and are based on a static dataset."),
+    # Add the descriptive text here
+    p(
+      class = "text-muted", # Optional: style the text slightly
+      "China's Chemical Revolution: From 1996 to 2022, China surged to claim the chemical discoveries—far outpacing the US’s share—driven almost entirely by domestic research. In contrast, US solo contributions has steadily dropped, with rising international collaboration."
+    ),
+    helpText("These plots replicate key figures from the source article."),
     layout_columns(
       col_widths = c(6, 6, 6, 6), # Arrange plots in 2x2 grid
       row_heights = c(1, 1), # Equal height rows
@@ -173,46 +192,144 @@ ui <- page_navbar(
     )
   ), # End Article Figures nav_panel
 
-  # --- About Shiny Tab ---
+  # --- Article Tab ---
   nav_panel(
-    title = "About Shiny",
-    # ... (About Shiny content remains the same) ...
-    card(
-      # Removed fixed height to let content dictate size
-      # height = 300,
-      full_screen = TRUE,
-      card_image(
-        # Make sure you have a "shiny-hex.svg" file in your app's www directory
-        # or replace with a valid web URL
-        file = "https://raw.githubusercontent.com/rstudio/shiny/main/man/figures/logo.png", # Example web URL
-        alt = "Shiny's hex sticker",
-        height = "150px", # Control image height
-        width = "auto", # Let width adjust
-        class = "mx-auto" # Center image if needed
-        # href = "https://github.com/rstudio/shiny" # Link removed for simplicity, add if needed
-      ),
-      card_body(
-        fill = FALSE,
-        card_title("Shiny for R"),
-        p(
-          class = "fw-light text-muted",
-          "This application is built using the Shiny web framework for R."
+    title = "Original Article 📄",
+    # Use tags$iframe to embed the PDF
+    # Make sure 'original_article.pdf' is inside the 'www' folder
+    tags$iframe(
+      style = "height:80vh; width:100%; scrolling:yes; border: none;", # Adjust height as needed (e.g., 800px or 80vh)
+      src = "original_article.pdf" # The path relative to the www directory
+    )
+  ), # End nav_panel
+
+
+  # --- Legal Notice Tab ---
+  nav_panel(
+    title = "Legal Notice", # Updated title
+    # fluidPage( # fluidPage might not be necessary within nav_panel + card
+      card(
+        card_header("Legal Notice / Provider Identification"),
+        card_body(
+          markdown(
+            "The following provides mandatory data concerning the provider of this Website, obligations with regard to data protection, as well as other important legal references involving the Website of the Max Planck Institute for Physics (Werner-Heisenberg Institute) Munich (http://www.mpp.mpg.de) as required by German law."
+          ),
+          h4("Provider"),
+          markdown(
+            "The provider of this Internet site within the legal meaning of the term is the registered association Max Planck Society for the Advancement of Science e.V."
+          ),
+          h4("Address"),
+          markdown(
+            "Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V.  
+            Hofgartenstrasse 8  
+            D-80539 Munich  
+            +49 89 2108-0  
+            [http://www.mpg.de](http://www.mpg.de)"
+          ),
+          h4("Register of Societies and Associations"),
+          markdown(
+            "The Max Planck Society is registered in the Official Register of Societies and Associations at Berlin-Charlottenburg Local Court under the register number VR 13378 B."
+          ),
+          h4("Representatives"),
+          markdown(
+            "The Max Planck Society is legally represented by its Board of Directors which, in turn, is represented by the President of the Society, Prof. Dr. Patrick Cramer, and by Secretary General Simone Schwanitz."
+          ),
+          h4("Value added tax identification number"),
+          markdown(
+            "The value added tax identification number of the Max Planck Society is DE 129517720."
+          ),
+          h4("Editor"),
+          markdown(
+            "Responsible editor for the contents of the website of the Max Planck Institute for Physics  
+            ([http://www.mpp.mpg.de](http://www.mpp.mpg.de)) with regard to media law is press officer:  
+            Barbara Wankerl  
+            Max Planck Institute for Physics  
+            Boltzmannstr. 8  
+            85748 Garching  
+            Germany  
+            +49 89 32354-292  
+            barbara.wankerl@mpp.mpg.de"
+          ),
+          h4("Technically responsible"),
+          markdown(
+            "Technically responsible for the website of the Max Planck Institute for Physics ([http://www.mpp.mpg.de](http://www.mpp.mpg.de)) are Thomas Hahn (hahn@mpp.mpg.de) and Uwe Leupold (webmaster@mpp.mpg.de). Support, maintainance and upgrades of the TYPO3 domain are handled by the web company metapublic GbR (Baldestr. 14, 80469 München)."
+          ),
+          h4("Legal Structure"),
+          markdown(
+            "The Max Planck Society is a non-profit research facility which is organized as a registered association. All of the institutes and facilities of the Max Planck Society are largely autonomous in terms of organization and research, but as a rule have no legal capacity of their own."
+          ),
+          h4("Liability for Contents of Online Information"),
+          markdown(
+            "As the provider of contents in accordance with Section 7 Paragraph 1 of the Tele-Media Law, the Max Planck Society shall be responsible for any contents which it makes available for use in accordance with general legal provisions. The Max Planck Society makes every effort to provide timely and accurate information on this Web site. Nevertheless, errors and inaccuracies cannot be completely ruled out. Therefore, the Max Planck Society does not assume any liability for the relevance, accuracy, completeness or quality of the information provided. The Max Planck Society shall not be liable for damage of a tangible or intangible nature caused directly or indirectly through the use or failure to use the information offered and/or through the use of faulty or incomplete information unless it is verifiably culpable of intent or gross negligence. The same shall apply to any downloadable software available free of charge. The Max Planck Society reserves the right to modify, supplement, or delete any or all of the information offered on its Internet site, or to temporarily or permanently cease publication thereof without prior and separate notification."
+          ),
+          h4("Copyright"),
+          markdown(
+            "The layout, graphics employed and any other contents on the homepage of the Max Planck Society Internet site are protected by copyright law.  
+            © Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V., Munich. All rights reserved."
+          )
         )
       )
-    )
-  ), # End About Shiny nav_panel
+    # ) # End fluidPage if used
+  ), # End Legal Notice nav_panel
 
-  # --- Legal & Privacy Tab ---
+  # --- Privacy Policy Tab ---
   nav_panel(
-    title = "Legal & Privacy",
-    # ... (Legal & Privacy content remains the same) ...
-     card( # Wrap content in a card for consistent look
-      card_title("Legal Notice & Privacy Policy"),
-      p("Placeholder for Legal Notice content."),
-      p("Placeholder for Privacy Policy content.")
-      # Add detailed text here later
-    )
-  ), # End Legal & Privacy nav_panel
+    title = "Privacy Policy", # New title
+    # fluidPage( # fluidPage might not be necessary within nav_panel + card
+      card(
+        card_header("Privacy Policy"),
+        card_body(
+          markdown(
+            "The Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG) takes the protection of your personal data very seriously. Here we provide you with information concerning the main aspects of data processing in the context of our application and recruitment procedures."
+          ),
+          h4("1. Contact details of the data controller"),
+          markdown(
+            "The controller as defined by the EU General Data Protection Regulation (GDPR) and other provisions under data protection law is:  
+            
+            Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG)  
+            Hofgartenstraße 8, 80539 Munich  
+            Phone: +49 89 2108 -0  
+            [www.mpg.de](www.mpg.de)"
+          ),
+          h4("2. Contact details of the Data Protection Officer"),
+          markdown(
+            "The Data Protection Officer of the controller is Heidi Schuster, Hofgartenstraße 8, D-80539 Munich, telephone: +49 (89) 2108-1554, email address: datenschutz@mpg.de"
+          ),
+          h4("3. Purpose and legal basis of data processing"),
+          markdown(
+            "The personal data entered by you in our application system is saved and processed solely for the application and recruitment processes of the Max Planck Institute for Mathematics in the Sciences, Leipzig.  
+            
+            Fields marked with an * are mandatory fields that are required for the application process. If you do not provide these details, you cannot take part in the application process. The legal basis for processing is Article 6, para. 1, lit b GDPR (contractual basis) and § 26 Federal Data Protection Act 2018 (data processing as the basis for establishing an employment contract).  
+            
+            Fields not marked with an * are fields which you can complete voluntarily. By completing the voluntary fields, you give us your permission to store and process this data exclusively for the purpose of the application and recruitment process. The legal basis for processing in these instances is Article 6, para. 1, lit. a GDPR (consent of the data subject)."
+          ),
+          h4("4. Data recipients and categories of data recipients"),
+          markdown(
+            "Processing of your personal details is carried out by way of order processing on Haufe-umantis AG systems. The Max-Planck-Gesellschaft as the responsible body only has access to your data insofar as this is necessary for the application and recruitment process in line with the internal allocation of responsibilities. Personnel management staff have access to the data. They transfer the data to the selection committee assembled for the respective application procedure, as well as to the Gender Equality Officer and the Works Council. The selection committee may also include external experts with whom the data is then shared. The data is not shared with any other third parties."
+          ),
+          h4("5. Duration of storage"),
+          markdown(
+            "Your data will be stored until the end of the recruitment process or, in the case of a speculative application, until the end of the exploratory process or the appointment process, as the case may be. We only save your data for longer if you have given us your consent to do so."
+          ),
+          h4("6. Your rights"),
+          markdown(
+            "You can view, alter or delete the data you have entered at any time using your personal access to the application system. Your access is protected using your email address as a personal login name and a password of your choice.  
+            
+            You are fundamentally entitled to the rights of access (Article 15 GDPR), rectification (Article 16 GDPR), erasure (Article 17, para. 1 GDPR), restriction of processing (Article 18 GDPR), data portability (Article 20 GDPR) and withdrawal of consent (Article 7, para. 3 GDPR).  
+            
+            In order to assert your rights, please contact:  
+            Max Planck Institute for Mathematics in the Sciences  
+            Inselstrasse 22  
+            04103 Leipzig  
+            
+            If you believe that processing of your personal data is in breach of data protection law or your claims under data protection law are being violated in any other way, please contact the Max-Planck-Gesellschaft Data Protection Officer at datenschutz@mpg.de. The supervisory authority responsible for the Max-Planck-Gesellschaft is:  
+            BayLDA (Bavarian Data Protection Authority)  
+            Postfach 606, 91511 Ansbach."
+          )
+        )
+      )
+    # ) # End fluidPage if used
+  ), # End Privacy Policy nav_panel
 
   # --- Footer ---
   footer = div(
@@ -401,8 +518,8 @@ server <- function(input, output, session) {
       radioButtons(
         "display_mode_select", "Display Mode: ✨",
         choices = c(
-          "Individual Contributions 🗾" = "compare_individuals",
-          "Find Joint Collaborations 🤝🏽" = "find_collaborations"
+          "Countrywise expansion of the CS 🗾" = "compare_individuals",
+          "Find Joint Collaborations Trends 🤝🏽" = "find_collaborations"
         ),
         selected = display_mode(),
         inline = TRUE
