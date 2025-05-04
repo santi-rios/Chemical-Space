@@ -79,11 +79,13 @@ ui <- page_navbar(
       # --- Map Card ---
       card(
         full_screen = TRUE,
-        tooltip(
-          bsicons::bs_icon("question-circle"),
-          "Click on a country to select it. Click again to deselect. Data will be shown for the selected countries."
-        ),
-        card_header("Country Selection Map 🌎"),
+        card_header(
+          "Country Selection Map 🌎",
+          tooltip(
+            bsicons::bs_icon("question-circle"),
+            "Click on a country to select it. Click again to deselect. Data will be shown for the selected countries."
+            ),
+          ),
         leafletOutput("selection_map", height = "450px") # Increased height slightly
         # Removed footer for cleaner look
       ),
@@ -120,6 +122,7 @@ ui <- page_navbar(
     ), # End layout_columns for Map & Filters
 
     # --- Row 2: Plots and Table ---
+    uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
     navset_card_pill(
       id = "plot_tabs", # Added an ID for potential future use
       full_screen = TRUE,
@@ -127,8 +130,7 @@ ui <- page_navbar(
       nav_panel(
         title = "Trends 📈", # Simplified title
         value = "trends",   # Added value for identification
-        uiOutput("plot_header_ui"), # Dynamic header as title        
-        uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
+        uiOutput("plot_header_ui"), # Dynamic header as title
         withSpinner(plotlyOutput("main_plot", height = "400px"))
       ),
       # --- Contribution Map Panel ---
@@ -144,13 +146,6 @@ ui <- page_navbar(
         value = "data_table", # Added value
         helpText("Click on the column name to sort by that variable. Use the search box to filter rows."),
         DTOutput("summary_table")
-      ),
-      card_footer(
-          "About these percentages. ",
-          popover(
-          a("Learn more", href = "#"),
-          markdown("These percentages represent the total proportion of chemical space discovered through individual country participation or collaborations between the selected countries. Higher percentages indicate stronger and more productive scientific partnerships in terms of novel chemical discoveries."),
-          )
       )
     ), # End navset_card_pill
 
@@ -629,69 +624,66 @@ server <- function(input, output, session) {
       display_mode = mode
     )
   })
+# ... (previous server logic) ...
 
+ # --- Updated Value Box UI for Overall Top Contributors ---
   output$summary_value_boxes_ui <- renderUI({
-    countries <- selected_countries()
-    validate(
-        need(length(countries) > 0, ""),
-        need(!is.null(processed_data()), "")
+    # Use reactive inputs for filters, except year range
+    chemical_category <- input$chemical_category
+    region_filter <- input$region_filter
+
+    # Ensure inputs are available
+    req(chemical_category, region_filter) # Year range not needed here
+
+    # Calculate top contributors using the helper function, ignoring year filter
+    top_data_raw <- calculate_top_contributors(
+      ds = ds,
+      year_range = c(min_year_data, max_year_data), # Pass dummy range, it will be ignored
+      chemical_category = chemical_category,
+      region_filter = region_filter,
+      country_list = country_list,
+      top_n = 5,
+      ignore_year_filter = TRUE # <<< Key change: Ignore year slider
     )
-    data <- processed_data()
-    validate(need(nrow(data) > 0, ""))
 
-    mode <- if (length(countries) == 1) "individual" else display_mode()
+    # Validate that we got results
+    validate(need(nrow(top_data_raw) > 0, "No overall contributor data for current chemical/region filters."))
 
-    # --- Calculate Stats ---
-    avg_contrib_val <- NA
-    if ("total_percentage" %in% names(data)) {
-        avg_contrib_val <- mean(data$total_percentage, na.rm = TRUE)
-    } else if ("collaboration_percentage" %in% names(data)) {
-        avg_contrib_val <- mean(data$collaboration_percentage, na.rm = TRUE)
-    }
-    avg_contrib_str <- if (!is.na(avg_contrib_val)) scales::percent(avg_contrib_val / 100, accuracy = 0.1) else "N/A"
-    avg_contrib_title <- if(mode == "find_collaborations") "Avg. Collaboration %" else "Avg. Contribution %"
+    # --- Explicitly arrange by rank just in case ---
+    top_data <- top_data_raw %>% arrange(rank)
 
-    num_points <- nrow(data)
-    num_years <- length(unique(data$year))
-    points_str <- paste(num_points, "data points across", num_years, "years")
-
-    peak_year_val <- NA
-    peak_year_str <- "N/A"
-    if ("total_percentage" %in% names(data)) {
-        if(nrow(data) > 0) { # Ensure data is not empty before which.max
-            peak_row <- data[which.max(data$total_percentage), ]
-            if(nrow(peak_row) > 0) {
-                peak_year_val <- peak_row$year[1]
-                peak_perc_val <- peak_row$total_percentage[1]
-                peak_year_str <- paste(peak_year_val, " (", scales::percent(peak_perc_val / 100, accuracy = 0.1), ")", sep="")
-            }
-        }
-    }
-    peak_year_title <- if(mode == "find_collaborations") "Peak Collaboration Year" else "Peak Contribution Year"
-
-    # --- Create Value Boxes ---
-    layout_columns(
-      fill = FALSE,
-      value_box(
-        title = "Countries Selected",
-        value = length(countries),
-        showcase = bsicons::bs_icon("globe-americas"),
-        theme = "primary"
-      ),
-      value_box(
-        title = avg_contrib_title,
-        value = avg_contrib_str,
-        showcase = bsicons::bs_icon("graph-up-arrow"),
-         theme = "info"
-      ),
-      value_box(
-        title = peak_year_title,
-        value = peak_year_str,
-        showcase = bsicons::bs_icon("calendar-event"),
-         theme = "success"
+    # Format the top contributors for display, using the rank from the function
+    # This loop now iterates through the explicitly sorted top_data
+    top_list_items <- map_chr(1:nrow(top_data), ~{
+      paste0(
+        top_data$rank[.x], ". ", # Use rank column
+        top_data$country[.x], " (",
+        scales::percent(top_data$avg_percentage[.x] / 100, accuracy = 0.1), ")"
       )
+    })
+
+    # Combine into a single string with line breaks
+    top_list_string <- paste(top_list_items, collapse = "\n")
+
+    # Create a single value box for OVERALL top countries
+    value_box(
+      title = paste("Historical Top", nrow(top_data), "Countries (Avg % contribution) for current filters"), # Updated title
+      value = top_list_string,
+      theme = "info", # Changed theme slightly
+      showcase = bsicons::bs_icon("graph-up-arrow"), # Changed icon
+      tooltip(
+        bsicons::bs_icon("info-circle"),
+        paste("Showing top", nrow(top_data), "countries based on overall average percentage across all years",
+              "for", chemical_category, "chemicals",
+              if(region_filter != "All") paste("within the", region_filter, "region(s).") else ".",
+              "Year range slider is ignored for this box.") # Updated tooltip
+      ),
+      style = "white-space: pre-wrap;" # CSS to respect newlines
     )
   })
+  # --- End Updated Value Box UI ---
+
+  # ... (rest of server logic) ...
 
   output$articleGdpPlot <- renderPlotly({
     req(nrow(article_data) > 0)

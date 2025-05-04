@@ -557,16 +557,20 @@ create_summary_table <- function(data, display_mode) {
 #' @param region_filter String, region filter
 #' @param country_list Data frame with country info
 #' @param top_n Integer, number of top contributors to return
-#' @return Data frame with top N contributors (iso2c, country, avg_percentage)
+#' @param ignore_year_filter Logical, if TRUE, the year_range filter is skipped. Defaults to FALSE.
+#' @return Data frame with top N contributors (iso2c, country, avg_percentage), sorted by avg_percentage.
 #' @export
-calculate_top_contributors <- function(ds, year_range, chemical_category, region_filter = "All", country_list, top_n = 10) {
+calculate_top_contributors <- function(ds, year_range, chemical_category, region_filter = "All", country_list, top_n = 10, ignore_year_filter = FALSE) {
 
     query <- ds %>%
-        filter(
-            is_collab == FALSE,
-            between(year, year_range[1], year_range[2])
-        )
+        filter(is_collab == FALSE) # Always filter for solo contributions
 
+    # Conditionally apply year filter
+    if (!ignore_year_filter) {
+        query <- query %>% filter(between(year, year_range[1], year_range[2]))
+    }
+
+    # Apply other filters
     if (chemical_category != "All") {
         query <- query %>% filter(chemical == chemical_category)
     }
@@ -578,13 +582,16 @@ calculate_top_contributors <- function(ds, year_range, chemical_category, region
     top_data <- query %>%
         group_by(iso2c) %>%
         summarise(avg_percentage = mean(percentage, na.rm = TRUE)) %>%
-        collect() %>% # Collect aggregated data
-        filter(!is.na(avg_percentage)) %>%
+        collect() %>%
+        filter(!is.na(avg_percentage), avg_percentage > 0) %>% # Also filter out zero averages
         arrange(desc(avg_percentage)) %>%
         head(top_n) %>%
+        # Add rank after sorting
+        mutate(rank = row_number()) %>%
         # Join with country_list to get full country names
         left_join(select(country_list, iso2c, country), by = "iso2c") %>%
-        select(iso2c, country, avg_percentage) # Ensure correct columns
+        # Ensure correct columns and order
+        select(rank, iso2c, country, avg_percentage)
 
     return(top_data)
 }
