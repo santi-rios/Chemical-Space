@@ -47,7 +47,7 @@ ui <- page_navbar( # Changed from page_sidebar
   title = "Chemical Space Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
   fillable = FALSE,
-  navbar_options = navbar_options(position = "static-top", collapsible = FALSE),
+  navbar_options = navbar_options(position = "static-top", collapsible = TRUE),
   # Main application sidebar (for selection info and top contributors)
   sidebar = sidebar(
     width = 300,
@@ -63,23 +63,18 @@ ui <- page_navbar( # Changed from page_sidebar
   # --- Explorer Tab ---
   nav_panel(
     title = "Explorer",
-    # Layout for Map+Filters Card and Plot+Table Card
-    layout_columns(
-      col_widths = 12, # Make cards stack vertically
-      row_heights = c(1, 1.2), # Give slightly more relative height to plot/table area
       # --- Map and Filters Card ---
       card(
         full_screen = TRUE,
-        card_header("Country Selection & Filters 🌎"), # Updated header
-        layout_sidebar( # Use layout_sidebar inside the card
-          open = "desktop", # Open on desktop
-          border = FALSE, # Optional: remove border between map and its sidebar
-          border_radius = FALSE, # Optional: remove border radius
-          # Sidebar for Map Filters
-          sidebar = sidebar(
-            position = "right", # Position filters sidebar to the right of the map
-            width = 275, # Adjust width as needed
-            # Moved filter elements here
+        card_header(
+          "Country Selection & Filters",
+          tooltip(
+            bsicons::bs_icon("info-circle"),
+            "Select a country on the map to see its contribution to the chemical space. Learn More.",
+            placement = "top",
+          ),
+          popover(
+            bsicons::bs_icon("gear", class = "ms-auto"),
             sliderInput(
               "years", "Year Range 📅:",
               min = min_year_data,
@@ -98,29 +93,34 @@ ui <- page_navbar( # Changed from page_sidebar
               icon = icon("trash-alt"),
               class = "btn-outline-danger btn-sm mb-3",
               width = "100%"
-            )
-          ),
+            ),
+            title = "Map Filters"
+          )
+          ), # Updated header
           # Main content area for the map
-          leafletOutput("selection_map", height = "450px") # Adjusted height slightly
-        ) # End layout_sidebar for map card
+          leafletOutput("selection_map", height = "350px"), # Adjusted height slightly
+          card_footer(
+            p("Use the filters from the right sidebar to adjust the year range and chemical space category."),
+            p("Select multiple countries to explore trends and collaborations.")
+        )
       ), # End Map and Filters Card
 
       # --- Plot and Table Card ---
-      navset_card_tab(
+      navset_card_pill(
         full_screen = TRUE,
         title = uiOutput("plot_header_ui"), # Dynamic header as title        
         # --- Main Plot Panel ---
         # This panel will show the main plot and the contribution map
         nav_panel(
-          "Main Plot",
-          card_title("Interactive Time Series Plot"), # Added specific title
+          "Trends in Chemical Space 📈",
+          # card_title("Interactive Time Series Plot"), # Added specific title
           uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
           withSpinner(plotlyOutput("main_plot", height = "400px"))
         ),
         # --- NEW: Contribution Map Panel ---
         nav_panel(
-          "Contribution Map",
-          card_title("Average Contribution Map"), # Added specific title
+          "Country Contribution Map 📌",
+          # card_title("Country Contribution Map 📌"), # Added specific title
           helpText("Shows the average contribution percentage over the selected period for the currently displayed countries."),
           withSpinner(plotlyOutput("contributionMapPlot", height = "400px")) # New plot output
         ),
@@ -131,7 +131,7 @@ ui <- page_navbar( # Changed from page_sidebar
           DTOutput("summary_table")
         )
       ) # End Plot and Table Card
-    ) # End layout_columns for Explorer tab
+    # Removed extra parenthesis here
   ), # End Explorer nav_panel
 
   # --- NEW: Article Figures Tab ---
@@ -478,10 +478,10 @@ server <- function(input, output, session) {
 
     # Generate the map plot using the new function
     create_contribution_map_plot(
-      processed_data_df = data_for_map
+      processed_data_df = data_for_map,
       # Optional: Add dynamic title/label if needed
-      # main_title = paste("Avg Contribution:", input$chemical_category),
-      # fill_label = "Avg %"
+      main_title = paste("Chemical space selected:", input$chemical_category),
+      fill_label = "Avg % Contribution"
     )
   })
   # --- End NEW Plot ---

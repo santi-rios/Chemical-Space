@@ -95,7 +95,7 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
   map <- leaflet(map_data) %>%
     addTiles(urlTemplate = "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
              attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>') %>%
-    setView(lng = 10, lat = 30, zoom = 2)
+    setView(lng = 10, lat = 30, zoom = 1)
 
   # Add polygons by region group
   for (reg in available_regions) {
@@ -132,11 +132,11 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
 
   # Add controls and search
   map %>%
-    addLayersControl(
-        overlayGroups = available_regions,
-        options = layersControlOptions(collapsed = TRUE, autoZIndex = TRUE),
-        position = "topright"
-    ) %>%
+    # addLayersControl(
+    #     overlayGroups = available_regions,
+    #     options = layersControlOptions(collapsed = TRUE, autoZIndex = TRUE),
+    #     position = "topright"
+    # ) %>%
     # --- Simplified Legend ---
     addLegend(
       position = "bottomright",
@@ -651,16 +651,18 @@ create_contribution_map_plot <- function(processed_data_df,
   # --- End Color Scale Logic ---
 
   # Get world map data
-  world_map_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
+  world_map_sf <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
       select(iso_a2, name_long, geometry) # Use iso_a2 for joining
 
   # Join map data with summary data
   plot_data_sf <- world_map_sf %>%
     left_join(map_summary_data, by = c("iso_a2" = "iso2c")) %>%
+    # Filter antartica and other non-country geometries
+    filter(!is.na(name_long) & !name_long %in% c("Antarctica", "Greenland")) %>%
     mutate(
       formatted_value = ifelse(!is.na(avg_percentage),
                               scales::percent(avg_percentage / 100, accuracy = 0.01),
-                              "No data"),
+                              "No data for current selection"),
       # Create discrete fill variable using custom breaks
       fill_discrete = cut(
         avg_percentage,
@@ -678,40 +680,51 @@ create_contribution_map_plot <- function(processed_data_df,
       )
     )
 
-  # Create plot using geom_sf
-  p <- ggplot(plot_data_sf) +
-    geom_sf(aes(fill = fill_discrete, text = tooltip_text),
-            color = "black", size = 0.1) + # Use geom_sf
-    # Use a discrete color scale (Brewer or Viridis)
-    scale_fill_brewer(
-      palette = "YlGnBu", # Example Brewer palette
-      # palette = "Viridis", # Alternative Viridis palette (requires viridisLite/viridis)
-      direction = 1,
-      name = fill_label,
-      na.value = "grey85", # Color for countries with no data
-      drop = FALSE # Keep all levels in the legend
-    ) +
-    labs(title = main_title) +
-    theme_void() + # Minimal theme
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      legend.title = element_text(size = 9, face = "bold"),
-      legend.text = element_text(size = 8),
-      legend.key.size = unit(0.8, "lines"),
-      panel.background = element_rect(fill = "aliceblue", colour = NA) # Light blue background
-    ) +
-    guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1)) # Center legend title
-
-  # Convert to plotly
-  ggplotly(p, tooltip = "text") %>%
-    layout(
-      legend = list(orientation = "h", y = -0.05, x = 0.5, xanchor = "center"),
-      margin = list(b = 50, t = 40, l = 10, r = 10) # Adjust margins
-    ) %>%
-    config(displayModeBar = TRUE, displaylogo = FALSE)
-}
+  
+    # Create plot using geom_sf
+    p <- ggplot(plot_data_sf) +
+      geom_sf(aes(fill = fill_discrete, text = tooltip_text),
+              color = "black", linewidth = 0.1) + # Use geom_sf     
+      # Use a discrete color scale (Brewer or Viridis)
+      scale_fill_brewer(
+        palette = "Spectral", # Example Brewer palette
+        direction = - 1,
+        name = fill_label,
+        na.value = "#EEEEEE", # Color for countries with no data
+        drop = FALSE # Keep all levels in the legend
+      ) +
+      labs(title = main_title) +
+      # --- Add coord_sf for projection ---
+      coord_sf(crs = "+proj=robin") + # Apply Mollweide projection
+      # --- End projection ---
+      theme_void() + # Minimal theme
+      theme(
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.title = element_text(size = 9, face = "bold"),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(0.8, "lines"),
+        # Ensure plot background is transparent if theme_void doesn't do it fully
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA)
+      ) +
+      guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1)) # Center legend title
+  
+    # Convert to plotly
+    # Note: ggplotly's handling of complex projections can sometimes be imperfect,
+    # but it often works reasonably well.
+    ggplotly(p, tooltip = "text") %>%
+      layout(
+        legend = list(orientation = "h", y = -0.05, x = 0.5, xanchor = "center"),
+        margin = list(b = 50, t = 40, l = 10, r = 10) # Adjust margins
+      ) %>%
+      # Try to ensure transparent background carries over to plotly
+      layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+  
+  }
+  
+  # ... (rest of functions.R) ...
 
 
 # --- NEW: Simplified Plotting Function for Article Data ---
