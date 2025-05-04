@@ -740,6 +740,7 @@ create_contribution_map_plot <- function(processed_data_df,
 #'
 #' Generates a Plotly line/dot plot for the pre-loaded article data.
 #' Handles basic formatting and dual-axis for specific sources.
+#' Corrects line drawing issues by sorting data.
 #'
 #' @param article_df Data frame containing the static article data for a specific source.
 #' @param source_title Character. The 'source' identifier (e.g., "Annual growth rate of the GDP").
@@ -788,7 +789,10 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
           # Apply scaling/transformations based on source
           plot_value = case_when(
               source_title == "Number of Researchers" ~ value / 1e6, # Show in millions
-              source_title == "China-US in the CS" & !(country %in% c("CN-US collab/CN", "CN-US collab/US")) ~ value / 100, # Convert % to decimal for main countries
+              # Corrected logic for China-US: Apply /100 only to main countries for y1 axis
+              source_title == "China-US in the CS" & country %in% c("China", "United States") ~ value / 100,
+              # Keep collab values as they are (presumably already 0-1 scale for y2 axis)
+              source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ value,
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ value, # Use raw value
               TRUE ~ value # Default (e.g., GDP growth rate is already %)
           ),
@@ -797,7 +801,9 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
               source_title == "Number of Researchers" ~ scales::comma(value, accuracy = 1),
               source_title == "Annual growth rate of the GDP" ~ paste0(scales::comma(value, accuracy = 0.1), "%"),
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ scales::comma(value, accuracy = 1),
-              source_title == "China-US in the CS" ~ scales::percent(plot_value, accuracy = 0.1), # Use plot_value (decimal)
+              # For China-US, format based on original value (assuming it was %) or plot_value if needed
+              source_title == "China-US in the CS" & country %in% c("China", "United States") ~ scales::percent(value / 100, accuracy = 0.1), # Format original % value
+              source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ scales::percent(value, accuracy = 0.1), # Format collab value (assuming 0-1)
               TRUE ~ scales::percent(value / 100, accuracy = 0.1) # Default percentage formatting
           ),
           tooltip_text = paste0(
@@ -805,7 +811,9 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
               "Year: ", year, "<br>",
               "Value: ", formatted_value_str
           )
-      )
+      ) %>%
+      # *** ADDED: Sort data by country and year to ensure correct line plotting ***
+      arrange(country, year)
 
   # Adjust titles and formats
   if (source_title == "Number of Researchers") {
@@ -815,21 +823,37 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
     y_title <- y_title # Already includes %
     y_format <- ".1f"
   } else if (source_title %in% c("Expansion of the CS", "Country participation in the CS")) {
-    y_format <- ",.0f" # Comma separated integer
+    y_format <- ",.0f" # Comma separated integer for counts
+    y_title <- y_title # Use the title passed to the function (e.g., "Number of Countries")
   } else if (source_title == "China-US in the CS") {
      y_format <- ".0%" # Percentage format for axes
      # Ranges defined later in dual-axis logic
   } else {
-     y_format <- ".1%" # Default percentage
+     # Assuming other plots are percentages not already divided by 100
+     y_format <- ".1%" # Default percentage format for axis
+     # Need to adjust plot_value if the input 'value' is like 25 for 25%
+     # Let's assume for now other plots have 'value' already as decimal (0.25) or handle it in plot_value calc
+     # Re-checking plot_value: TRUE ~ value. If value is 25, plot_value is 25.
+     # Re-checking formatted_value_str: TRUE ~ scales::percent(value / 100, accuracy=0.1) - This is correct for tooltip.
+     # Re-checking y_format: .1% - This expects values like 0.25 to show as 25.0%
+     # --> If input 'value' for generic percentages is like 25, we need to adjust plot_value
+     plot_data <- plot_data %>%
+       mutate(plot_value = if_else(
+         !source_title %in% c("Number of Researchers", "China-US in the CS", "Expansion of the CS", "Country participation in the CS", "Annual growth rate of the GDP"),
+         value / 100, # Convert percentage points (e.g., 25) to decimal (0.25) for plotting
+         plot_value # Keep previously calculated plot_value otherwise
+       ))
+
   }
 
 
   # --- Plotting Logic ---
-  p <- plot_ly(data = plot_data)
+  p <- plot_ly(data = plot_data) # Use the sorted plot_data
 
   # Special Dual-Axis for China-US
   if (source_title == "China-US in the CS") {
     main_countries <- c("China", "United States")
+    # Data is already sorted, filtering preserves order within groups
     main_data <- filter(plot_data, country %in% main_countries)
     collab_data <- filter(plot_data, !country %in% main_countries)
 
@@ -847,15 +871,17 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
         hoverinfo = 'text', text = ~tooltip_text
       ) %>%
       layout(
-        yaxis = list(title = paste0(y_title, " (Main)"), tickformat = y_format, range = c(0.6, 1.0), side = 'left'),
+        # Ensure yaxis uses the correct title passed to the function
+        yaxis = list(title = y_title, tickformat = y_format, range = c(0.6, 1.0), side = 'left'),
         yaxis2 = list(title = "Collaboration Share", tickformat = y_format, range = c(0, 0.2), overlaying = "y", side = 'right'),
         legend = list(orientation = 'h', y = -0.15)
       )
 
   } else {
-    # Standard Plot for other sources
+    # Standard Plot for other sources (including "Country participation in the CS")
     p <- p %>%
       add_trace(
+        # Data is already sorted overall by country, then year
         x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
         type = 'scatter', mode = 'lines+markers', name = ~country,
         marker = list(size = 8, opacity = 0.8), line = list(width = 2),
@@ -871,12 +897,14 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
   p <- p %>% layout(
     title = list(text = paste("Figure:", source_title), font = list(size = 14)),
     xaxis = list(title = "Year", gridcolor = "#e8e8e8"),
-    yaxis = list(gridcolor = "#e8e8e8"), # Base yaxis settings
+    # Apply base y-axis settings here; specific settings (like title, format) are applied above
+    yaxis = list(gridcolor = "#e8e8e8"),
     hovermode = "closest",
     hoverlabel = list(bgcolor = "white", font = list(size = 11)),
     plot_bgcolor = "#f8f9fa",
     paper_bgcolor = "#ffffff",
-    margin = list(l = 60, r = 40, b = 80, t = 50) # Adjust margins
+    margin = list(l = 60, r = if(source_title == "China-US in the CS") 80 else 40, # More space for dual axis label
+                  b = 80, t = 50) # Adjust margins
   )
 
   # Add GDP Annotations if applicable
@@ -893,5 +921,6 @@ create_article_plot_simple <- function(article_df, source_title, y_title) {
     )
   }
 
+  # Apply final config
   p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
 }

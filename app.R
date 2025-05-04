@@ -169,6 +169,10 @@ ui <- page_navbar(
       col_widths = c(6, 6, 6, 6), # Arrange plots in 2x2 grid
       row_heights = c(1, 1), # Equal height rows
       card(
+        card_header("Country Participation in the Chemical Space"),
+        withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
+      ),
+      card(
         card_header("GDP Growth Rate"),
         withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
       ),
@@ -684,6 +688,12 @@ server <- function(input, output, session) {
   # --- End Updated Value Box UI ---
 
   # ... (rest of server logic) ...
+
+  output$countrycsPlot <- renderPlotly({
+    req(nrow(article_data) > 0)
+    df <- article_data %>% filter(source == "Country participation in the CS")
+    create_article_plot_simple(df, "Country participation in the CS", "Number of New Substances")
+  })
 
   output$articleGdpPlot <- renderPlotly({
     req(nrow(article_data) > 0)
