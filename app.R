@@ -40,16 +40,32 @@ min_year_data <- data_objects$min_year
 max_year_data <- data_objects$max_year
 # --- NEW: Get pre-loaded article data ---
 article_data <- data_objects$article_data
-# --- End NEW ---
+
+# --- Links ---
+
+link_github <- tags$a(
+  shiny::icon("github"), "Github",
+  href = "https://santi-rios.github.io/publications/",
+  target = "_blank"
+)
+
 
 # --- UI Definition ---
 ui <- page_navbar( # Changed from page_sidebar
-  title = "Chemical Space Explorer",
+  # title = "Chemical Space Explorer",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
   fillable = FALSE,
-  navbar_options = navbar_options(position = "static-top", collapsible = TRUE),
+  # navbar_options = navbar_options(position = "static-top", collapsible = TRUE),
+  nav_menu(
+    icon = bsicons::bs_icon("patch-exclamation-fill"),
+    title = "Useful Links",
+    align = "right",
+    input_dark_mode(id = "mode", mode = "light"),
+    nav_item(link_github)
+  ),
   # Main application sidebar (for selection info and top contributors)
   sidebar = sidebar(
+    # --- Selection Info Card ---
     width = 300,
     title = "Selection & Top Contributors", # Updated title
     open = "desktop",
@@ -59,78 +75,80 @@ ui <- page_navbar( # Changed from page_sidebar
     helpText("Top individual contributors based on current filters (avg % contribution). Click to select."),
     uiOutput("top_contributors_ui")
   ),
-
   # --- Explorer Tab ---
   nav_panel(
-    title = "Explorer",
-      # --- Map and Filters Card ---
-      card(
-        full_screen = TRUE,
-        card_header(
-          "Country Selection & Filters",
-          tooltip(
-            bsicons::bs_icon("info-circle"),
-            "Select a country on the map to see its contribution to the chemical space. Learn More.",
-            placement = "top",
-          ),
-          popover(
-            bsicons::bs_icon("gear", class = "ms-auto"),
-            sliderInput(
-              "years", "Year Range 📅:",
-              min = min_year_data,
-              max = max_year_data,
-              value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
-              step = 1, sep = ""
-            ),
-            radioButtons(
-              "chemical_category", "Chemical Category 🧪:",
-              choices = chemical_categories,
-              selected = "All"
-            ),
-            uiOutput("region_filter_ui"), # Filter Map by Region
-            actionButton(
-              "clear_selection", "Clear Selection",
-              icon = icon("trash-alt"),
-              class = "btn-outline-danger btn-sm mb-3",
-              width = "100%"
-            ),
-            title = "Map Filters"
-          )
-          ), # Updated header
-          # Main content area for the map
-          leafletOutput("selection_map", height = "350px"), # Adjusted height slightly
-          card_footer(
-            p("Use the filters from the right sidebar to adjust the year range and chemical space category."),
-            p("Select multiple countries to explore trends and collaborations.")
+    title = "Chemical Space Explorer",
+    # --- Map and Filters Card ---
+    card(
+      full_screen = TRUE,
+      card_header(
+        "Country Selection & Filters 🌎",
+        tooltip(
+          bsicons::bs_icon("info-circle"),
+          "Select a country on the map to see its contribution to the chemical space.",
+          placement = "top"
         )
-      ), # End Map and Filters Card
+      ), # Updated header
+      # Main content area for the map
+      leafletOutput("selection_map", height = "350px"), # Adjusted height slightly
+      card_footer(
+        p("Use the filters from the right sidebar to adjust the year range and chemical space category."),
+        p("Select multiple countries to explore trends and collaborations.")
+      )
+    ), # End Map and Filters Card
 
-      # --- Plot and Table Card ---
-      navset_card_pill(
-        full_screen = TRUE,
-        title = uiOutput("plot_header_ui"), # Dynamic header as title        
-        # --- Main Plot Panel ---
-        # This panel will show the main plot and the contribution map
-        nav_panel(
-          "Trends in Chemical Space 📈",
-          # card_title("Interactive Time Series Plot"), # Added specific title
-          uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
-          withSpinner(plotlyOutput("main_plot", height = "400px"))
+    popover(
+        bsicons::bs_icon("gear", class = "ms-auto"),
+        title = "Data Filters",
+        show = TRUE,
+        sliderInput(
+          "years", "Year Range 📅:",
+          min = min_year_data,
+          max = max_year_data,
+          value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
+          step = 1, sep = ""
         ),
-        # --- NEW: Contribution Map Panel ---
-        nav_panel(
-          "Country Contribution Map 📌",
-          # card_title("Country Contribution Map 📌"), # Added specific title
-          helpText("Shows the average contribution percentage over the selected period for the currently displayed countries."),
-          withSpinner(plotlyOutput("contributionMapPlot", height = "400px")) # New plot output
+        radioButtons(
+          "chemical_category", "Chemical Category 🧪:",
+          choices = chemical_categories,
+          selected = "All"
         ),
-        # --- End NEW Panel ---
-        nav_panel(
-          "Data Table",
-          card_title("Data Summary Table"), # Added specific title
-          DTOutput("summary_table")
+        uiOutput("region_filter_ui"), # Filter Map by Region
+        actionButton(
+          "clear_selection", "Clear Selection",
+          icon = icon("trash-alt"),
+          class = "btn-outline-danger btn-sm mb-3",
+          width = "100%"
         )
-      ) # End Plot and Table Card
+      ),
+    nav_spacer(),
+
+    # --- Plot and Table Card ---
+    navset_card_pill(
+      full_screen = TRUE,
+      title = uiOutput("plot_header_ui"), # Dynamic header as title
+      # --- Main Plot Panel ---
+      # This panel will show the main plot and the contribution map
+      nav_panel(
+        "Trends in Chemical Space 📈",
+        # card_title("Interactive Time Series Plot"), # Added specific title
+        uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
+        withSpinner(plotlyOutput("main_plot", height = "400px"))
+      ),
+      # --- NEW: Contribution Map Panel ---
+      nav_panel(
+        "Country Contribution Map 📌",
+        # card_title("Country Contribution Map 📌"), # Added specific title
+        helpText("Shows the average contribution percentage over the selected period for the currently displayed countries."),
+        withSpinner(plotlyOutput("contributionMapPlot", height = "400px")) # New plot output
+      ),
+      # --- End NEW Panel ---
+      nav_panel(
+        "Data Table",
+        card_title("Data Summary Table"), # Added specific title
+        DTOutput("summary_table")
+      )
+    ) # End Plot and Table Card
     # Removed extra parenthesis here
   ), # End Explorer nav_panel
 
@@ -140,7 +158,7 @@ ui <- page_navbar( # Changed from page_sidebar
     helpText("These plots replicate key figures from the source article and are based on a static dataset."),
     layout_columns(
       col_widths = c(6, 6, 6, 6), # Arrange plots in 2x2 grid
-      row_heights = c(1, 1),      # Equal height rows
+      row_heights = c(1, 1), # Equal height rows
       card(
         card_header("GDP Growth Rate"),
         withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
@@ -290,6 +308,10 @@ server <- function(input, output, session) {
 
   # --- Dynamic UI Elements ---
 
+    output$mode <- renderText({
+    paste("You are in", input$mode, "mode.")
+  })
+
   # Display selected countries info - Use the DEBOUNCED value
   output$selection_info_ui <- renderUI({
     countries <- selected_countries() # Use debounced value
@@ -322,10 +344,10 @@ server <- function(input, output, session) {
     req(countries)
     if (length(countries) > 1) {
       radioButtons(
-        "display_mode_select", "Display Mode:",
+        "display_mode_select", "Display Mode: ✨",
         choices = c(
-          "Compare Individual Contributions" = "compare_individuals",
-          "Find Joint Collaborations" = "find_collaborations"
+          "Individual Contributions 🗾" = "compare_individuals",
+          "Find Joint Collaborations 🤝🏽" = "find_collaborations"
         ),
         selected = display_mode(),
         inline = TRUE
@@ -531,7 +553,6 @@ server <- function(input, output, session) {
   # Add more renderPlotly calls here if you add more plots (e.g., for "Country participation in the CS")
 
   # --- End NEW Outputs ---
-
 } # End server
 
 # Run the app
