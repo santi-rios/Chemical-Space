@@ -123,11 +123,11 @@ ui <- page_navbar(
     navset_card_pill(
       id = "plot_tabs", # Added an ID for potential future use
       full_screen = TRUE,
-      title = uiOutput("plot_header_ui"), # Dynamic header as title
       # --- Main Plot Panel ---
       nav_panel(
         title = "Trends 📈", # Simplified title
         value = "trends",   # Added value for identification
+        uiOutput("plot_header_ui"), # Dynamic header as title        
         uiOutput("display_mode_ui"), # Conditional UI for multi-country selection
         withSpinner(plotlyOutput("main_plot", height = "400px"))
       ),
@@ -142,6 +142,7 @@ ui <- page_navbar(
       nav_panel(
         title = "Data Table",
         value = "data_table", # Added value
+        helpText("Click on the column name to sort by that variable. Use the search box to filter rows."),
         DTOutput("summary_table")
       ),
       card_footer(

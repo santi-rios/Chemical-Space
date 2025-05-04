@@ -373,7 +373,7 @@ get_display_data <- function(ds, selected_isos, year_range, chemical_category,
             summarise(total_percentage = sum(percentage, na.rm = TRUE), .groups = "drop") %>%
             # Prepare for plotting
             mutate(
-                plot_group = iso2c, # Group lines/points by collaboration ID
+                plot_group = country, # Group lines/points by collaboration ID
                 plot_color = collab_type, # Color by collaboration type
                 tooltip_text = paste0(
                     "<b>Collaboration:</b> ", country, "<br>",
@@ -423,8 +423,8 @@ create_main_plot <- function(data, display_mode, selected_isos, country_list) {
     # Use country's own color, group by country
     p <- p +
       geom_line(aes(color = plot_group), linewidth = 0.5, alpha = 0.8) +
-      geom_point(aes(color = plot_group, text = tooltip_text, size = total_percentage), alpha = 0.7)
-
+      geom_point(aes(color = plot_group, text = tooltip_text, size = total_percentage), alpha = 0.7) +
+      labs(x = "Year", y = "% of new substances contributed by country")
     # Apply manual color scale using 'cc' values
     country_colors <- data %>% distinct(plot_group, plot_color)
     color_values <- setNames(country_colors$plot_color, country_colors$plot_group)
@@ -439,6 +439,7 @@ create_main_plot <- function(data, display_mode, selected_isos, country_list) {
     p <- p +
       geom_line(aes(color = plot_color), linewidth = 0.5, alpha = 0.8) + # plot_color is collab_type here
       geom_point(aes(color = plot_color, shape = plot_color, text = tooltip_text, size = total_percentage), alpha = 0.7) +
+      labs(x = "Year", y = "% of new substances contributed by each collaboration") +
       scale_color_brewer(palette = "Set1", name = "Collaboration Type") +
       scale_shape_discrete(name = "Collaboration Type") +
       guides(color = "none")
@@ -448,11 +449,10 @@ create_main_plot <- function(data, display_mode, selected_isos, country_list) {
   p <- p +
     scale_radius(range = c(1, 6), name = "") +
     scale_y_continuous(
-      labels = scales::percent_format(accuracy = 0.01, scale = 1),
+      labels = scales::percent_format(scale = 1),
       expand = expansion(mult = c(0.05, 0.15)) # Add padding
     ) +
     scale_x_continuous(breaks = scales::pretty_breaks(n = 8)) +
-    labs(x = "Year", y = "% Contribution") + # Simplified axis labels
     theme_minimal(base_size = 10) +
     theme(
       legend.position = "right",
@@ -544,7 +544,7 @@ create_summary_table <- function(data, display_mode) {
       scrollX = TRUE # Enable horizontal scrolling if needed
     ),
     rownames = FALSE,
-    filter = 'top' # Add column filters
+    filter = 'none' # Add column filters
   )
 }
 
