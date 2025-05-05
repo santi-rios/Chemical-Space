@@ -734,28 +734,28 @@ create_contribution_map_plot <- function(processed_data_df,
   
   # ... (rest of functions.R) ...
 
-
-#' Create Simplified Plot for Static Article Data
+#' Create Simplified Plot for Static Article Data (using ggplot2 + ggplotly)
 #'
-#' Generates a Plotly line/dot plot for the pre-loaded article data,
+#' Generates a ggplot line/dot plot (converted to Plotly) for the pre-loaded article data,
 #' optionally animated by year.
-#' Handles basic formatting and dual-axis for specific sources.
-#' Corrects line drawing issues by sorting data.
+#' Handles basic formatting and attempts dual-axis for specific sources via rescaling.
 #'
 #' @param article_df Data frame containing the static article data for a specific source.
 #' @param source_title Character. The 'source' identifier (e.g., "Annual growth rate of the GDP").
 #' @param y_title Character. Label for the Y-axis.
 #' @param animate Logical. Should the plot be animated by year? Defaults to FALSE.
 #' @return A plotly object.
-#' @import plotly dplyr scales RColorBrewer
+#' @import ggplot2 plotly dplyr scales RColorBrewer
 #' @export
-create_article_plot_simple <- function(article_df, source_title, y_title, animate = FALSE) { # Added animate argument
+create_article_plot_simple <- function(article_df, source_title, y_title, animate = FALSE) {
 
   if (!nrow(article_df) > 0) {
+    # Return an empty plotly object if no data
     return(plotly_empty(type = "scatter", mode = "markers") %>% layout(title = "No data for this figure."))
   }
 
   # --- Define Consistent Colors ---
+  # (Color definition remains the same)
   country_colors <- c(
     "China" = "#c5051b", "China alone" = "#c56a75", "China w/o US" = "#9b2610",
     "France" = "#0a3161", "Germany" = "#000000", "India" = "#ff671f",
@@ -778,26 +778,32 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
   }
 
   # --- Data Prep & Formatting based on Source ---
-  y_format <- ""
-  hover_format <- ".2f"
-  y_range <- NULL
+  # (Data prep remains largely the same, ensure plot_value is correct)
+  y_format_func <- scales::label_number(accuracy = 0.1) # Default format
+  y_sec_title <- NULL # For secondary axis
+  y_sec_format_func <- NULL
+  y_limits <- NULL
+  y_sec_limits <- NULL # Store original limits for secondary axis scaling
 
   plot_data <- article_df %>%
       mutate(
+          # Calculate plot_value based on source
           plot_value = case_when(
               source_title == "Number of Researchers" ~ value / 1e6,
-              source_title == "China-US in the CS" & country %in% c("China", "United States") ~ value / 100,
-              source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ value,
+              # For dual axis, keep original values for now, scale later
+              source_title == "China-US in the CS" ~ value,
+              # Keep original value for counts
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ value,
-              TRUE ~ value
+              # Assume others are percentages if not specified
+              TRUE ~ value / 100
           ),
+          # Format value string for tooltips
           formatted_value_str = case_when(
               source_title == "Number of Researchers" ~ scales::comma(value, accuracy = 1),
               source_title == "Annual growth rate of the GDP" ~ paste0(scales::comma(value, accuracy = 0.1), "%"),
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ scales::comma(value, accuracy = 1),
-              source_title == "China-US in the CS" & country %in% c("China", "United States") ~ scales::percent(value / 100, accuracy = 0.1),
-              source_title == "China-US in the CS" & !(country %in% c("China", "United States")) ~ scales::percent(value, accuracy = 0.1),
-              TRUE ~ scales::percent(value / 100, accuracy = 0.1)
+              source_title == "China-US in the CS" ~ scales::percent(value / 100, accuracy = 0.1), # Assuming input is 0-100
+              TRUE ~ scales::percent(value / 100, accuracy = 0.1) # Assuming input is 0-100
           ),
           tooltip_text = paste0(
               "<b>", country, "</b><br>",
@@ -805,128 +811,161 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
               "Value: ", formatted_value_str
           )
       ) %>%
-      arrange(country, year) # IMPORTANT: Keep sorting for lines
+      # IMPORTANT: Arrange by group (country) and then x (year) for correct line drawing
+      arrange(country, year)
 
-  # Adjust titles and formats
+  # Adjust titles and formats based on source
   if (source_title == "Number of Researchers") {
     y_title <- paste0(y_title, " (Millions)")
-    y_format <- ".2f"
+    y_format_func <- scales::label_number(accuracy = 0.01)
   } else if (source_title == "Annual growth rate of the GDP") {
-    y_title <- y_title
-    y_format <- ".1f"
+    y_title <- y_title # Already includes %
+    y_format_func <- scales::label_number(accuracy = 0.1, suffix = "%")
+    # Adjust plot_value if input is not already scaled 0-100
+    plot_data <- plot_data %>% mutate(plot_value = value) # Assuming input is already correct scale
   } else if (source_title %in% c("Expansion of the CS", "Country participation in the CS")) {
-    y_format <- ",.0f"
+    y_format_func <- scales::label_comma(accuracy = 1)
     y_title <- y_title
   } else if (source_title == "China-US in the CS") {
-     y_format <- ".0%"
+    # Dual Axis Setup
+    y_title <- "Contribution Share (%)" # Primary axis title
+    y_format_func <- scales::label_percent(accuracy = 1)
+    y_limits <- c(60, 100) # Primary axis limits (original scale: 0.6 to 1.0)
+
+    y_sec_title <- "Collaboration Share (%)"
+    y_sec_format_func <- scales::label_percent(accuracy = 1)
+    y_sec_limits <- c(0, 20) # Secondary axis limits (original scale: 0 to 0.2)
+
+    # Rescale secondary data to primary axis range
+    main_countries <- c("China", "United States")
+    plot_data <- plot_data %>%
+      mutate(
+        plot_value_scaled = if_else(
+          country %in% main_countries,
+          plot_value, # Primary axis data (already 0-100)
+          # Scale secondary axis data (collab share, assumed 0-100) to primary range (60-100)
+          (plot_value - y_sec_limits[1]) / (y_sec_limits[2] - y_sec_limits[1]) * (y_limits[2] - y_limits[1]) + y_limits[1]
+        ),
+        # Keep original plot_value for tooltips if needed, or use formatted_value_str
+        # tooltip_text = paste0(...) # Rebuild tooltip if using original value
+      )
   } else {
-     y_format <- ".1%"
-     # Adjust plot_value if input 'value' is like 25 for 25%
-     plot_data <- plot_data %>%
-       mutate(plot_value = if_else(
-         !source_title %in% c("Number of Researchers", "China-US in the CS", "Expansion of the CS", "Country participation in the CS", "Annual growth rate of the GDP"),
-         value / 100,
-         plot_value
-       ))
+     # Default percentage formatting
+     y_format_func <- scales::label_percent(accuracy = 0.1)
   }
 
-  # --- Plotting Logic ---
-  # Initialize plot WITHOUT frame argument here
-  p <- plot_ly(data = plot_data)
+  # --- Plotting Logic using ggplot ---
+  # Define frame aesthetic for ggplotly
+  frame_aes <- if (animate) aes(frame = year) else aes()
 
-  # Define frame aesthetic if animating
-  frame_aes <- if (animate) ~year else NULL
+  # Base ggplot object
+  gg <- ggplot(plot_data, aes(x = year, group = country, text = tooltip_text)) +
+        frame_aes # Add frame aesthetic here
 
-  # Special Dual-Axis for China-US
+  # Add layers based on source
   if (source_title == "China-US in the CS") {
     main_countries <- c("China", "United States")
-    main_data <- filter(plot_data, country %in% main_countries)
-    collab_data <- filter(plot_data, !country %in% main_countries)
-
-    p <- p %>%
-      add_trace(
-        data = main_data, x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
-        type = 'scatter', mode = 'lines+markers', yaxis = "y1",
-        # Use name argument explicitly for legend
-        name = ~country,
-        # Add frame aesthetic here
-        frame = frame_aes,
-        marker = list(size = 8, opacity = 0.8), line = list(width = 2, simplify = FALSE), # simplify=FALSE might help lines
-        hoverinfo = 'text', text = ~tooltip_text
-      ) %>%
-      add_trace(
-        data = collab_data, x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
-        type = 'scatter', mode = 'lines+markers', yaxis = "y2",
-        name = ~country,
-        frame = frame_aes,
-        marker = list(size = 7, opacity = 0.8), line = list(width = 2, dash = 'dot', simplify = FALSE),
-        hoverinfo = 'text', text = ~tooltip_text
-      ) %>%
-      layout(
-        yaxis = list(title = y_title, tickformat = y_format, range = c(0.6, 1.0), side = 'left'),
-        yaxis2 = list(title = "Collaboration Share", tickformat = y_format, range = c(0, 0.2), overlaying = "y", side = 'right'),
-        legend = list(orientation = 'h', y = -0.15)
+    gg <- gg +
+      # Primary axis data (use plot_value_scaled which is same as plot_value here)
+      geom_line(data = ~filter(.x, country %in% main_countries),
+                aes(y = plot_value_scaled, color = country), linewidth = 0.8) +
+      geom_point(data = ~filter(.x, country %in% main_countries),
+                 aes(y = plot_value_scaled, color = country), size = 2.5, alpha = 0.8) +
+      # Secondary axis data (use plot_value_scaled which is the rescaled value)
+      geom_line(data = ~filter(.x, !country %in% main_countries),
+                aes(y = plot_value_scaled, color = country), linetype = "dotted", linewidth = 0.8) +
+      geom_point(data = ~filter(.x, !country %in% main_countries),
+                 aes(y = plot_value_scaled, color = country), size = 2, alpha = 0.8, shape = 17) + # Triangle shape
+      # Define primary and secondary axes
+      scale_y_continuous(
+        name = y_title,
+        labels = y_format_func,
+        limits = y_limits / 100, # Convert limits to 0-1 scale for percent_format
+        # Secondary axis definition (transformation reverses the scaling)
+        sec.axis = sec_axis(
+            trans = ~ (. - y_limits[1]/100) / (y_limits[2]/100 - y_limits[1]/100) * (y_sec_limits[2]/100 - y_sec_limits[1]/100) + y_sec_limits[1]/100,
+            name = y_sec_title,
+            labels = y_sec_format_func
+        )
       )
-
   } else {
     # Standard Plot for other sources
-    p <- p %>%
-      add_trace(
-        x = ~year, y = ~plot_value, color = ~country, colors = plot_colors,
-        type = 'scatter', mode = 'lines+markers',
-        # Use name argument explicitly for legend
-        name = ~country,
-        # Add frame aesthetic here
-        frame = frame_aes,
-        marker = list(size = 8, opacity = 0.8), line = list(width = 2, simplify = FALSE), # simplify=FALSE might help lines
-        hoverinfo = 'text', text = ~tooltip_text
-      ) %>%
-      layout(
-        yaxis = list(title = y_title, tickformat = y_format, range = y_range, autorange = if(is.null(y_range)) TRUE else FALSE),
-        legend = list(orientation = 'h', y = -0.15)
-      )
+    gg <- gg +
+      geom_line(aes(y = plot_value, color = country), linewidth = 0.8) +
+      geom_point(aes(y = plot_value, color = country), size = 2.5, alpha = 0.8) +
+      scale_y_continuous(name = y_title, labels = y_format_func, limits = y_limits) # Use original plot_value
   }
 
-  # --- Common Layout Elements ---
+  # --- Common ggplot Elements ---
+  gg <- gg +
+    scale_color_manual(values = plot_colors, name = "Country") + # Use defined colors
+    labs(
+      title = paste("Figure:", source_title),
+      x = "Year",
+      caption = NULL # Remove default caption if any
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+      axis.title.y.right = element_text(vjust = 1.5), # Adjust right axis title position
+      panel.grid.major = element_line(color = "#e8e8e8"),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "#f8f9fa", color = NA), # Match plotly bg
+      panel.background = element_rect(fill = "#f8f9fa", color = NA),
+      legend.position = "bottom",
+      legend.title = element_blank(), # Often hide title if colors are obvious
+      legend.key.size = unit(0.8, "lines"),
+      legend.text = element_text(size = 9),
+      plot.margin = margin(t = 10, r = if(source_title == "China-US in the CS") 20 else 10, b = 10, l = 10) # Adjust margins
+    )
+
+  # Add GDP Annotations if applicable
+  if (source_title == "Annual growth rate of the GDP") {
+    gg <- gg +
+      geom_vline(xintercept = 2007.5, linetype = "dashed", color = "grey", linewidth = 0.5) +
+      geom_vline(xintercept = 2019.5, linetype = "dashed", color = "grey", linewidth = 0.5) +
+      annotate("text", x = 2007.5, y = Inf, label = "Financial Crisis", hjust = -0.1, vjust = 1.5, size = 3, color = "grey") +
+      annotate("text", x = 2019.5, y = Inf, label = "COVID-19", hjust = -0.1, vjust = 1.5, size = 3, color = "grey")
+  }
+
+  # --- Convert to Plotly ---
+  # Convert ggplot to plotly, specifying tooltip text
+  p <- ggplotly(gg, tooltip = "text")
+
+  # --- Apply Plotly Layout/Animation ---
+  # Adjust layout elements that don't translate perfectly
   p <- p %>% layout(
-    title = list(text = paste("Figure:", source_title), font = list(size = 14)),
-    xaxis = list(title = "Year", gridcolor = "#e8e8e8"),
-    # Base y-axis settings (specifics applied above)
-    yaxis = list(gridcolor = "#e8e8e8"),
     hovermode = "closest",
     hoverlabel = list(bgcolor = "white", font = list(size = 11)),
+    legend = list(orientation = 'h', y = -0.15), # Adjust legend position
+    xaxis = list(gridcolor = "#e8e8e8"), # Ensure grid color
+    yaxis = list(gridcolor = "#e8e8e8"), # Ensure grid color
+    # Ensure background colors (might be redundant but safe)
     plot_bgcolor = "#f8f9fa",
     paper_bgcolor = "#ffffff",
+    # Adjust margins (ggplotly might override theme margins)
     margin = list(l = 60, r = if(source_title == "China-US in the CS") 80 else 40, b = 80, t = 50)
   )
 
-  # Add GDP Annotations if applicable (static, won't animate)
-  if (source_title == "Annual growth rate of the GDP") {
-    p <- p %>% layout(
-      shapes = list(
-        list(type = "line", x0 = 2007.5, x1 = 2007.5, y0 = 0, y1 = 1, yref = "paper", line = list(color = "grey", dash = "dash", width = 1)),
-        list(type = "line", x0 = 2019.5, x1 = 2019.5, y0 = 0, y1 = 1, yref = "paper", line = list(color = "grey", dash = "dash", width = 1))
-      ),
-      annotations = list(
-        list(x = 2007.5, y = 1.0, yref = "paper", text = "Financial Crisis", showarrow = FALSE, xanchor = 'left', font = list(size = 10, color = "grey")),
-        list(x = 2019.5, y = 1.0, yref = "paper", text = "COVID-19", showarrow = FALSE, xanchor = 'left', font = list(size = 10, color = "grey"))
-      )
-    )
+  # Apply secondary axis title style if it exists (ggplotly might not handle theme well)
+  if (source_title == "China-US in the CS") {
+      p <- p %>% layout(yaxis2 = list(titlefont = list(size=11))) # Match primary axis font size approx
   }
 
-  # --- Add Animation Controls if requested ---
+
+  # Add Animation Controls if requested
   if (animate) {
     p <- p %>%
       animation_opts(
-        frame = 100,        # Duration of each frame transition (ms)
-        transition = 50,   # Duration of the transition animation (ms)
-        redraw = FALSE      # Avoid full redraw if possible
+        frame = 100,
+        transition = 50,
+        redraw = FALSE
       ) %>%
       animation_slider(
         currentvalue = list(prefix = "Year: ", font = list(color="darkgrey"))
       ) %>%
       animation_button(
-        x = 0, xanchor = "left", y = -0.1, yanchor = "bottom" # Adjust button position if needed
+        x = 0, xanchor = "left", y = -0.2, yanchor = "bottom" # Adjust position slightly
       )
   }
 
