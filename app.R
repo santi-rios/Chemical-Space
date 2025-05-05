@@ -236,11 +236,11 @@ ui <- page_navbar(
       card(
         card_header("Chemical Space Expansion"),
         shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
+      ),
+      card(
+        card_header("Top 10 Collaboration Trends (All Chemicals)"),
+        shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
       )
-      # card(
-      #   card_header("China-US Contributions"),
-      #   shinycssloaders::withSpinner(plotlyOutput("articleChinaUsPlot", height = "350px"))
-      # )
     )
   ), # End Article Figures nav_panel
 
@@ -763,7 +763,7 @@ server <- function(input, output, session) {
   output$countrycsPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Country participation in the CS")
-    create_article_plot_simple(df, "Country participation in the CS", "Number of New Substances", animate = FALSE)
+    create_article_plot_simple(df, "Country participation in the CS", "% of New Substances", animate = FALSE)
   })
 
   output$articleGdpPlot <- renderPlotly({
@@ -781,14 +781,40 @@ server <- function(input, output, session) {
   output$articleCsExpansionPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Expansion of the CS")
-    create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances", animate = FALSE)
+    create_article_plot_simple(df, "Expansion of the CS", "% of New Substances", animate = FALSE)
   })
 
-  # output$articleChinaUsPlot <- renderPlotly({
-  #   req(nrow(article_data) > 0)
-  #   df <- article_data %>% filter(source == "China-US in the CS")
-  #   create_article_plot_simple(df, "China-US in the CS", "Contribution Share (%)", animate = FALSE)
-  # })
+  # --- NEW: Render Top Collaborations Plot ---
+  output$articleTopCollabsPlot <- renderPlotly({
+    # 1. Filter collaboration data for "All" chemicals
+    collab_data_all_chem <- ds %>%
+      filter(is_collab == TRUE, chemical == "All") %>%
+      # Select necessary columns (use 'country' as it holds the collab string)
+      select(year, percentage, country) %>%
+      collect() # Collect this subset
+
+    validate(need(nrow(collab_data_all_chem) > 0, "No collaboration data found for 'All' chemicals."))
+
+    # 2. Calculate average percentage per collaboration
+    avg_collabs <- collab_data_all_chem %>%
+      group_by(country) %>%
+      summarise(avg_percentage = mean(percentage, na.rm = TRUE)) %>%
+      filter(!is.na(avg_percentage)) %>%
+      arrange(desc(avg_percentage))
+
+    validate(need(nrow(avg_collabs) > 0, "Could not calculate average collaboration percentages."))
+
+    # 3. Get top 10 collaboration IDs
+    top_10_collab_ids <- head(avg_collabs$country, 10)
+
+    # 4. Filter the original collaboration data for these top 10
+    top_10_data <- collab_data_all_chem %>%
+      filter(country %in% top_10_collab_ids)
+
+    # 5. Create the plot using the new function
+    create_top_collabs_plot(top_10_data)
+  })
+  # --- End NEW Plot Rendering ---
 
 
 } # End server

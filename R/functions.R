@@ -668,32 +668,35 @@ create_contribution_map_plot <- function(processed_data_df,
     # Filter antartica and other non-country geometries
     filter(!is.na(name_long) & !name_long %in% c("Antarctica", "Greenland")) %>%
     mutate(
-      formatted_value = ifelse(!is.na(avg_percentage),
-                              scales::percent(avg_percentage / 100, accuracy = 0.01),
-                              "No data for current selection"),
-      # Create discrete fill variable using custom breaks
+      # --- Conditionally create tooltip text ---
+      tooltip_text = if_else(
+        !is.na(avg_percentage), # Only create text if avg_percentage is NOT NA
+        paste0(
+          "<b>", name_long, "</b> (", iso_a2, ")<br>",
+          "Avg Contribution: ", scales::percent(avg_percentage / 100, accuracy = 0.01), "<br>",
+          "Region: ", coalesce(region, "N/A"), "<br>",
+          "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
+          "Worst Year: ", coalesce(as.character(worst_year), "N/A")
+        ),
+        NA_character_ # Set to NA if avg_percentage IS NA
+      ),
+      # --- Keep other mutate steps ---
       fill_discrete = cut(
         avg_percentage,
         breaks = breaks,
         labels = labels,
         include.lowest = TRUE,
-        right = FALSE # Intervals like [0, 5), [5, 10)
-      ),
-      tooltip_text = paste0(
-        "<b>", name_long, "</b> (", iso_a2, ")<br>",
-        "Avg Contribution: ", formatted_value, "<br>",
-        "Region: ", coalesce(region, "N/A"), "<br>",
-        "Best Year: ", coalesce(as.character(best_year), "N/A"), "<br>",
-        "Worst Year: ", coalesce(as.character(worst_year), "N/A")
+        right = FALSE
       )
+      # formatted_value is no longer needed here if only used in tooltip
     )
 
   
     # Create plot using geom_sf
     p <- ggplot(plot_data_sf) +
-      geom_sf(aes(fill = fill_discrete, text = tooltip_text),
-              color = "black", linewidth = 0.1) + # Use geom_sf     
-      # Use a discrete color scale (Brewer or Viridis)
+      geom_sf(aes(fill = fill_discrete, text = tooltip_text), # tooltip_text is now NA for grey countries
+              color = "black", linewidth = 0.1) +
+      # ... (rest of scale_fill_brewer, labs, coord_sf, theme) ...
       scale_fill_brewer(
         palette = "Spectral", # Example Brewer palette
         direction = - 1,
@@ -702,9 +705,7 @@ create_contribution_map_plot <- function(processed_data_df,
         drop = FALSE # Keep all levels in the legend
       ) +
       labs(title = main_title) +
-      # --- Add coord_sf for projection ---
-      coord_sf(crs = "+proj=robin") + # Apply Mollweide projection
-      # --- End projection ---
+      coord_sf(crs = "+proj=robin") + # Keep projection if desired
       theme_void() + # Minimal theme
       theme(
         plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
@@ -713,21 +714,17 @@ create_contribution_map_plot <- function(processed_data_df,
         legend.title = element_text(size = 9, face = "bold"),
         legend.text = element_text(size = 8),
         legend.key.size = unit(0.8, "lines"),
-        # Ensure plot background is transparent if theme_void doesn't do it fully
         panel.background = element_rect(fill = "transparent", colour = NA),
         plot.background = element_rect(fill = "transparent", colour = NA)
       ) +
-      guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1)) # Center legend title
-  
-    # Convert to plotly
-    # Note: ggplotly's handling of complex projections can sometimes be imperfect,
-    # but it often works reasonably well.
+      guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1))
+
+    # Convert to plotly - it should ignore NA text values
     ggplotly(p, tooltip = "text") %>%
       layout(
         legend = list(orientation = "h", y = -0.05, x = 0.5, xanchor = "center"),
-        margin = list(b = 50, t = 40, l = 10, r = 10) # Adjust margins
+        margin = list(b = 50, t = 40, l = 10, r = 10)
       ) %>%
-      # Try to ensure transparent background carries over to plotly
       layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
   
   }
@@ -920,16 +917,17 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
 
     # Standard Plot layers
     gg <- gg +
-      geom_line(aes(y = plot_value, color = country), linewidth = 0.8) +
-      geom_point(aes(y = plot_value, color = country), size = 2.5, alpha = 0.8) +
+      geom_line(aes(y = plot_value, color = country), linewidth = 0.3) +
+      geom_point(aes(y = plot_value, color = country, size = plot_value), alpha = 0.6) +
+      scale_size_area(max_size = 6) +
       scale_y_continuous(name = y_title, labels = y_format_func, limits = y_limits) # Use potentially scaled plot_value (e.g., 0-1 for %)
 
     # Common ggplot Elements
     gg <- gg +
       scale_color_manual(values = plot_colors, name = "Country") +
       labs(
-        title = paste("Figure:", source_title),
-        x = "Year",
+        # title = paste("Figure:", source_title),
+        x = element_blank(),
         caption = NULL
       ) +
       theme_minimal(base_size = 11) +
@@ -951,8 +949,8 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
       gg <- gg +
         geom_vline(xintercept = 2007.5, linetype = "dashed", color = "grey", linewidth = 0.5) +
         geom_vline(xintercept = 2019.5, linetype = "dashed", color = "grey", linewidth = 0.5) +
-        annotate("text", x = 2007.5, y = Inf, label = "Financial Crisis", hjust = -0.1, vjust = 1.5, size = 3, color = "grey") +
-        annotate("text", x = 2019.5, y = Inf, label = "COVID-19", hjust = -0.1, vjust = 1.5, size = 3, color = "grey")
+        annotate("text", x = 2007.5, y = 11, label = "Financial Crisis", hjust = -0.1, vjust = 1.5, size = 3, color = "#000000") +
+        annotate("text", x = 2019.5, y = 7, label = "COVID-19", hjust = -0.1, vjust = 1.5, size = 3, color = "#000000")
     }
 
     # Convert ggplot to plotly
@@ -990,3 +988,92 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
   # Apply final config to the resulting plotly object 'p'
   p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
 }
+
+# ... (existing functions) ...
+
+#' Create Plot for Top Collaboration Trends
+#'
+#' Generates a ggplot line/dot plot (converted to Plotly) showing the percentage
+#' contribution over time for the top N collaborations.
+#'
+#' @param top_collab_data Data frame containing year, percentage, and collaboration identifier (iso2c/country)
+#'                         for the top N collaborations. Must include columns: year, percentage, country (as collab ID).
+#' @param title Character. The main title for the plot.
+#' @return A plotly object.
+#' @import ggplot2 plotly dplyr scales RColorBrewer
+#' @export
+create_top_collabs_plot <- function(top_collab_data, title = "Top 10 Collaboration Trends (All Chemicals)") {
+
+  if (!nrow(top_collab_data) > 0) {
+    return(plotly_empty(type = "scatter", mode = "markers") %>% layout(title = "No collaboration data to display."))
+  }
+
+  # Ensure correct types and prepare tooltips
+  plot_data <- top_collab_data %>%
+    mutate(
+      year = as.numeric(year),
+      percentage = as.numeric(percentage),
+      tooltip_text = paste0(
+        "<b>Collaboration:</b> ", country, "<br>",
+        "<b>Year:</b> ", year, "<br>",
+        "<b>Percentage:</b> ", scales::percent(percentage / 100, accuracy = 0.01)
+      )
+    ) %>%
+    # Arrange for correct line drawing
+    arrange(country, year)
+
+  # Determine number of unique collaborations for color palette
+  num_collabs <- n_distinct(plot_data$country)
+  # Use a color palette suitable for distinct categories
+  collab_colors <- suppressWarnings(
+      colorRampPalette(RColorBrewer::brewer.pal(min(9, max(3, num_collabs)), "Set1"))(num_collabs)
+  )
+  names(collab_colors) <- unique(plot_data$country)
+
+
+  # Base ggplot object
+  gg <- ggplot(plot_data, aes(x = year, y = percentage, group = country, color = country, text = tooltip_text)) +
+    geom_line(linewidth = 0.8, alpha = 0.8) +
+    geom_point(size = 2.5, alpha = 0.7) +
+    scale_y_continuous(
+        name = "Contribution Share (%)",
+        labels = scales::percent_format(scale = 1, accuracy = 0.1) # Assuming input is 0-100
+    ) +
+    scale_color_manual(values = collab_colors, name = "Collaboration") +
+    labs(
+      title = title,
+      x = "Year",
+      caption = NULL
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+      panel.grid.major = element_line(color = "#e8e8e8"),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "#f8f9fa", color = NA),
+      panel.background = element_rect(fill = "#f8f9fa", color = NA),
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      legend.key.size = unit(0.8, "lines"),
+      legend.text = element_text(size = 8), # Smaller text if many collaborations
+      plot.margin = margin(t = 10, r = 10, b = 10, l = 10)
+    )
+
+  # Convert to Plotly
+  p <- ggplotly(gg, tooltip = "text") %>%
+    layout(
+      hovermode = "closest",
+      hoverlabel = list(bgcolor = "white", font = list(size = 11)),
+      legend = list(orientation = 'h', y = -0.2), # Adjust legend position if needed
+      xaxis = list(gridcolor = "#e8e8e8"),
+      yaxis = list(gridcolor = "#e8e8e8"),
+      plot_bgcolor = "#f8f9fa",
+      paper_bgcolor = "#ffffff",
+      margin = list(l = 60, r = 40, b = 100, t = 50) # Increase bottom margin for legend
+    ) %>%
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+
+  return(p)
+}
+
+# ... (rest of functions.R) ...
