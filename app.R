@@ -236,11 +236,11 @@ ui <- page_navbar(
       card(
         card_header("Chemical Space Expansion"),
         shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
-      ),
-      card(
-        card_header("China-US Contributions"),
-        shinycssloaders::withSpinner(plotlyOutput("articleChinaUsPlot", height = "350px"))
       )
+      # card(
+      #   card_header("China-US Contributions"),
+      #   shinycssloaders::withSpinner(plotlyOutput("articleChinaUsPlot", height = "350px"))
+      # )
     )
   ), # End Article Figures nav_panel
 
@@ -784,11 +784,11 @@ server <- function(input, output, session) {
     create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances", animate = FALSE)
   })
 
-  output$articleChinaUsPlot <- renderPlotly({
-    req(nrow(article_data) > 0)
-    df <- article_data %>% filter(source == "China-US in the CS")
-    create_article_plot_simple(df, "China-US in the CS", "Contribution Share (%)", animate = FALSE)
-  })
+  # output$articleChinaUsPlot <- renderPlotly({
+  #   req(nrow(article_data) > 0)
+  #   df <- article_data %>% filter(source == "China-US in the CS")
+  #   create_article_plot_simple(df, "China-US in the CS", "Contribution Share (%)", animate = FALSE)
+  # })
 
 
 } # End server
