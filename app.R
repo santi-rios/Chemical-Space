@@ -91,22 +91,84 @@ link_personal_pubs <- tags$a(
 # --- UI Definition ---
 ui <- page_navbar(
   title = "Chemical Space Explorer",
-  theme = bs_theme(version = 5, bootswatch = "flatly",
-                   # Optional: Add some custom CSS for spacing if needed
-                   # "navbar-nav { margin-right: 1rem; }", # Example
-                   # ".navbar-brand { margin-right: 2rem; }" # Example
-                   ),
-  fillable = FALSE,
+  theme = bs_theme(version = 5, bootswatch = "flatly"),
+  fillable = FALSE, # Main page container shouldn't fill height
 
-  # Add a spacer between title and main tabs for better visual separation
+  # Add a spacer between title and main tabs
   nav_spacer(),
 
-  # --- Explorer Tab ---
+  # --- Main Explorer Tab (Now includes Article Highlights) ---
   nav_panel(
-    title = "Chemical Space Explorer",
-    # --- Row 1: Map and Filters ---
+    title = "Explore Chemical Space", # Renamed slightly
+    icon = bsicons::bs_icon("binoculars-fill"), # Added icon
+
+    # --- Section 1: Article Highlights ---
+    card(
+      # card_header("Key Findings from the Article"), # Header might be redundant with title below
+      card_body(
+        padding = "1rem", # Adjust padding as needed
+        h4("Key Findings: China's Rise in the Chemical Space", style="text-align:center; margin-bottom: 0.5rem;"),
+        p(
+          "From 1996 to 2022, the landscape of chemical discovery shifted dramatically. China surged to dominate new substance creation, primarily through domestic research.",
+          "Conversely, the United States' solo contributions declined, becoming more reliant on international collaborations, particularly with China.",
+          "The plots below illustrate these trends, replicating key figures from the source article."
+        ),
+        helpText("Select a tab to view the corresponding figure."),
+        navset_card_tab( # Use tabs for compactness
+          id = "article_plot_tabs",
+          height = "420px", # Give the tabset a fixed height
+          full_screen = TRUE, # Allow plots to go full screen
+          # --- Article Plot Panels ---
+          nav_panel(
+            title = "Participation", # Short title for tab
+            tooltip( # Add tooltip to tab title
+                span("Participation", bsicons::bs_icon("info-circle")),
+                "Figure: Country Participation in the Chemical Space"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "GDP",
+             tooltip(
+                span("GDP", bsicons::bs_icon("info-circle")),
+                "Figure: GDP Growth Rate"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "Researchers",
+             tooltip(
+                span("Researchers", bsicons::bs_icon("info-circle")),
+                "Figure: Number of Researchers"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "Expansion",
+             tooltip(
+                span("Expansion", bsicons::bs_icon("info-circle")),
+                "Figure: Chemical Space Expansion"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "China-US",
+             tooltip(
+                span("China-US", bsicons::bs_icon("info-circle")),
+                "Figure: China-US Contributions"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleChinaUsPlot", height = "350px"))
+          )
+        ) # End navset_card_tab for article plots
+      ) # End card_body
+    ), # End card for Article Highlights
+
+    # --- Section 2: Interactive Exploration ---
+    h4("Interactive Chemical Space Explorer", style = "text-align: center; margin-top: 20px; margin-bottom: 10px;"),
+    p("Use the map and filters below to explore the data interactively.", style = "text-align: center; margin-bottom: 20px;"),
+
+    # --- Row 1: Map and Filters (Existing Code - No Changes Needed Here) ---
     layout_columns(
-      # Responsive column widths: Full width stack on XS/SM, 8/4 on MD+, 9/3 on LG+
       col_widths = c(12, 12, 8, 4, 9, 3),
       # --- Map Card ---
       card(
@@ -114,140 +176,73 @@ ui <- page_navbar(
         card_header(
           "Country Selection Map 🌎",
           tooltip(
-            bsicons::bs_icon("info-circle-fill"), # Changed icon slightly
+            bsicons::bs_icon("info-circle-fill"),
             "Click on a country to select/deselect. Data updates after a short delay. Use filters on the right to narrow down data or map layers."
             )
           ),
-        # Add a placeholder while map loads
         shinycssloaders::withSpinner(leafletOutput("selection_map", height = "450px"))
       ),
       # --- Filters Card ---
       card(
-        card_header("Filters & Options ⚙️"), # Renamed header
+        card_header("Filters & Options ⚙️"),
         card_body(
-          # Region Filter (Dynamic UI) - Moved to top for better dropdown visibility
           uiOutput("region_filter_ui"),
-          # Add a visual separator and spacing
           shiny::tags$hr(style = "margin-top: 1rem; margin-bottom: 1rem;"),
-          # Year Slider
           sliderInput(
-            "years", "Year Range:", # Simplified label
-            min = min_year_data,
-            max = max_year_data,
-            value = c(
-              max(min_year_data, 1996, na.rm = TRUE),
-              min(max_year_data, 2022, na.rm = TRUE)
-            ),
+            "years", "Year Range:",
+            min = min_year_data, max = max_year_data,
+            value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
             step = 1, sep = ""
           ),
-          # Chemical Category Radio Buttons
           radioButtons(
-            "chemical_category", "Chemical Space Category:", # Simplified label
-            choices = chemical_categories,
-            selected = "All"
+            "chemical_category", "Chemical Space Category:",
+            choices = chemical_categories, selected = "All"
           ),
-          tooltip( # Tooltip associated with radio buttons
+          tooltip(
             bsicons::bs_icon("question-circle"),
-            paste(
-              "Filter data by chemical subspace.",
-              "'All' includes Organic, Organometallic, and Rare-Earths."
-            ),
+            paste("Filter data by chemical subspace. 'All' includes Organic, Organometallic, and Rare-Earths."),
             placement = "right"
           ),
-          # Add some space before the button
           shiny::div(style = "margin-top: 2rem;"),
-          # Clear Selection Button
           actionButton(
-            "clear_selection", "Clear Map Selection", # Clarified label
-            icon = icon("trash-alt"),
-            class = "btn-outline-danger btn-sm", # Removed mt-3, handled by div above
-            width = "100%"
+            "clear_selection", "Clear Map Selection",
+            icon = icon("trash-alt"), class = "btn-outline-danger btn-sm", width = "100%"
           )
         )
       )
     ), # End layout_columns for Map & Filters
 
-    # --- Row 2: Plots and Table ---
-    # Conditional UI for display mode (appears when >1 country selected)
-    uiOutput("display_mode_ui"),
-    # Tabset for plots and table
+    # --- Row 2: Interactive Plots and Table (Existing Code - No Changes Needed Here) ---
+    uiOutput("display_mode_ui"), # Conditional display mode UI
     navset_card_pill(
       id = "plot_tabs",
       full_screen = TRUE,
-      # --- Main Plot Panel ---
       nav_panel(
-        title = "Trends",
-        icon = bsicons::bs_icon("graph-up"), # Added icon
-        value = "trends",
-        # Dynamic header shows what's being plotted
+        title = "Trends", icon = bsicons::bs_icon("graph-up"), value = "trends",
         uiOutput("plot_header_ui"),
-        # Add placeholder/spinner
         shinycssloaders::withSpinner(plotlyOutput("main_plot", height = "400px"))
       ),
-      # --- Contribution Map Panel ---
       nav_panel(
-        title = "Contribution Map",
-        icon = bsicons::bs_icon("geo-alt-fill"), # Added icon
-        value = "contribution_map",
+        title = "Contribution Map", icon = bsicons::bs_icon("geo-alt-fill"), value = "contribution_map",
         helpText("Shows average contribution percentage over the selected period for individual countries."),
         shinycssloaders::withSpinner(plotlyOutput("contributionMapPlot", height = "400px"))
       ),
-      # --- Data Table Panel ---
       nav_panel(
-        title = "Data Table",
-        icon = bsicons::bs_icon("table"), # Added icon
-        value = "data_table",
+        title = "Data Table", icon = bsicons::bs_icon("table"), value = "data_table",
         helpText("Detailed data for the current selection. Use search box to filter."),
         shinycssloaders::withSpinner(DTOutput("summary_table"))
       )
     ), # End navset_card_pill
 
-    # --- Row 3: Value Boxes ---
-    # Dynamic UI for value boxes (now shows overall top contributors)
+    # --- Row 3: Value Boxes (Existing Code - No Changes Needed Here) ---
     uiOutput("summary_value_boxes_ui")
 
-  ), # End Explorer nav_panel
+  ), # End Main Explorer nav_panel
 
-  # --- Article Figures Tab ---
-  nav_panel(
-    title = "Article Figures",
-    icon = bsicons::bs_icon("bar-chart-line-fill"), # Added icon
-    p(
-      strong("Key Findings from the Article:"), # Added emphasis
-      "From 1996 to 2022, China surged to dominate chemical discoveries, driven mainly by domestic research, while US solo contributions declined amidst rising international collaboration."
-    ),
-    helpText("Static plots replicating key figures from the source article. These plots do not react to the filters in the 'Explorer' tab."),
-    layout_columns(
-      # Responsive: 2 cols on MD+, 1 col on SM/XS
-      col_widths = c(12, 12, 6, 6),
-      # Plots arranged in cards
-      card(
-        card_header("Country Participation in the Chemical Space"),
-        shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
-      ),
-      card(
-        card_header("GDP Growth Rate"),
-        shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
-      ),
-      card(
-        card_header("Number of Researchers"),
-        shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
-      ),
-      card(
-        card_header("Chemical Space Expansion"),
-        shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
-      ),
-      card(
-        card_header("China-US Contributions"),
-        shinycssloaders::withSpinner(plotlyOutput("articleChinaUsPlot", height = "350px"))
-      )
-    )
-  ), # End Article Figures nav_panel
-
-  # --- Article Tab ---
+  # --- Article Tab (Keep this) ---
   nav_panel(
     title = "Original Article",
-    icon = bsicons::bs_icon("file-pdf"), # Added icon
+    icon = bsicons::bs_icon("file-pdf"),
     helpText("Displaying the original article PDF. Ensure your browser allows embedding or use the link in 'Useful Links' to open directly."),
     tags$iframe(
       style = "height:80vh; width:100%; scrolling:yes; border: none;",
@@ -255,17 +250,16 @@ ui <- page_navbar(
     )
   ), # End nav_panel
 
-  # --- Legal & Privacy Tabs (Combined into a Menu for less clutter) ---
+  # --- Legal & Privacy Menu (Keep this) ---
   nav_menu(
       title = "Legal Info",
-      align = "left", # Keep these less prominent than main tabs
+      align = "left",
       icon = bsicons::bs_icon("shield-check"),
       nav_panel(
           title = "Legal Notice",
           card(
               card_header("Legal Notice / Provider Identification"),
               card_body(
-                  # ... (Legal notice markdown content remains the same) ...
                    markdown(
                     "The following provides mandatory data concerning the provider of this Website, obligations with regard to data protection, as well as other important legal references involving the Website of the Max Planck Institute for Physics (Werner-Heisenberg Institute) Munich (http://www.mpp.mpg.de) as required by German law."
                   ),
@@ -330,7 +324,6 @@ ui <- page_navbar(
           card(
               card_header("Privacy Policy"),
               card_body(
-                  # ... (Privacy policy markdown content remains the same) ...
                   markdown(
                     "The Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG) takes the protection of your personal data very seriously. Here we provide you with information concerning the main aspects of data processing in the context of our application and recruitment procedures."
                   ),
@@ -386,12 +379,12 @@ ui <- page_navbar(
   # Add another spacer before the right-aligned menu
   nav_spacer(),
 
-  # --- Top Right Menu (Useful Links) ---
+  # --- Useful Links Menu (Keep this) ---
   nav_menu(
     title = "Useful Links",
     align = "right",
-    icon = bsicons::bs_icon("link-45deg"), # Added icon
-    # Add the new links here
+    icon = bsicons::bs_icon("link-45deg"),
+    # ... (nav_items for links remain unchanged) ...
     nav_item(link_app_repo),
     nav_item(link_issues),
     nav_item(link_raw_data),
@@ -399,14 +392,14 @@ ui <- page_navbar(
     nav_item(link_pi),
     nav_item(link_mis_mpg),
     nav_item(link_tec_monterrey),
-    nav_item(link_personal_pubs) # Kept the original link too
+    nav_item(link_personal_pubs)
   ),
 
-  # --- Footer ---
+  # --- Footer (Keep this) ---
   footer = div(
-     style = "text-align: center; padding: 10px; background: #f8f9fa; border-top: 1px solid #dee2e6;", # Added border
+     style = "text-align: center; padding: 10px; background: #f8f9fa; border-top: 1px solid #dee2e6;",
     "Source: Bermúdez-Montaña, M., et al. (2025). China's rise in the chemical space and the decline of US influence.",
-    a("Working Paper (ChemRxiv)", href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6", target = "_blank") # Added target blank
+    a("Working Paper (ChemRxiv)", href = "https://chemrxiv.org/engage/chemrxiv/article-details/67920ada6dde43c908f688f6", target = "_blank")
   )
 ) # End page_navbar
 
