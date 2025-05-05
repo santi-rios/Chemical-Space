@@ -95,7 +95,7 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
   map <- leaflet(map_data) %>%
     addTiles(urlTemplate = "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
              attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>') %>%
-    setView(lng = 10, lat = 30, zoom = 1)
+    setView(lng = 10, lat = 30, zoom = 2)
 
   # Add polygons by region group
   for (reg in available_regions) {
@@ -132,6 +132,7 @@ create_selection_map <- function(selected_countries = c(), country_list, availab
 
   # Add controls and search
   map %>%
+    # OPTIONAL: Add region groups to the map
     # addLayersControl(
     #     overlayGroups = available_regions,
     #     options = layersControlOptions(collapsed = TRUE, autoZIndex = TRUE),

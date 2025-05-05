@@ -125,12 +125,19 @@ ui <- page_navbar(
       card(
         card_header("Filters & Options ⚙️"), # Renamed header
         card_body(
+          # Region Filter (Dynamic UI) - Moved to top for better dropdown visibility
+          uiOutput("region_filter_ui"),
+          # Add a visual separator and spacing
+          shiny::tags$hr(style = "margin-top: 1rem; margin-bottom: 1rem;"),
           # Year Slider
           sliderInput(
             "years", "Year Range:", # Simplified label
             min = min_year_data,
             max = max_year_data,
-            value = c(max(min_year_data, 1996, na.rm = TRUE), min(max_year_data, 2022, na.rm = TRUE)),
+            value = c(
+              max(min_year_data, 1996, na.rm = TRUE),
+              min(max_year_data, 2022, na.rm = TRUE)
+            ),
             step = 1, sep = ""
           ),
           # Chemical Category Radio Buttons
@@ -139,22 +146,21 @@ ui <- page_navbar(
             choices = chemical_categories,
             selected = "All"
           ),
-          tooltip( # Tooltip moved below the radio buttons it explains
+          tooltip( # Tooltip associated with radio buttons
             bsicons::bs_icon("question-circle"),
-            "Filter data by chemical subspace. 'All' includes Organic, Organometallic, and Rare-Earths.",
+            paste(
+              "Filter data by chemical subspace.",
+              "'All' includes Organic, Organometallic, and Rare-Earths."
+            ),
             placement = "right"
           ),
-          # Region Filter (Dynamic UI)
-          uiOutput("region_filter_ui"),
-          br(),
-          br(),
-          br(),
-          br(),
+          # Add some space before the button
+          shiny::div(style = "margin-top: 2rem;"),
           # Clear Selection Button
           actionButton(
             "clear_selection", "Clear Map Selection", # Clarified label
             icon = icon("trash-alt"),
-            class = "btn-outline-danger btn-sm mt-3",
+            class = "btn-outline-danger btn-sm", # Removed mt-3, handled by div above
             width = "100%"
           )
         )
@@ -191,7 +197,7 @@ ui <- page_navbar(
         title = "Data Table",
         icon = bsicons::bs_icon("table"), # Added icon
         value = "data_table",
-        helpText("Detailed data for the current selection. Click column headers to sort. Use search box to filter."),
+        helpText("Detailed data for the current selection. Use search box to filter."),
         shinycssloaders::withSpinner(DTOutput("summary_table"))
       )
     ), # End navset_card_pill
@@ -411,7 +417,7 @@ server <- function(input, output, session) {
   selected_countries_immediate <- reactiveVal(c()) # Stores ISO codes immediately on click
   # Debounce still needed for downstream calculations (plots, table, value boxes)
   # Let's set it back to 3 seconds for testing, adjust as needed (e.g., 1000-1500ms might be good)
-  selected_countries <- debounce(selected_countries_immediate, 3000)
+  selected_countries <- debounce(selected_countries_immediate, 1000)
   display_mode <- reactiveVal("compare_individuals") # Default mode for >1 selection
 
   # --- Constants ---
