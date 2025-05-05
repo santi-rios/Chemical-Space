@@ -917,9 +917,9 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
 
     # Standard Plot layers
     gg <- gg +
-      geom_line(aes(y = plot_value, color = country), linewidth = 0.3) +
-      geom_point(aes(y = plot_value, color = country, size = plot_value), alpha = 0.6) +
-      scale_size_area(max_size = 6) +
+      geom_line(aes(y = plot_value, color = country), linewidth = 0.3, show.legend = FALSE) +
+      geom_point(aes(y = plot_value, color = country, size = plot_value), alpha = 0.6, show.legend = FALSE) +
+      scale_size_area(max_size = 3.5) +
       scale_y_continuous(name = y_title, labels = y_format_func, limits = y_limits) # Use potentially scaled plot_value (e.g., 0-1 for %)
 
     # Common ggplot Elements
@@ -954,7 +954,8 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     }
 
     # Convert ggplot to plotly
-    p <- ggplotly(gg, tooltip = "text")
+    p <- ggplotly(gg) %>%
+      config(displayModeBar = FALSE)
 
     # Apply Plotly Layout/Animation adjustments
     p <- p %>% layout(
@@ -966,7 +967,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
       plot_bgcolor = "#f8f9fa",
       paper_bgcolor = "#ffffff",
       margin = list(l = 60, r = 40, b = 80, t = 50)
-    )
+    ) 
 
     # Add Animation Controls if requested
     if (animate) {
@@ -986,7 +987,8 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
   } # End if/else for plotting logic
 
   # Apply final config to the resulting plotly object 'p'
-  p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
+  # p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
+  p
 }
 
 # ... (existing functions) ...
@@ -1002,7 +1004,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
 #' @return A plotly object.
 #' @import ggplot2 plotly dplyr scales RColorBrewer
 #' @export
-create_top_collabs_plot <- function(top_collab_data, title = "Top 10 Collaboration Trends (All Chemicals)") {
+create_top_collabs_plot <- function(top_collab_data, title = "Collaboration Trends") {
 
   if (!nrow(top_collab_data) > 0) {
     return(plotly_empty(type = "scatter", mode = "markers") %>% layout(title = "No collaboration data to display."))
@@ -1036,7 +1038,7 @@ create_top_collabs_plot <- function(top_collab_data, title = "Top 10 Collaborati
     geom_line(linewidth = 0.8, alpha = 0.8) +
     geom_point(size = 2.5, alpha = 0.7) +
     scale_y_continuous(
-        name = "Contribution Share (%)",
+        name = "% of new substances contributed by each collaboration",
         labels = scales::percent_format(scale = 1, accuracy = 0.1) # Assuming input is 0-100
     ) +
     scale_color_manual(values = collab_colors, name = "Collaboration") +
@@ -1060,7 +1062,7 @@ create_top_collabs_plot <- function(top_collab_data, title = "Top 10 Collaborati
     )
 
   # Convert to Plotly
-  p <- ggplotly(gg, tooltip = "text") %>%
+  p <- ggplotly(gg) %>%
     layout(
       hovermode = "closest",
       hoverlabel = list(bgcolor = "white", font = list(size = 11)),
@@ -1071,7 +1073,7 @@ create_top_collabs_plot <- function(top_collab_data, title = "Top 10 Collaborati
       paper_bgcolor = "#ffffff",
       margin = list(l = 60, r = 40, b = 100, t = 50) # Increase bottom margin for legend
     ) %>%
-    config(displayModeBar = TRUE, displaylogo = FALSE)
+    config(displayModeBar = FALSE)
 
   return(p)
 }

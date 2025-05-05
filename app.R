@@ -219,11 +219,15 @@ ui <- page_navbar(
     helpText("Static plots replicating key figures from the source article. These plots do not react to the filters in the 'Explorer' tab."),
     layout_columns(
       # Responsive: 2 cols on MD+, 1 col on SM/XS
-      col_widths = c(12, 12, 6, 6),
+      col_widths = c(12, 12, 12, 12, 12),
       # Plots arranged in cards
       card(
         card_header("Country Participation in the Chemical Space"),
         shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
+      ),
+      card(
+        card_header("Top 10 Collaboration Trends (All Chemicals)"),
+        shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
       ),
       card(
         card_header("GDP Growth Rate"),
@@ -236,10 +240,6 @@ ui <- page_navbar(
       card(
         card_header("Chemical Space Expansion"),
         shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
-      ),
-      card(
-        card_header("Top 10 Collaboration Trends (All Chemicals)"),
-        shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
       )
     )
   ), # End Article Figures nav_panel
@@ -781,7 +781,7 @@ server <- function(input, output, session) {
   output$articleCsExpansionPlot <- renderPlotly({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Expansion of the CS")
-    create_article_plot_simple(df, "Expansion of the CS", "% of New Substances", animate = FALSE)
+    create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances", animate = FALSE)
   })
 
   # --- NEW: Render Top Collaborations Plot ---
