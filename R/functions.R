@@ -758,7 +758,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     "USA w/o China" = "#006341", "United Kingdom" = "#74acdf", "United States" = "#002852",
     "All substances" = "#4879a7", "Organic Chemicals" = "#ff6d45",
     "Organometallics" = "#55713e", "Rare-Earths" = "#800525",
-    "CN-US collab/CN" = "#6d2f56", "CN-US collab/US" = "#ff8888", "US" = "#002853",
+    "CN-US collab/CN" = "#6d2f56", "CN-US collab/US" = "#ff8888", "US" = "#002853"
   )
 
   available_items <- unique(article_df$country)
