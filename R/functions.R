@@ -758,7 +758,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     "USA w/o China" = "#006341", "United Kingdom" = "#74acdf", "United States" = "#002852",
     "All substances" = "#4879a7", "Organic Chemicals" = "#ff6d45",
     "Organometallics" = "#55713e", "Rare-Earths" = "#800525",
-    "CN-US collab/CN" = "#6d2f56", "CN-US collab/US" = "#ff8888"
+    "CN-US collab/CN" = "#6d2f56", "CN-US collab/US" = "#ff8888", "US" = "#002853",
   )
 
   available_items <- unique(article_df$country)
@@ -802,7 +802,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
           tooltip_text = paste0(
               "<b>", country, "</b><br>",
               "Year: ", year, "<br>",
-              "Value: ", formatted_value_str
+              "", formatted_value_str
           )
       ) %>%
       arrange(country, year)
@@ -919,7 +919,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     gg <- gg +
       geom_line(aes(y = plot_value, color = country), linewidth = 0.3, show.legend = FALSE) +
       geom_point(aes(y = plot_value, color = country, size = plot_value), alpha = 0.6, show.legend = FALSE) +
-      scale_size_area(max_size = 3.5) +
+      scale_size_area(max_size = 5) +
       scale_y_continuous(name = y_title, labels = y_format_func, limits = y_limits) # Use potentially scaled plot_value (e.g., 0-1 for %)
 
     # Common ggplot Elements
@@ -954,7 +954,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     }
 
     # Convert ggplot to plotly
-    p <- ggplotly(gg) %>%
+    p <- ggplotly(gg, tooltip = "text") %>%
       config(displayModeBar = FALSE)
 
     # Apply Plotly Layout/Animation adjustments
@@ -1035,16 +1035,16 @@ create_top_collabs_plot <- function(top_collab_data, title = "Collaboration Tren
 
   # Base ggplot object
   gg <- ggplot(plot_data, aes(x = year, y = percentage, group = country, color = country, text = tooltip_text)) +
-    geom_line(linewidth = 0.8, alpha = 0.8) +
-    geom_point(size = 2.5, alpha = 0.7) +
+    geom_line(linewidth = 0.4, alpha = 0.4) +
+    geom_point(size = 2.5, alpha = 0.6) +
     scale_y_continuous(
-        name = "% of new substances contributed by each collaboration",
+        name = "% of new substances contributed",
         labels = scales::percent_format(scale = 1, accuracy = 0.1) # Assuming input is 0-100
     ) +
-    scale_color_manual(values = collab_colors, name = "Collaboration") +
+    scale_color_manual(values = collab_colors, name = "") +
     labs(
       title = title,
-      x = "Year",
+      x = element_blank(),
       caption = NULL
     ) +
     theme_minimal(base_size = 11) +
@@ -1062,7 +1062,7 @@ create_top_collabs_plot <- function(top_collab_data, title = "Collaboration Tren
     )
 
   # Convert to Plotly
-  p <- ggplotly(gg) %>%
+  p <- ggplotly(gg, tooltip = "text") %>%
     layout(
       hovermode = "closest",
       hoverlabel = list(bgcolor = "white", font = list(size = 11)),
