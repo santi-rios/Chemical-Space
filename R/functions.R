@@ -926,9 +926,10 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
         #   saveaspng = 'download png'
         #   )
       )
-      ),
-      width_svg = 7, # Adjust as needed
-      height_svg = 4  # Adjust as needed
+      )
+      # pointsize = 12,
+      # width_svg = 7, # Adjust as needed
+      # height_svg = 7  # Adjust as needed
     )
   } # End if/else for plotting logic
 

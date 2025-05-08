@@ -109,7 +109,7 @@ ui <- page_navbar(
       # card_header("Key Findings from the Article"), # Header might be redundant with title below
       card_body(
         padding = "1rem", # Adjust padding as needed
-        h4("Key Findings: China's Rise in the Chemical Space (CS)", style="text-align:center; margin-bottom: 0.5rem;"),
+        h4("China's Rise in the Chemical Space (CS)", style="text-align:center; margin-bottom: 0.5rem;"),
         p(
           "From 1996 to 2022, the landscape of chemical discovery shifted dramatically. China surged to dominate new substance creation, primarily through domestic research.",
           "Conversely, the United States' solo contributions declined, becoming more reliant on international collaborations, particularly with China.",
@@ -180,7 +180,19 @@ ui <- page_navbar(
 
     # --- Section 2: Interactive Exploration ---
     h4("Interactive Chemical Space Explorer", style = "text-align: center; margin-top: 20px; margin-bottom: 10px;"),
-    p("Use the map and filters below to explore the data interactively.", style = "text-align: center; margin-bottom: 20px;"),
+    div(style = "text-align: center; margin-bottom: 20px;",
+      p("Explore global chemical discovery trends. Click countries on the map and use filters to see detailed data.",
+        popover(
+        bsicons::bs_icon("info-circle-fill"),
+        title = "How to Explore",
+        p("Use the map and filters to further explore the data. Select more than one country to find collaborations between them."),
+        p("Click on a country on the map to select/deselect it. Use the filters in the sidebar to refine the data. The data will update after a short delay."),
+        p("The plots below will show trends for the selected countries and filters. You can also view a detailed data table for your selection."),
+        p("If you select more than one country, you can choose between two display modes: 'Countrywise expansion of the CS' or 'Find Joint Collaborations Trends'. The first mode shows individual trends for each selected country, while the second mode focuses on joint collaborations."),
+        placement = "bottom"
+        )
+      )
+    ),
         # --- Row 1: Map and Filters ---
         card(
           full_screen = TRUE,
@@ -276,42 +288,6 @@ ui <- page_navbar(
     # uiOutput("summary_value_boxes_ui")
 
   ), # End Explorer nav_panel
-
-  # --- Article Figures Tab ---
-  # nav_panel(
-  #   title = "Article Figures",
-  #   icon = bsicons::bs_icon("bar-chart-line-fill"), # Added icon
-  #   p(
-  #     strong("Key Findings from the Article:"), # Added emphasis
-  #     "From 1996 to 2022, China surged to dominate chemical discoveries, driven mainly by domestic research, while US solo contributions declined amidst rising international collaboration."
-  #   ),
-  #   helpText("Static plots replicating key figures from the source article. Double click on the legend to isolate a specific country, single click to hide it."),
-  #   layout_columns(
-  #     # Responsive: 2 cols on MD+, 1 col on SM/XS
-  #     col_widths = c(12, 12, 12, 12, 12),
-  #     # Plots arranged in cards
-  #     card(
-  #       card_header("Country Participation in the Chemical Space"),
-  #       shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
-  #     ),
-  #     card(
-  #       card_header("Top 10 Collaboration Trends (All Chemicals)"),
-  #       shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
-  #     ),
-  #     card(
-  #       card_header("GDP Growth Rate"),
-  #       shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
-  #     ),
-  #     card(
-  #       card_header("Number of Researchers"),
-  #       shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
-  #     ),
-  #     card(
-  #       card_header("Chemical Space Expansion"),
-  #       shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
-  #     )
-  #   )
-  # ), # End Article Figures nav_panel
 
   # --- Article Tab ---
   nav_panel(
