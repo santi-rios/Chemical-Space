@@ -731,18 +731,19 @@ create_contribution_map_plot <- function(processed_data_df,
   
   # ... (rest of functions.R) ...
 
-#' Create Simplified Plot for Static Article Data (using ggplot2 + ggplotly or pure Plotly)
+#' Create Simplified Plot for Static Article Data (using ggplot2 + ggiraph or pure Plotly)
 #'
 #' Generates a plot for the pre-loaded article data.
-#' Uses ggplot2 + ggplotly for most plots, but pure Plotly for the dual-axis "China-US" plot.
+#' Uses ggplot2 + ggiraph for most plots for hover interactivity,
+#' but pure Plotly for the dual-axis "China-US" plot.
 #' Handles basic formatting and dual-axis for specific sources.
 #'
 #' @param article_df Data frame containing the static article data for a specific source.
 #' @param source_title Character. The 'source' identifier (e.g., "Annual growth rate of the GDP").
 #' @param y_title Character. Label for the Y-axis.
-#' @param animate Logical. Should the plot be animated by year? Defaults to FALSE (Animation only supported for ggplotly plots).
-#' @return A plotly object.
-#' @import ggplot2 plotly dplyr scales RColorBrewer
+#' @param animate Logical. This parameter is currently not used for ggiraph plots in this function. Defaults to FALSE.
+#' @return A plotly or girafe object.
+#' @import ggplot2 plotly dplyr scales RColorBrewer ggiraph
 #' @export
 create_article_plot_simple <- function(article_df, source_title, y_title, animate = FALSE) {
 
@@ -781,28 +782,23 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
 
   plot_data <- article_df %>%
       mutate(
-          # Calculate plot_value based on source
           plot_value = case_when(
               source_title == "Number of Researchers" ~ value / 1e6,
-              # Keep original values (0-100) for China-US plot
               source_title == "China-US in the CS" ~ value,
-              # Keep original value for counts
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ value,
-              # Assume others are percentages, convert to 0-1 scale for ggplotly
               TRUE ~ value / 100
           ),
-          # Format value string for tooltips
           formatted_value_str = case_when(
               source_title == "Number of Researchers" ~ scales::comma(value, accuracy = 1),
               source_title == "Annual growth rate of the GDP" ~ paste0(scales::comma(value, accuracy = 0.1), "%"),
               source_title %in% c("Expansion of the CS", "Country participation in the CS") ~ scales::comma(value, accuracy = 1),
-              source_title == "China-US in the CS" ~ scales::percent(value / 100, accuracy = 0.1), # Assuming input is 0-100
-              TRUE ~ scales::percent(value / 100, accuracy = 0.1) # Assuming input is 0-100
+              source_title == "China-US in the CS" ~ scales::percent(value / 100, accuracy = 0.1),
+              TRUE ~ scales::percent(value / 100, accuracy = 0.1)
           ),
-          tooltip_text = paste0(
+          tooltip_text = paste0( # This will be used by ggiraph
               "<b>", country, "</b><br>",
               "Year: ", year, "<br>",
-              "", formatted_value_str
+              "Value: ", formatted_value_str
           )
       ) %>%
       arrange(country, year)
@@ -812,23 +808,18 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     y_title <- paste0(y_title, " (Millions)")
     y_format_func <- scales::label_number(accuracy = 0.01)
   } else if (source_title == "Annual growth rate of the GDP") {
-    y_title <- y_title # Already includes %
+    y_title <- y_title
     y_format_func <- scales::label_number(accuracy = 0.1, suffix = "%")
-    # Adjust plot_value if input is not already scaled 0-100 for ggplotly
-    plot_data <- plot_data %>% mutate(plot_value = value) # Assuming input is already correct scale for ggplotly
+    plot_data <- plot_data %>% mutate(plot_value = value)
   } else if (source_title %in% c("Expansion of the CS", "Country participation in the CS")) {
     y_format_func <- scales::label_comma(accuracy = 1)
     y_title <- y_title
   } else if (source_title == "China-US in the CS") {
-    # Dual Axis Setup (Specific values for pure Plotly)
-    y_title <- "Contribution Share (%)" # Primary axis title
-    y_limits <- c(60, 100) # Primary axis limits (original scale 0-100)
-
+    y_title <- "Contribution Share (%)"
+    y_limits <- c(60, 100)
     y_sec_title <- "Collaboration Share (%)"
-    y_sec_limits <- c(0, 20) # Secondary axis limits (original scale 0-100)
-    # No rescaling needed for pure Plotly dual axis approach
+    y_sec_limits <- c(0, 20)
   } else {
-     # Default percentage formatting for ggplotly (needs 0-1 scale)
      y_format_func <- scales::label_percent(accuracy = 0.1)
   }
 
@@ -840,99 +831,60 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
     collab_countries <- c("CN-US collab/CN", "CN-US collab/US")
 
     p <- plot_ly()
-
-    # Add traces for main countries (Primary Y-axis)
     for (ctry in main_countries) {
       df_ctry <- plot_data %>% filter(country == ctry)
       p <- p %>% add_trace(
-        data = df_ctry,
-        x = ~year,
-        y = ~plot_value, # Use original value (0-100)
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = ctry,
-        line = list(color = plot_colors[[ctry]], width = 2),
+        data = df_ctry, x = ~year, y = ~plot_value, type = 'scatter', mode = 'lines+markers',
+        name = ctry, line = list(color = plot_colors[[ctry]], width = 2),
         marker = list(color = plot_colors[[ctry]], size = 6, opacity = 0.8),
-        yaxis = "y1",
-        hoverinfo = 'text',
-        text = ~tooltip_text
+        yaxis = "y1", hoverinfo = 'text', text = ~tooltip_text
       )
     }
-
-    # Add traces for collaboration countries (Secondary Y-axis)
     for (ctry in collab_countries) {
       df_ctry <- plot_data %>% filter(country == ctry)
       p <- p %>% add_trace(
-        data = df_ctry,
-        x = ~year,
-        y = ~plot_value, # Use original value (0-100)
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = ctry,
-        line = list(color = plot_colors[[ctry]], width = 2, dash = 'dot'),
+        data = df_ctry, x = ~year, y = ~plot_value, type = 'scatter', mode = 'lines+markers',
+        name = ctry, line = list(color = plot_colors[[ctry]], width = 2, dash = 'dot'),
         marker = list(color = plot_colors[[ctry]], size = 5, opacity = 0.8, symbol = 'triangle-up'),
-        yaxis = "y2", # Assign to secondary axis
-        hoverinfo = 'text',
-        text = ~tooltip_text
+        yaxis = "y2", hoverinfo = 'text', text = ~tooltip_text
       )
     }
-
-    # Configure layout for dual axes
     p <- p %>% layout(
       title = list(text = paste("Figure:", source_title), x = 0.5, font = list(size = 14, face = "bold")),
       xaxis = list(title = "Year", gridcolor = "#e8e8e8"),
-      yaxis = list(
-        title = y_title,
-        range = y_limits,
-        tickformat = '.0f', # Format as integer percentage
-        ticksuffix = "%",
-        gridcolor = "#e8e8e8",
-        side = 'left'
-      ),
-      yaxis2 = list(
-        title = y_sec_title,
-        range = y_sec_limits,
-        tickformat = '.0f', # Format as integer percentage
-        ticksuffix = "%",
-        overlaying = "y",
-        side = "right",
-        showgrid = FALSE # Avoid overlapping grids
-      ),
-      legend = list(orientation = 'h', y = -0.15),
-      hovermode = "closest",
+      yaxis = list(title = y_title, range = y_limits, tickformat = '.0f', ticksuffix = "%", gridcolor = "#e8e8e8", side = 'left'),
+      yaxis2 = list(title = y_sec_title, range = y_sec_limits, tickformat = '.0f', ticksuffix = "%", overlaying = "y", side = "right", showgrid = FALSE),
+      legend = list(orientation = 'h', y = -0.15), hovermode = "closest",
       hoverlabel = list(bgcolor = "white", font = list(size = 11)),
-      plot_bgcolor = "#f8f9fa",
-      paper_bgcolor = "#ffffff",
-      margin = list(l = 60, r = 80, b = 80, t = 50) # Ensure space for right axis
+      plot_bgcolor = "#f8f9fa", paper_bgcolor = "#ffffff",
+      margin = list(l = 60, r = 80, b = 80, t = 50)
     )
+    # Apply final config for plotly object
+    p <- p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
 
-  # --- Option 2: ggplotly for all other plots ---
+  # --- Option 2: ggiraph for all other plots ---
   } else {
-    # Define frame aesthetic for ggplotly animation
-    frame_aes <- if (animate) aes(frame = year) else aes()
+    # Base ggplot object - add data_id for ggiraph
+    gg <- ggplot(plot_data, aes(x = year, group = country, data_id = country)) # Removed text aes, added data_id
 
-    # Base ggplot object
-    gg <- ggplot(plot_data, aes(x = year, group = country, text = tooltip_text)) +
-          frame_aes # Add frame aesthetic here
-
-    # Standard Plot layers
+    # Standard Plot layers using interactive geoms
     gg <- gg +
-      geom_line(aes(y = plot_value, color = country), linewidth = 0.3, show.legend = FALSE) +
-      geom_point(aes(y = plot_value, color = country, size = plot_value), alpha = 0.6, show.legend = FALSE) +
-      scale_size_area(max_size = 5) +
-      scale_y_continuous(name = y_title, labels = y_format_func, limits = y_limits) # Use potentially scaled plot_value (e.g., 0-1 for %)
+      geom_line_interactive(aes(y = plot_value, color = country), linewidth = 0.3) +
+      geom_point_interactive(aes(y = plot_value, color = country, size = plot_value, tooltip = tooltip_text), alpha = 0.6) + # Added tooltip aes
+      scale_size_area(max_size = 5, guide = "none") +
+      scale_y_continuous(name = y_title, labels = y_format_func, limits = y_limits)
 
     # Common ggplot Elements
     gg <- gg +
-      scale_color_manual(values = plot_colors, name = "Country") +
+      scale_color_manual(values = plot_colors, name = "") +
       labs(
-        # title = paste("Figure:", source_title),
-        x = element_blank(),
+        # title = paste("Figure:", source_title), # Added title back to ggplot for ggiraph
+        x = element_blank(), # Kept x blank as per original ggplotly version
         caption = NULL
       ) +
       theme_minimal(base_size = 11) +
       theme(
-        plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        plot.title = element_blank(),
         panel.grid.major = element_line(color = "#e8e8e8"),
         panel.grid.minor = element_blank(),
         plot.background = element_rect(fill = "#f8f9fa", color = NA),
@@ -949,49 +901,40 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
       gg <- gg +
         geom_vline(xintercept = 2007.5, linetype = "dashed", color = "grey", linewidth = 0.5) +
         geom_vline(xintercept = 2019.5, linetype = "dashed", color = "grey", linewidth = 0.5) +
-        annotate("text", x = 2007.5, y = 11, label = "Financial Crisis", hjust = -0.1, vjust = 1.5, size = 3, color = "#000000") +
-        annotate("text", x = 2019.5, y = 7, label = "COVID-19", hjust = -0.1, vjust = 1.5, size = 3, color = "#000000")
+        annotate("text", x = 2007.5, y = if(!is.null(y_limits)) y_limits[2]*0.9 else Inf, label = "Financial Crisis", hjust = -0.1, vjust = 1.5, size = 3, color = "#000000") +
+        annotate("text", x = 2019.5, y = if(!is.null(y_limits)) y_limits[2]*0.8 else Inf, label = "COVID-19", hjust = -0.1, vjust = 1.5, size = 3, color = "#000000")
     }
 
-    # Convert ggplot to plotly
-    p <- ggplotly(gg, tooltip = "text") %>%
-      config(displayModeBar = FALSE)
-
-    # Apply Plotly Layout/Animation adjustments
-    p <- p %>% layout(
-      hovermode = "closest",
-      hoverlabel = list(bgcolor = "white", font = list(size = 11)),
-      legend = list(orientation = 'h', y = -0.15),
-      xaxis = list(gridcolor = "#e8e8e8"),
-      yaxis = list(gridcolor = "#e8e8e8"),
-      plot_bgcolor = "#f8f9fa",
-      paper_bgcolor = "#ffffff",
-      margin = list(l = 60, r = 40, b = 80, t = 50)
-    ) 
-
-    # Add Animation Controls if requested
-    if (animate) {
-      p <- p %>%
-        animation_opts(
-          frame = 100,
-          transition = 50,
-          redraw = FALSE
-        ) %>%
-        animation_slider(
-          currentvalue = list(prefix = "Year: ", font = list(color="darkgrey"))
-        ) %>%
-        animation_button(
-          x = 0, xanchor = "left", y = -0.2, yanchor = "bottom"
-        )
-    }
+    # Convert ggplot to girafe object with hover interactivity
+    p <- girafe(
+      ggobj = gg,
+      options = list(
+      opts_hover(css = "stroke-width:1.5;"), # Highlight hovered series
+      opts_hover_inv(css = "opacity:0.2;"),  # Fade out other series
+      opts_sizing(rescale = TRUE, width = 1), # Make plot responsive
+      opts_toolbar(
+        position = "topright",
+        pngname = "bermudez_etal_2025",
+        hidden = c("lasso_select", "lasso_deselect")
+        # tooltips = list(
+        #   lasso_select = 'lasso selection',
+        #   lasso_deselect = 'lasso deselection',
+        #   zoom_on = 'activate pan/zoom',
+        #   zoom_off = 'deactivate pan/zoom',
+        #   zoom_rect = 'zoom with rectangle',
+        #   zoom_reset = 'reset pan/zoom',
+        #   saveaspng = 'download png'
+        #   )
+      )
+      ),
+      width_svg = 7, # Adjust as needed
+      height_svg = 4  # Adjust as needed
+    )
   } # End if/else for plotting logic
 
-  # Apply final config to the resulting plotly object 'p'
-  # p %>% config(displayModeBar = TRUE, displaylogo = FALSE)
-  p
+  return(p)
 }
 
-# ... (existing functions) ...
 
 #' Create Plot for Top Collaboration Trends
 #'
@@ -1003,7 +946,7 @@ create_article_plot_simple <- function(article_df, source_title, y_title, animat
 #' @param title Character. The main title for the plot.
 #' @return A plotly object.
 #' @import ggplot2 plotly dplyr scales RColorBrewer
-#' @export
+#' @export>
 create_top_collabs_plot <- function(top_collab_data, title = "Collaboration Trends") {
 
   if (!nrow(top_collab_data) > 0) {
@@ -1036,7 +979,8 @@ create_top_collabs_plot <- function(top_collab_data, title = "Collaboration Tren
   # Base ggplot object
   gg <- ggplot(plot_data, aes(x = year, y = percentage, group = country, color = country, text = tooltip_text)) +
     geom_line(linewidth = 0.4, alpha = 0.4) +
-    geom_point(size = 2.5, alpha = 0.6) +
+    geom_point(aes(size = percentage), alpha = 0.6) +
+    scale_size_area(max_size = 3.5, guide = "none") +
     scale_y_continuous(
         name = "% of new substances contributed",
         labels = scales::percent_format(scale = 1, accuracy = 0.1) # Assuming input is 0-100

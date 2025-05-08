@@ -19,6 +19,7 @@ library(stringr)
 library(leaflet)
 library(sf)
 # install.packages("rnaturalearthdata")
+library(ggiraph)
 library(rnaturalearth)
 library(rnaturalearthdata) 
 library(leaflet.extras)
@@ -108,7 +109,7 @@ ui <- page_navbar(
       # card_header("Key Findings from the Article"), # Header might be redundant with title below
       card_body(
         padding = "1rem", # Adjust padding as needed
-        h4("Key Findings: China's Rise in the Chemical Space", style="text-align:center; margin-bottom: 0.5rem;"),
+        h4("Key Findings: China's Rise in the Chemical Space (CS)", style="text-align:center; margin-bottom: 0.5rem;"),
         p(
           "From 1996 to 2022, the landscape of chemical discovery shifted dramatically. China surged to dominate new substance creation, primarily through domestic research.",
           "Conversely, the United States' solo contributions declined, becoming more reliant on international collaborations, particularly with China.",
@@ -117,48 +118,61 @@ ui <- page_navbar(
         helpText("Select a tab to view the corresponding figure."),
         navset_card_tab( # Use tabs for compactness
           id = "article_plot_tabs",
-          height = "420px", # Give the tabset a fixed height
+          height = "550px", # Give the tabset a fixed height
           full_screen = TRUE, # Allow plots to go full screen
           # --- Article Plot Panels ---
           nav_panel(
-            title = "Participation", # Short title for tab
+            title = "Main Countries", # Short title for tab
             tooltip( # Add tooltip to tab title
-                span("Participation", bsicons::bs_icon("info-circle")),
-                "Figure: Country Participation in the Chemical Space"
+                span("Country participation in the growth of the CS", bsicons::bs_icon("info-circle")),
+                "Only the top eight countries are shown (further information in the map below).",
             ),
-            shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
+            shinycssloaders::withSpinner(girafeOutput("countrycsPlot", height = "450px"))
+          ),
+          nav_panel(
+            title = "Explore Top collaborators", # Consider renaming this tab if it shows more than just collaborations
+             tooltip(
+                span("Top Contribution Trends", bsicons::bs_icon("info-circle")), # Adjusted span text
+                "Explore top contributors and their collaboration trends across the chemical space.",
+            ),
+            # Add selectInput for chemical category for this specific plot
+            selectInput("top_collabs_chem_filter",
+                        "Filter by Chemical Category:",
+                        choices = chemical_categories,
+                        selected = "All",
+                        width = "100%"),
+            # NEW: Add RadioButtons to toggle between collaborations and individual contributions
+            radioButtons("top_data_type_filter",
+                         "Show Top:",
+                         choices = c("Collaborations" = "collabs",
+                                     "Individual Countries" = "individuals"),
+                         selected = "collabs", # Default to collaborations
+                         inline = TRUE),
+            shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "450px"))
           ),
           nav_panel(
             title = "GDP",
              tooltip(
-                span("GDP", bsicons::bs_icon("info-circle")),
-                "Figure: GDP Growth Rate"
+                span("Percentage of the annual growth rate of the gross domestic product (GDP) per capita", bsicons::bs_icon("info-circle")),
+                "Two important economic events are highlighted: the 2007/2008 Global Financial Crisis and the COVID pandemic (2020)"
             ),
-            shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
+            shinycssloaders::withSpinner(girafeOutput("articleGdpPlot", height = "450px"))
           ),
           nav_panel(
-            title = "Researchers",
+            title = "Number of Researchers",
              tooltip(
-                span("Researchers", bsicons::bs_icon("info-circle")),
-                "Figure: Number of Researchers"
+                span("Number of researchers in research and development activities", bsicons::bs_icon("info-circle")),
+                "Hover to focus on a specific country."
             ),
-            shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
+            shinycssloaders::withSpinner(girafeOutput("articleResearchersPlot", height = "450px"))
           ),
           nav_panel(
-            title = "Expansion",
+            title = "Expansion of the CS",
              tooltip(
-                span("Expansion", bsicons::bs_icon("info-circle")),
-                "Figure: Chemical Space Expansion"
+                span("Recent expansion of the CS and of three of its subspaces", bsicons::bs_icon("info-circle")),
+                "Subspaces are defined by the chemical categories: Organic, Organometallic, and Rare-Earths."
             ),
-            shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
-          ),
-          nav_panel(
-            title = "Collaborations",
-             tooltip(
-                span("China-US", bsicons::bs_icon("info-circle")),
-                "Figure: China-US Contributions"
-            ),
-            shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
+            shinycssloaders::withSpinner(girafeOutput("articleCsExpansionPlot", height = "450px"))
           )
         ) # End navset_card_tab for article plots
       ) # End card_body
@@ -167,69 +181,60 @@ ui <- page_navbar(
     # --- Section 2: Interactive Exploration ---
     h4("Interactive Chemical Space Explorer", style = "text-align: center; margin-top: 20px; margin-bottom: 10px;"),
     p("Use the map and filters below to explore the data interactively.", style = "text-align: center; margin-bottom: 20px;"),
-
-    # --- Row 1: Map and Filters (Existing Code - No Changes Needed Here) ---
-    layout_columns(
-      # Responsive column widths: Full width stack on XS/SM, 8/4 on MD+, 9/3 on LG+
-      col_widths = c(12, 12, 8, 4, 9, 3),
-      # --- Map Card ---
-      card(
-        full_screen = TRUE,
-        card_header(
-          "Country Selection Map 🌎",
+        # --- Row 1: Map and Filters ---
+        card(
+          full_screen = TRUE,
+          card_header(
+          "Country Selection Map & Filters",
           tooltip(
-            bsicons::bs_icon("info-circle-fill"), # Changed icon slightly
-            "Click on a country to select/deselect. Data updates after a short delay. Use filters on the right to narrow down data or map layers."
-            )
-          ),
-        # Add a placeholder while map loads
-        shinycssloaders::withSpinner(leafletOutput("selection_map", height = "450px"))
-      ),
-      # --- Filters Card ---
-      card(
-        card_header("Filters & Options ⚙️"), # Renamed header
-        card_body(
-          # Region Filter (Dynamic UI) - Moved to top for better dropdown visibility
-          uiOutput("region_filter_ui"),
-          # Add a visual separator and spacing
-          shiny::tags$hr(style = "margin-top: 1rem; margin-bottom: 1rem;"),
-          # Year Slider
-          sliderInput(
-            "years", "Year Range:", # Simplified label
-            min = min_year_data,
-            max = max_year_data,
-            value = c(
-              max(min_year_data, 1996, na.rm = TRUE),
-              min(max_year_data, 2022, na.rm = TRUE)
-            ),
-            step = 1, sep = ""
-          ),
-          # Chemical Category Radio Buttons
-          radioButtons(
-            "chemical_category", "Chemical Space Category:", # Simplified label
-            choices = chemical_categories,
-            selected = "All"
-          ),
-          tooltip( # Tooltip associated with radio buttons
-            bsicons::bs_icon("question-circle"),
-            paste(
-              "Filter data by chemical subspace.",
-              "'All' includes Organic, Organometallic, and Rare-Earths."
-            ),
-            placement = "right"
-          ),
-          # Add some space before the button
-          shiny::div(style = "margin-top: 2rem;"),
-          # Clear Selection Button
-          actionButton(
-            "clear_selection", "Clear Map Selection", # Clarified label
-            icon = icon("trash-alt"),
-            class = "btn-outline-danger btn-sm", # Removed mt-3, handled by div above
-            width = "100%"
+            bsicons::bs_icon("info-circle-fill"),
+            "Click on a country on the map to select/deselect. Use filters in the sidebar to refine data. Data updates after a short delay."
           )
-        )
-      )
-    ), # End layout_columns for Map & Filters
+          ),
+          layout_sidebar(
+              sidebar = sidebar(
+                  title = "Filters & Options ⚙️",
+                  position = "right", # Sidebar on the right
+                  # --- Filter inputs ---
+                  uiOutput("region_filter_ui"),
+                  shiny::tags$hr(style = "margin-top: 1rem; margin-bottom: 1rem;"),
+                  sliderInput(
+                    "years", "Year Range:",
+                    min = min_year_data,
+                    max = max_year_data,
+                    value = c(
+                    max(min_year_data, 1996, na.rm = TRUE), # Default start year
+                    min(max_year_data, 2022, na.rm = TRUE)  # Default end year
+                    ),
+                    step = 1, sep = ""
+                  ),
+                  radioButtons(
+                    "chemical_category", "Chemical Space Category:",
+                    choices = chemical_categories,
+                    selected = "All"
+                  ),
+                  tooltip( # Tooltip for chemical category
+                    bsicons::bs_icon("question-circle"),
+                    paste(
+                    "Filter data by chemical subspace.",
+                    "'All' includes Organic, Organometallic, and Rare-Earths."
+                    ),
+                    placement = "left" # Adjusted placement for sidebar context
+                  ),
+                  shiny::div(style = "margin-top: 2rem;"), # Spacing before button
+                  actionButton(
+                    "clear_selection", "Clear Map Selection",
+                    icon = icon("trash-alt"),
+                    class = "btn-outline-danger btn-sm",
+                    width = "100%"
+                  )
+                  # --- End filter inputs ---
+              ), # End bslib::sidebar object (this is the first argument to layout_sidebar)
+              # --- Main content of the card (the map) ---
+              # This is the second argument to layout_sidebar
+              shinycssloaders::withSpinner(leafletOutput("selection_map", height = "450px"))
+        ) # End layout_sidebar
+     ), # End card
 
     # --- Row 2: Plots and Table ---
     # Conditional UI for display mode (appears when >1 country selected)
@@ -264,11 +269,11 @@ ui <- page_navbar(
         helpText("Detailed data for the current selection. Use search box to filter."),
         shinycssloaders::withSpinner(DTOutput("summary_table"))
       )
-    ), # End navset_card_pill
+    ) # End navset_card_pill
 
     # --- Row 3: Value Boxes ---
     # Dynamic UI for value boxes (now shows overall top contributors)
-    uiOutput("summary_value_boxes_ui")
+    # uiOutput("summary_value_boxes_ui")
 
   ), # End Explorer nav_panel
 
@@ -762,83 +767,83 @@ server <- function(input, output, session) {
 # ... (previous server logic) ...
 
  # --- Updated Value Box UI for Overall Top Contributors ---
-  output$summary_value_boxes_ui <- renderUI({
-    # Use reactive inputs for filters, except year range
-    chemical_category <- input$chemical_category
-    region_filter <- input$region_filter
+  # output$summary_value_boxes_ui <- renderUI({
+  #   # Use reactive inputs for filters, except year range
+  #   chemical_category <- input$chemical_category
+  #   region_filter <- input$region_filter
 
-    # Ensure inputs are available
-    req(chemical_category, region_filter) # Year range not needed here
+  #   # Ensure inputs are available
+  #   req(chemical_category, region_filter) # Year range not needed here
 
-    # Calculate top contributors using the helper function, ignoring year filter
-    top_data_raw <- calculate_top_contributors(
-      ds = ds,
-      year_range = c(min_year_data, max_year_data), # Pass dummy range, it will be ignored
-      chemical_category = chemical_category,
-      region_filter = region_filter,
-      country_list = country_list,
-      top_n = 5,
-      ignore_year_filter = TRUE # <<< Key change: Ignore year slider
-    )
+  #   # Calculate top contributors using the helper function, ignoring year filter
+  #   top_data_raw <- calculate_top_contributors(
+  #     ds = ds,
+  #     year_range = c(min_year_data, max_year_data), # Pass dummy range, it will be ignored
+  #     chemical_category = chemical_category,
+  #     region_filter = region_filter,
+  #     country_list = country_list,
+  #     top_n = 5,
+  #     ignore_year_filter = TRUE # <<< Key change: Ignore year slider
+  #   )
 
-    # Validate that we got results
-    validate(need(nrow(top_data_raw) > 0, "No overall contributor data for current chemical/region filters."))
+  #   # Validate that we got results
+  #   validate(need(nrow(top_data_raw) > 0, "No overall contributor data for current chemical/region filters."))
 
-    # --- Explicitly arrange by rank just in case ---
-    top_data <- top_data_raw %>% arrange(rank)
+  #   # --- Explicitly arrange by rank just in case ---
+  #   top_data <- top_data_raw %>% arrange(rank)
 
-    # Format the top contributors for display, using the rank from the function
-    # This loop now iterates through the explicitly sorted top_data
-    top_list_items <- map_chr(1:nrow(top_data), ~{
-      paste0(
-        top_data$rank[.x], ". ", # Use rank column
-        top_data$country[.x], " (",
-        scales::percent(top_data$avg_percentage[.x] / 100, accuracy = 0.1), ")"
-      )
-    })
+  #   # Format the top contributors for display, using the rank from the function
+  #   # This loop now iterates through the explicitly sorted top_data
+  #   top_list_items <- map_chr(1:nrow(top_data), ~{
+  #     paste0(
+  #       top_data$rank[.x], ". ", # Use rank column
+  #       top_data$country[.x], " (",
+  #       scales::percent(top_data$avg_percentage[.x] / 100, accuracy = 0.1), ")"
+  #     )
+  #   })
 
-    # Combine into a single string with line breaks
-    top_list_string <- paste(top_list_items, collapse = "\n")
+  #   # Combine into a single string with line breaks
+  #   top_list_string <- paste(top_list_items, collapse = "\n")
 
-    # Create a single value box for OVERALL top countries
-    value_box(
-      title = paste("Historical Top", nrow(top_data), "Countries (Avg % contribution) for current filters"), # Updated title
-      value = top_list_string,
-      theme = "info", # Changed theme slightly
-      showcase = bsicons::bs_icon("graph-up-arrow"), # Changed icon
-      tooltip(
-        bsicons::bs_icon("info-circle"),
-        paste("Showing top", nrow(top_data), "countries based on overall average percentage across all years",
-              "for", chemical_category, "chemicals",
-              if(region_filter != "All") paste("within the", region_filter, "region(s).") else ".",
-              "Year range slider is ignored for this box.") # Updated tooltip
-      ),
-      style = "white-space: pre-wrap;" # CSS to respect newlines
-    )
-  })
+  #   # Create a single value box for OVERALL top countries
+  #   value_box(
+  #     title = paste("Historical Top", nrow(top_data), "Countries (Avg % contribution) for current filters"), # Updated title
+  #     value = top_list_string,
+  #     theme = "info", # Changed theme slightly
+  #     showcase = bsicons::bs_icon("graph-up-arrow"), # Changed icon
+  #     tooltip(
+  #       bsicons::bs_icon("info-circle"),
+  #       paste("Showing top", nrow(top_data), "countries based on overall average percentage across all years",
+  #             "for", chemical_category, "chemicals",
+  #             if(region_filter != "All") paste("within the", region_filter, "region(s).") else ".",
+  #             "Year range slider is ignored for this box.") # Updated tooltip
+  #     ),
+  #     style = "white-space: pre-wrap;" # CSS to respect newlines
+  #   )
+  # })
   # --- End Updated Value Box UI ---
 
   # ... (rest of server logic) ...
 
-  output$countrycsPlot <- renderPlotly({
+  output$countrycsPlot <- renderGirafe({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Country participation in the CS")
     create_article_plot_simple(df, "Country participation in the CS", "% of New Substances", animate = FALSE)
   })
 
-  output$articleGdpPlot <- renderPlotly({
+  output$articleGdpPlot <- renderGirafe({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Annual growth rate of the GDP")
     create_article_plot_simple(df, "Annual growth rate of the GDP", "GDP Growth Rate (%)", animate = FALSE)
   })
 
-  output$articleResearchersPlot <- renderPlotly({
+  output$articleResearchersPlot <- renderGirafe({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Number of Researchers")
     create_article_plot_simple(df, "Number of Researchers", "Researchers", animate = FALSE)
   })
 
-  output$articleCsExpansionPlot <- renderPlotly({
+  output$articleCsExpansionPlot <- renderGirafe({
     req(nrow(article_data) > 0)
     df <- article_data %>% filter(source == "Expansion of the CS")
     create_article_plot_simple(df, "Expansion of the CS", "Number of New Substances", animate = FALSE)
@@ -846,33 +851,43 @@ server <- function(input, output, session) {
 
   # --- NEW: Render Top Collaborations Plot ---
   output$articleTopCollabsPlot <- renderPlotly({
-     # 1. Filter collaboration data for "All" chemicals
-    collab_data_all_chem <- ds %>%
-      filter(is_collab == TRUE, chemical == "All") %>%
-      # Select necessary columns (use 'country' as it holds the collab string)
+    req(input$top_collabs_chem_filter, input$top_data_type_filter) # Ensure both inputs are available
+
+    is_collab_selected <- input$top_data_type_filter == "collabs"
+    data_type_label <- if (is_collab_selected) "Collaborations" else "Individual Countries"
+
+    # 1. Filter data based on the selected chemical category and data type
+    filtered_data <- ds %>%
+      filter(is_collab == is_collab_selected, chemical == input$top_collabs_chem_filter) %>%
+      # Select necessary columns (use 'country' as it holds the collab string or country name)
       select(year, percentage, country) %>%
-      collect() # Collect this subset
+      collect()
 
-    validate(need(nrow(collab_data_all_chem) > 0, "No collaboration data found for 'All' chemicals."))
+    validate(need(nrow(filtered_data) > 0,
+                  paste("No", tolower(data_type_label), "data found for chemical category:", input$top_collabs_chem_filter)))
 
-    # 2. Calculate average percentage per collaboration
-    avg_collabs <- collab_data_all_chem %>%
-      group_by(country) %>%
+    # 2. Calculate average percentage
+    avg_contributions <- filtered_data %>%
+      group_by(country) %>% # 'country' column holds collab ID or country name
       summarise(avg_percentage = mean(percentage, na.rm = TRUE)) %>%
       filter(!is.na(avg_percentage)) %>%
       arrange(desc(avg_percentage))
 
-    validate(need(nrow(avg_collabs) > 0, "Could not calculate average collaboration percentages."))
+    validate(need(nrow(avg_contributions) > 0,
+                  paste("Could not calculate average", tolower(data_type_label), "percentages for the selected filters.")))
 
-    # 3. Get top 10 collaboration IDs
-    top_10_collab_ids <- head(avg_collabs$country, 10)
+    # 3. Get top 10 IDs
+    top_10_ids <- head(avg_contributions$country, 10)
 
-    # 4. Filter the original collaboration data for these top 10
-    top_10_data <- collab_data_all_chem %>%
-      filter(country %in% top_10_collab_ids)
+    # 4. Filter the original data for these top 10
+    top_10_data <- filtered_data %>%
+      filter(country %in% top_10_ids)
 
-    # 5. Create the plot using the new function
-    create_top_collabs_plot(top_10_data)
+    # 5. Create the plot
+    create_top_collabs_plot(
+      top_10_data,
+      title = paste("Top 10", data_type_label, ":", input$top_collabs_chem_filter, "Chemicals")
+    )
   })
   # --- End NEW Plot Rendering ---
 
