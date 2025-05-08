@@ -100,8 +100,75 @@ ui <- page_navbar(
 
   # --- Explorer Tab ---
   nav_panel(
-    title = "Chemical Space Explorer",
-    # --- Row 1: Map and Filters ---
+    title = "Explore Chemical Space", # Renamed slightly
+    icon = bsicons::bs_icon("binoculars-fill"), # Added icon
+
+    # --- Section 1: Article Highlights ---
+    card(
+      # card_header("Key Findings from the Article"), # Header might be redundant with title below
+      card_body(
+        padding = "1rem", # Adjust padding as needed
+        h4("Key Findings: China's Rise in the Chemical Space", style="text-align:center; margin-bottom: 0.5rem;"),
+        p(
+          "From 1996 to 2022, the landscape of chemical discovery shifted dramatically. China surged to dominate new substance creation, primarily through domestic research.",
+          "Conversely, the United States' solo contributions declined, becoming more reliant on international collaborations, particularly with China.",
+          "The plots below illustrate these trends, replicating key figures from the source article."
+        ),
+        helpText("Select a tab to view the corresponding figure."),
+        navset_card_tab( # Use tabs for compactness
+          id = "article_plot_tabs",
+          height = "420px", # Give the tabset a fixed height
+          full_screen = TRUE, # Allow plots to go full screen
+          # --- Article Plot Panels ---
+          nav_panel(
+            title = "Participation", # Short title for tab
+            tooltip( # Add tooltip to tab title
+                span("Participation", bsicons::bs_icon("info-circle")),
+                "Figure: Country Participation in the Chemical Space"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "GDP",
+             tooltip(
+                span("GDP", bsicons::bs_icon("info-circle")),
+                "Figure: GDP Growth Rate"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "Researchers",
+             tooltip(
+                span("Researchers", bsicons::bs_icon("info-circle")),
+                "Figure: Number of Researchers"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "Expansion",
+             tooltip(
+                span("Expansion", bsicons::bs_icon("info-circle")),
+                "Figure: Chemical Space Expansion"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
+          ),
+          nav_panel(
+            title = "Collaborations",
+             tooltip(
+                span("China-US", bsicons::bs_icon("info-circle")),
+                "Figure: China-US Contributions"
+            ),
+            shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
+          )
+        ) # End navset_card_tab for article plots
+      ) # End card_body
+    ), # End card for Article Highlights
+
+    # --- Section 2: Interactive Exploration ---
+    h4("Interactive Chemical Space Explorer", style = "text-align: center; margin-top: 20px; margin-bottom: 10px;"),
+    p("Use the map and filters below to explore the data interactively.", style = "text-align: center; margin-bottom: 20px;"),
+
+    # --- Row 1: Map and Filters (Existing Code - No Changes Needed Here) ---
     layout_columns(
       # Responsive column widths: Full width stack on XS/SM, 8/4 on MD+, 9/3 on LG+
       col_widths = c(12, 12, 8, 4, 9, 3),
@@ -206,40 +273,40 @@ ui <- page_navbar(
   ), # End Explorer nav_panel
 
   # --- Article Figures Tab ---
-  nav_panel(
-    title = "Article Figures",
-    icon = bsicons::bs_icon("bar-chart-line-fill"), # Added icon
-    p(
-      strong("Key Findings from the Article:"), # Added emphasis
-      "From 1996 to 2022, China surged to dominate chemical discoveries, driven mainly by domestic research, while US solo contributions declined amidst rising international collaboration."
-    ),
-    helpText("Static plots replicating key figures from the source article. Double click on the legend to isolate a specific country, single click to hide it."),
-    layout_columns(
-      # Responsive: 2 cols on MD+, 1 col on SM/XS
-      col_widths = c(12, 12, 12, 12, 12),
-      # Plots arranged in cards
-      card(
-        card_header("Country Participation in the Chemical Space"),
-        shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
-      ),
-      card(
-        card_header("Top 10 Collaboration Trends (All Chemicals)"),
-        shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
-      ),
-      card(
-        card_header("GDP Growth Rate"),
-        shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
-      ),
-      card(
-        card_header("Number of Researchers"),
-        shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
-      ),
-      card(
-        card_header("Chemical Space Expansion"),
-        shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
-      )
-    )
-  ), # End Article Figures nav_panel
+  # nav_panel(
+  #   title = "Article Figures",
+  #   icon = bsicons::bs_icon("bar-chart-line-fill"), # Added icon
+  #   p(
+  #     strong("Key Findings from the Article:"), # Added emphasis
+  #     "From 1996 to 2022, China surged to dominate chemical discoveries, driven mainly by domestic research, while US solo contributions declined amidst rising international collaboration."
+  #   ),
+  #   helpText("Static plots replicating key figures from the source article. Double click on the legend to isolate a specific country, single click to hide it."),
+  #   layout_columns(
+  #     # Responsive: 2 cols on MD+, 1 col on SM/XS
+  #     col_widths = c(12, 12, 12, 12, 12),
+  #     # Plots arranged in cards
+  #     card(
+  #       card_header("Country Participation in the Chemical Space"),
+  #       shinycssloaders::withSpinner(plotlyOutput("countrycsPlot", height = "350px"))
+  #     ),
+  #     card(
+  #       card_header("Top 10 Collaboration Trends (All Chemicals)"),
+  #       shinycssloaders::withSpinner(plotlyOutput("articleTopCollabsPlot", height = "350px"))
+  #     ),
+  #     card(
+  #       card_header("GDP Growth Rate"),
+  #       shinycssloaders::withSpinner(plotlyOutput("articleGdpPlot", height = "350px"))
+  #     ),
+  #     card(
+  #       card_header("Number of Researchers"),
+  #       shinycssloaders::withSpinner(plotlyOutput("articleResearchersPlot", height = "350px"))
+  #     ),
+  #     card(
+  #       card_header("Chemical Space Expansion"),
+  #       shinycssloaders::withSpinner(plotlyOutput("articleCsExpansionPlot", height = "350px"))
+  #     )
+  #   )
+  # ), # End Article Figures nav_panel
 
   # --- Article Tab ---
   nav_panel(
