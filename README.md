@@ -76,26 +76,157 @@ This makes the new app feel much faster, handle large amounts of data without sl
 
 
 
-### **Required R Packages (Dependencies):**
+### app overview
 
-Based on the `library()` calls in app.R, the following packages are needed:
+**UI (`app.R`)**
 
-*   `shiny` (Core web framework)
-*   `bslib` (Bootstrap themes and UI components)
-*   `shinycssloaders` (Loading spinners)
-*   `plotly` (Interactive plots)
-*   `ggplot2` (Plotting grammar - used by `plotly`)
-*   `conflicted` (For managing function name conflicts)
-*   `duckplyr` (DuckDB backend for dplyr)
-*   `dplyr` (Data manipulation grammar)
-*   `tidyr` (Data tidying utilities)
-*   `purrr` (Functional programming tools)
-*   `scales` (Graphical scales formatting - e.g., percentages)
-*   `DT` (Interactive data tables)
-*   `stringr` (String manipulation)
-*   `leaflet` (Interactive maps)
-*   `sf` (Simple Features for spatial data - used by leaflet/rnaturalearth)
-*   `rnaturalearth` (World map vector data)
-*   `leaflet.extras` (Extensions for Leaflet, including search)
+*   **Overall Structure:**
+    *   `page_navbar` with `bs_theme(version = 5, bootswatch = "flatly")` provides a modern and clean look. `flatly` is a good choice for a data-centric application.
+    *   `fillable = FALSE` is generally a safe default for complex layouts, preventing unexpected full-height behaviors unless specifically managed.
+    *   The use of `nav_panel` for main sections and `nav_menu` for "Legal Info" and "Useful Links" effectively organizes the content and keeps the main navigation bar uncluttered.
+    *   Icons (`bsicons::bs_icon`) enhance visual appeal and user guidance.
+    *   `nav_spacer` is used well for visual separation.
+*   **Explorer Tab:**
+    *   **Article Highlights Section:**
+        *   The `card` with `navset_card_tab` is a good way to present multiple static plots compactly.
+        *   `height = "550px"` for the `navset_card_tab` and `height = "450px"` for the plots within provides consistent sizing.
+        *   Tooltips on `nav_panel` titles are a nice touch for providing more context.
+        *   Filters (`selectInput`, `radioButtons`) directly within the "Explore Top collaborators" `nav_panel` are well-scoped to that specific plot.
+    *   **Interactive Exploration Section:**
+        *   The `card` with `layout_sidebar` (sidebar on the right) for the map and its filters is a standard and effective layout.
+        *   Filter controls (`uiOutput("region_filter_ui")`, `sliderInput`, `radioButtons`, `actionButton`) are well-placed in the sidebar.
+        *   `leafletOutput` for the map is correctly placed as the main content of this `layout_sidebar`.
+        *   `navset_card_pill` for "Trends," "Contribution Map," and "Data Table" is a good choice for switching between related views of the selected data.
+*   **Responsiveness:**
+    *   `bslib` (Bootstrap 5) is inherently responsive. Components like `card`, `layout_sidebar`, `navset_card_tab`, `navset_card_pill` generally adapt well to different screen sizes. The sidebar in `layout_sidebar` should stack vertically on smaller screens.
+    *   Fixed heights for plots (e.g., `450px`) should be tested on smaller mobile screens. If they cause content to be cut off or require excessive scrolling *within the plot area itself*, consider relative units (like `vh`) or `bslib::heights` for more dynamic sizing, though fixed heights are often acceptable.
+    *   The `iframe` for the PDF uses `height:80vh`, which is responsive.
+*   **Tooltips:** Used effectively throughout the UI to provide additional information without cluttering the interface.
+*   **Footer:** Simple and informative.
 
-The IT team should ensure these packages (and their own dependencies) are installed in the R environment where the app will run.
+**Server Logic (`app.R`)**
+
+*   **Reactivity & Performance:**
+    *   `selected_countries_immediate` (reactiveVal) and `selected_countries <- debounce(selected_countries_immediate, 1000)` is an excellent pattern. It allows immediate UI feedback on the map while deferring more computationally intensive updates.
+    *   `bindCache` on the `processed_data` reactive is a significant performance optimization, especially since this reactive depends on multiple inputs. The cache key appears comprehensive.
+    *   `withProgress` is used during data processing, providing good user feedback.
+    *   `req()` and `validate()` are used appropriately to handle missing inputs and prevent errors, offering informative messages to the user.
+*   **Map Interaction:**
+    *   The initial map is created by `create_selection_map`.
+    *   Map clicks (`input$selection_map_shape_click`) efficiently update individual polygons using `leafletProxy` to `removeShape` and then `addPolygons`. This is more performant than redrawing many shapes.
+    *   The "Clear Map Selection" button also uses `leafletProxy` effectively.
+    *   Region filtering uses `showGroup` and `hideGroup` on the proxy, which is efficient.
+*   **Data Handling:**
+    *   `load_country_data()` (from functions.R) is called once at startup.
+    *   The main `processed_data` reactive calls `get_display_data()`, which centralizes the core data filtering and transformation logic based on user inputs.
+*   **Dynamic UI:**
+    *   `renderUI` is used for `region_filter_ui`, `display_mode_ui`, and `plot_header_ui`, allowing parts of the UI to adapt to selections.
+
+**Functions (`functions.R`)**
+
+*   **`load_country_data`:**
+    *   Uses `duckplyr::read_parquet_duckdb`, which is good for performance with Parquet files.
+    *   `collect()` is generally used after initial filtering/distinct operations on the `duckdb` relation, which is efficient. The collected datasets (country_list, chemical_categories, article_data) are relatively small.
+*   **`create_selection_map`:**
+    *   Uses `rnaturalearth` for base map geometries.
+    *   The logic for coloring selected vs. available countries is clear.
+*   **`get_display_data`:**
+    *   This is a critical function. It correctly filters data based on `is_collab`, `chemical`, `year_range`, and `selected_isos`.
+    *   The collaboration filtering (looping `grepl` then a secondary `sapply` check post-collect) is a pragmatic approach. For a small number of `selected_isos` (typical for map selections), this should perform adequately.
+*   **Plotting Functions (`create_main_plot`, `create_contribution_map_plot`, `create_article_plot_simple`, `create_top_collabs_plot`):**
+    *   Follow a good pattern: prepare data, create a `ggplot` object, then convert to `plotly` or `girafe`.
+    *   Conditional aesthetics and layouts based on `display_mode` are handled.
+    *   `ggiraph` is used for interactive ggplot-based charts, and pure `plotly` for others, offering flexibility.
+    *   Tooltips are customized for better user experience.
+*   **Other Helpers:** Functions like `get_plot_header`, `create_summary_table`, `calculate_top_contributors` are well-defined and contribute to modularity.
+
+**Potential Areas for Final Polish & Minor Suggestions:**
+
+1.  **CSS & Mobile Refinements:**
+    *   **Legends:** On very small mobile screens, plot legends (especially horizontal ones or those with many items) can sometimes become cramped or take up too much vertical space. Test this thoroughly. For `plotly` plots, you might adjust `legend = list(orientation = 'h', y = -0.2, yanchor = "top")` or similar. For `ggplot2` based plots, `legend.position = "bottom"` is generally robust.
+    *   **Sidebar Filters:** Ensure all filter inputs in the map's sidebar are easily tappable and readable on mobile. `bslib` should handle stacking well.
+    *   **Table Horizontal Scroll:** `DTOutput` with `scrollX = TRUE` is good. Ensure it's intuitive on mobile.
+2.  **`theme_set(theme_light())` vs. `bs_theme()`:**
+    *   You have `theme_set(theme_light())` globally and `bs_theme(bootswatch = "flatly")` in `page_navbar`. `bslib`'s theming will generally apply to `ggplot2` plots, potentially overriding `theme_light()`. This is usually desired for consistency. If you specifically want `theme_light()` for `ggplot2` plots, you might need to apply it explicitly within each plot function or explore `thematic::thematic_shiny()`. Given `flatly` is a light theme, the difference might be minimal.
+3.  **`update_map_polygons` Function:**
+    *   The `update_map_polygons` function in functions.R doesn't seem to be used in the app.R server logic (map updates are handled directly via `leafletProxy` in `observeEvent`s). If it's indeed unused, consider removing it to avoid confusion. The current direct proxy update method is efficient for click-based changes.
+4.  **Tooltip for "Collaborations" Tab (Article Highlights):**
+    *   The `nav_panel` title is "Explore Top collaborators", and the tooltip is "Explore top contributors and their collaboration trends...". This seems fine, especially since the content within can be toggled. If you wanted to be extremely precise, the tab title could be more generic like "Top Trends" if it frequently shows individual country data too. However, the current setup is understandable.
+5.  **Error Handling in `create_selection_map`:**
+    *   The `map_data` creation within `create_selection_map` has `cc = ifelse(is.na(cc) | cc == "", "#808080", cc)`. This fallback is good.
+6.  **Clarity of `article_data` Loading:**
+    *   In `load_country_data`, `article_data_raw` is created by selecting `year = year_x, country = country_x, value = percentage_x`. Ensure these `_x` suffixed columns are indeed what you intend for the static article plots.
+    *   If the original data has many columns, consider using `select(-c(...))` to drop unnecessary columns after loading, rather than just selecting the few you need. This can help clarify intent and reduce memory usage.
+
+#### dependencies
+
+Here is a list of R package dependencies required to run your Shiny application.
+
+**Core R Packages:**
+
+*   `shiny`
+*   `bslib`
+*   `shinycssloaders`
+*   `plotly`
+*   `ggplot2`
+*   `conflicted`
+*   `duckplyr`
+*   `dplyr`
+*   `tidyr`
+*   `purrr`
+*   `scales`
+*   `DT`
+*   `stringr`
+*   `leaflet`
+*   `sf`
+*   `ggiraph`
+*   `rnaturalearth`
+*   `rnaturalearthdata`
+*   `leaflet.extras`
+*   `RColorBrewer`
+
+**Installation Command for R:**
+
+```r
+install.packages(c(
+  "shiny", "bslib", "shinycssloaders", "plotly", "ggplot2",
+  "conflicted", "duckplyr", "dplyr", "tidyr", "purrr", "scales",
+  "DT", "stringr", "leaflet", "sf", "ggiraph", "rnaturalearth",
+  "rnaturalearthdata", "leaflet.extras", "RColorBrewer"
+))
+```
+
+**System Dependencies (Important for `sf`):**
+
+The `sf` package often has system-level dependencies. On a Linux server, these typically include:
+
+*   **GDAL (>= 2.2.3)**
+*   **GEOS (>= 3.4.0)**
+*   **PROJ (>= 4.9.3)**
+*   **SQLite3**
+*   **UDUNITS2** (sometimes needed indirectly)
+
+The exact commands to install these system libraries vary by Linux distribution. For example, on Debian/Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
+```
+
+For RHEL/CentOS/Fedora:
+
+```bash
+sudo yum install -y gdal-devel geos-devel proj-devel sqlite-devel udunits2-devel
+# or for newer Fedora/RHEL:
+sudo dnf install -y gdal-devel geos-devel proj-devel sqlite-devel udunits2-devel
+```
+
+Ensure these system libraries are installed *before* trying to install the `sf` R package. If `sf` installation fails, it's almost always due to missing system dependencies.
+
+**Other Considerations:**
+
+*   **R Version:** Ensure a reasonably modern version of R is installed on the server (e.g., R >= 4.0.0 is a good baseline, though your packages might work on slightly older versions).
+*   **DuckDB:** The `duckplyr` package interfaces with DuckDB. While `duckplyr` should handle its DuckDB component, it's worth noting. No separate DuckDB installation is usually required if using `duckplyr`.
+*   **File Paths:** The application reads data from data.parquet and an article PDF from `"original_article.pdf"`. Ensure these files are present in the correct locations relative to the app.R file on the server.
+*   **Permissions:** The R process running the Shiny app will need read access to the app files, data files, and write access to a temporary directory (usually handled by Shiny Server or Connect).
+
