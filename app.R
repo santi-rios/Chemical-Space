@@ -461,7 +461,7 @@ server <- function(input, output, session) {
   selected_countries_immediate <- reactiveVal(c()) # Stores ISO codes immediately on click
   # Debounce still needed for downstream calculations (plots, table, value boxes)
   # Let's set it back to 3 seconds for testing, adjust as needed (e.g., 1000-1500ms might be good)
-  selected_countries <- debounce(selected_countries_immediate, 1000)
+  selected_countries <- debounce(selected_countries_immediate, 500)
   display_mode <- reactiveVal("compare_individuals") # Default mode for >1 selection
 
   # --- Constants ---
