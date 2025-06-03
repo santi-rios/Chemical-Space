@@ -6,10 +6,10 @@ To perform a load test you’ll need two pieces of software:
 Then run shinycannon from the terminal with a command like this:
 
 ```bash
-shinycannon recording_duckplyr.log http://127.0.0.1:6687 \
+shinycannon recording_dplyr.log http://127.0.0.1:7365 \
   --workers 10 \
   --loaded-duration-minutes 5 \
-  --output-dir test/replay1
+  --output-dir test/replay2
 ```
 
 There are six arguments to shinycannon:

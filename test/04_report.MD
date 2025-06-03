@@ -3,6 +3,10 @@
 ## Sessions
 
 ![Sessions](04_sessions.jpg)
+Sessions with current duckdb (best, rectangles are narrower)
+
+![Sessions with dplyr (worst)](04_sessions_dplyr.jpg)
+Sessions with dplyr (worst)
 
 ### Key Observations:
 1. **User Wait Times**:
@@ -20,6 +24,10 @@
 ## Session duration
 
 ![Session Duration](04_session_duration.jpg)
+Duckdb (best, sessions end before the red line)
+
+![Session Duration](04_session_duration_dplyr.jpg)
+dplyr (worst, some sessions end after the red line)
 
 ### **Interpretation of Session Duration Results**  
 
@@ -39,8 +47,13 @@ This graph shows **19 test sessions** (simulated users) ordered from fastest (to
 # latency and websocket
 
 ![Latency](04_latency.jpg)
+Latency with duckdb (best, below 5 seconds)
+
+![Latency](04_latency_dplyr.jpg)
+Latency with dplyr (worst, above 5 seconds)
 
 ![Latency and Websocket](04_websocket.jpg)
+Latency and Websocket with duckdb
 
 ### **Interpretation of Latency Results**  
 
